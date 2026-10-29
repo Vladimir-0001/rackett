@@ -1,0 +1,15 @@
+Vendored from Jackett (https://github.com/Jackett/Jackett)
+Pinned commit: fe8876d21b93dfda84eb12bd24e1c72e56fb8736
+
+Definitions: src/Jackett.Common/Definitions/*.yml (583 files, unchanged)
+Schema: src/Jackett.Common/Definitions/schema.json (unchanged)
+Fixtures: src/Jackett.Test/Resources/{html,json}-{definition1.yml,response1.html,response1.json}
+  (actual HTML/JSON pairs only, unchanged)
+Assertion provenance: src/Jackett.Test/Common/Indexers/CardigannIndexer{Html,Json}Tests.cs
+  (unchanged original response golden assertions)
+Copyright: the Jackett contributors; original file notices are preserved.
+License: GNU General Public License version 2, reproduced in LICENSE.
+Rackett remains GPL-2.0-only. These are data/model inputs, not working
+Rackett tracker implementations. No upstream service is bundled or invoked.
+
+SHA256SUMS records each vendored input, relative to this directory.

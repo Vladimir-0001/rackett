@@ -1,0 +1,10 @@
+/target/
+/data/
+/dist/
+*.tmp
+.env
+.DS_Store
+
+
+__pycache__/
+*.pyc

@@ -1,0 +1,712 @@
+[
+  {
+    "id": "0dayfiles-api",
+    "sha256": "08674266f79acc0f6fda52e44e4f32deafd9689042c7d9a6ade6a5fd1f421668",
+    "tracker_category": 9,
+    "category": 2030,
+    "category_name": "Movies/480p",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "3dvault-api",
+    "sha256": "7b72b79ff36e395eec84664fd52c307f225ec1ee7e47727b44f69fbcc0ed519e",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "aither-api",
+    "sha256": "c50242422d7452196eeaf688bf58a832018841e2514912b40a809120ea068a6d",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "animeworld-api",
+    "sha256": "e249f11cecb819d00f8c01eec78fa2a18efeff95c76c2b911e43ff7c1885db38",
+    "tracker_category": 1,
+    "category": 2020,
+    "category_name": "Anime Filme",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "arabicsource-api",
+    "sha256": "9a717916fb4660e30e3871690479eeea52d4b9c7690c935614d03900f66d2aae",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "\u0623\u0641\u0644\u0627\u0645 \u0631\u0633\u0648\u0645 \u0645\u062f\u0628\u0644\u062c\u0629 (Dubbed Animated Films)",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "asiancinema",
+    "sha256": "e4ad234d88a63e70b58cd08a902563ddcecf08475a8f18123ed8776c311681f1",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "bitporn",
+    "sha256": "2976ad38a118146a55f15546fcbfea30706c668eb8922bc30f6e3d814bc14661",
+    "tracker_category": 54,
+    "category": 6000,
+    "category_name": "Ai Generated\"",
+    "offset": " +00:00",
+    "filename_setting": false,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "blutopia-api",
+    "sha256": "03f54bd8a9f3a0e6bb776640dcd60c172a3af419e575e93ab14bbdc893a04787",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "capybarabr",
+    "sha256": "be1d305c135bf3f4a2a22c829651f615aaec222f03bcb04c4fb6b17b9ae01cc0",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Filmes",
+    "offset": " -03:00",
+    "filename_setting": false,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "cinematik",
+    "sha256": "5989a896c281096213159d312f3d6a3e1341428f6302d23c33c0cde7123ffd58",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Film",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "clearjav-api",
+    "sha256": "6994522792928ce851f1c1e2c7068504895afa76afd09af259836bbdf730620d",
+    "tracker_category": 1,
+    "category": 6000,
+    "category_name": "JAV",
+    "offset": " +00:00",
+    "filename_setting": false,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "concertos",
+    "sha256": "d70e2fc56d9c5a16f03059923394924e6d2ee8425732c544bd4081cc92bcba0b",
+    "tracker_category": 1,
+    "category": 5000,
+    "category_name": "Live Concert",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "danishbits-api",
+    "sha256": "f9be20befc355ddee858b0b73936c576f6a0a10431a82b70f768d560e2efa58a",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "darkpeers",
+    "sha256": "e310421a6f316db41486e15b338ea1aac5a349dd771b50ce7bd3ba40781e14bb",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "datascene-api",
+    "sha256": "0ea67e5a9a377f3dff28fb3e487b912eb8dd5d5f0663212993f8d2273a196940",
+    "tracker_category": 1,
+    "category": 2040,
+    "category_name": "Movie HD",
+    "offset": " +02:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "dreadvault-api",
+    "sha256": "fd6725a01159184560fdf832d67c70e7652d36b62ddf5f03a30dbafb9dfc9717",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "emuwarez",
+    "sha256": "0c526d6321019154e171d7161948c18bbef6cf2599344f40c1a5f798946a9dad",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Pel\u00edculas",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename Spanish"
+  },
+  {
+    "id": "f1carreras-api",
+    "sha256": "e9eecccbaaa877cd9c318aa88d9cdcddc424b4f8984c29645c97843b80319f1a",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "funzone-api",
+    "sha256": "6a4f77cbde270b6a02fd2cae06cc53d5f5e9923e1553291a882bd87523cf7bbe",
+    "tracker_category": 3,
+    "category": 2040,
+    "category_name": "Movies HD-RO",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "hd-unit3d-api",
+    "sha256": "e63489ee6dbdfc976b90435d8f1b20a01420e39c0f62ba9d65a587150c25ab31",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "hdtorrentsit",
+    "sha256": "146d84b9d0d29e38498a1d32531f599fa069708efabf48dd1a46ef4a8a70a950",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "hdzero",
+    "sha256": "9a9fb7c4e3033382d39a12d4c9a45dc3d0cf01e8b0a3a28694413892f65f845e",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Pel\u00edculas",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename Spanish"
+  },
+  {
+    "id": "hellenic-hd-api",
+    "sha256": "3605a909a2a90459c3d7b06f9bfe1fd3845769875dd691d4090b5d1a02627e35",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "hhd-api",
+    "sha256": "9fabd98878371b4544ba9b869ba2f400d60485b9d6e4570044c82e797459c71e",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "infinityhd-api",
+    "sha256": "6346e01dfc99565405d115bc81d862ecbcea163e965f9f3d7ceefffaf90e3d94",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "itatorrents",
+    "sha256": "9058cb9e2554e3a6ab842105a1018216bbccc58e85ac6666dc2d5c857174033c",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Film",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "jme-reunit3d-api",
+    "sha256": "52fee596686448f9864e90eef67f9f30f899cdec3bd564b538534b58fa1ad971",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": false,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "jptv4us-api",
+    "sha256": "d811f998b90b4b42f612c4c02b80f2f2486d2c791a52d01fd91e48ec3dbaf444",
+    "tracker_category": 1,
+    "category": 5070,
+    "category_name": "Anime Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "lastdigitalunderground",
+    "sha256": "7692cd59a96c3222f12be06acece18a8094f0b923d5ef2724b38b0f171c96b12",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Films: General",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "lat-team-api",
+    "sha256": "27c7927de3e81e71da443bc39f58be7bcde71d2f7422358ff50f280d1d5772b4",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Peliculas",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename SPANiSH"
+  },
+  {
+    "id": "locadora",
+    "sha256": "51f029be1045169d90e0e49ee6e5dddde6aea2405740976dfbdd55b086229c13",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Filmes",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "lst",
+    "sha256": "c3cf7155b922245478c327fa8cb520d77b27ad95a615feeb49a9decf582ab267",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "luminarr-api",
+    "sha256": "535ada0ef3bae4967b44cb9318f940c07b8af23a9e8dcb1af4d320185aa0b67b",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "malayabits-api",
+    "sha256": "c475562ef2ae4df24e260ac2558a917f52f1e5b276d4d89e7c0247c64bfcabba",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "midnightscene",
+    "sha256": "928c901dee0e8333beec7cc18b513e348c66adaecdf21870bbf8473c982de267",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "milnueve-api",
+    "sha256": "fcd6b1f5d25a83def3ffc9c5d828f850cd33ed9315ab23aa6a64cc26cab76340",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Pel\u00edculas",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename Spanish"
+  },
+  {
+    "id": "monikadesign-api",
+    "sha256": "e9c8f89d29099ed57fdc4290ddf86d97b71a5be51983f23e046fc926ad5a9d21",
+    "tracker_category": 8,
+    "category": 5070,
+    "category_name": "Anime TV",
+    "offset": " +00:00",
+    "filename_setting": false,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "nirvana",
+    "sha256": "caaaedd0502160418eea1cb20841d2caab9be456ad4c3464b55d5114e2e90818",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "\u0424\u0438\u043b\u044c\u043c\u044b",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "nobs",
+    "sha256": "d15118a4ed9d270d46e3663c9fda074b252a2c7bca40526b31eb9cc1ae271c23",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename Spanish"
+  },
+  {
+    "id": "nordicbytes",
+    "sha256": "8f0e8525b84c5a26101b903a892045428d022de4e2c5ae4e0c212e87b576796d",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "nordicquality",
+    "sha256": "6dc7b09d32fc5aaed9740990e048aa6f8ce462b528338ab25e746e9c9c3f07c4",
+    "tracker_category": 8,
+    "category": 3030,
+    "category_name": "Audiobooks",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "oldtoonsworld",
+    "sha256": "c9a5f42d9a784d8bb593da6293366326a728a8a30087e9ed80f80b8fa052c971",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "onlyencodes-api",
+    "sha256": "1aa31841fc42bdea3a8cd191188505877fcfd8c6f4865567293a6294ba7882ae",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "parabellumhd-api",
+    "sha256": "bd93a69dcdf621ae36ac16f1812f30f0ff5aecd35442532e3ecc00a496e06c2a",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Pel\u00edculas",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "peergarden",
+    "sha256": "774d657c1d14df2b4b2e1a509d4ee0dec4051f532962c03eb98e5c34e2a39c21",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "podzemlje",
+    "sha256": "79467a344053160cb7c4caecca0487b5c713747fc75322907e65b1e8712f14e1",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "portugas-api",
+    "sha256": "33818c50f0193669e2d60c08e1218716f714a9e9aa22c42c1476d8e9ea632e47",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Filmes",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "racing4everyone-api",
+    "sha256": "bc27afe396471fe45e5583224cd7a6ad09233480ee89f87c32845e91035914b5",
+    "tracker_category": 72,
+    "category": 5060,
+    "category_name": "AMA Pro Motocross",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "rastastugan-api",
+    "sha256": "ea4e23d1cb1ea4a65bd2b0911198e5bf501f5313bd2f24179adbb632076fd238",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "reelflix-api",
+    "sha256": "bdf20d8720d66090d7113c2163f0fef7790528e1f228e67f66ff46553ff141b8",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "retromoviesclub-api",
+    "sha256": "c3c743283579e9f79fc40ec4dbb1b6402d7d45a9643748fc82fe66c416626d67",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "rockethd",
+    "sha256": "34ffa958c3d093d247bc5d085c3ff1c0380303480d4452c0a9140624c419b632",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "samaritano",
+    "sha256": "6d425410e2e95d6e49e8d2c4a6ddbd0e9c175ab16948f20247f51a41eac3fe77",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Filmes",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "sapibr",
+    "sha256": "eb924cff062e3d01881a6221a8fb6188cb6cebc1a5cc45ed36a6b8bd7c0ba2ea",
+    "tracker_category": 1,
+    "category": 7010,
+    "category_name": "Revistas",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "seedcore-api",
+    "sha256": "9a80241b4130a149f97ef8cbcf1d09d910b6bae741b6f45e8a87afa829081b06",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "seedpool-api",
+    "sha256": "d6bc2c3e9fe1ea8fa4a46a76b1e6a5ee7ef5268446ba5476a05fd3be60e90fd1",
+    "tracker_category": 2,
+    "category": 5000,
+    "category_name": "TV Show",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "sextorrent-api",
+    "sha256": "3868d44ea4d61649e9957fefd646cca2d3d95951405cffb11145e91bcfcc2654",
+    "tracker_category": 4,
+    "category": 6000,
+    "category_name": "Hardcore",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "shareisland-api",
+    "sha256": "48128d332f45dd279389e06610b1957a9c22ffecf5b21c3dd904f633cce5716b",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +01:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "skipthecommercials-api",
+    "sha256": "92a26e67e77229c39cd9eed7258fc670820f17c992cf83d04078eb62ba05298a",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "theleachzone-api",
+    "sha256": "0f27343f888fb9f74541f3d744a5abedbf72baab591950edcf2cd0dcca8e0b44",
+    "tracker_category": 2,
+    "category": 5000,
+    "category_name": "TV",
+    "offset": " +00:00",
+    "filename_setting": false,
+    "default_title": "Fixture Release"
+  },
+  {
+    "id": "thorhub-api",
+    "sha256": "6d0f81fec34c61b8a234bfaeab4cbbda610b80142d49bfec7f8ba097c8bddd5d",
+    "tracker_category": 4,
+    "category": 1000,
+    "category_name": "Games",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "torrenteros-api",
+    "sha256": "f18e97bc460af791d8e6c7e0df80a794d83109259b6ba799624824d5ab41002d",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " -03:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "torrenthaven-api",
+    "sha256": "411e146700e5f1850e2a2e9a0c7bb3ba490e4341174b00d233d304160e3176c8",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "torrenthr-api",
+    "sha256": "41d4dab06f6dce462c625a06921d14c14eaa303e6d4c6ee69a4dd6bda83c0321",
+    "tracker_category": 31,
+    "category": 5070,
+    "category_name": "Anime",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "turkseed-api",
+    "sha256": "74c0ab298bc71debe7dea18a72d3cc1ecf894ef141d71128ecde330a4fc4a589",
+    "tracker_category": 1,
+    "category": 2010,
+    "category_name": "Yabanc\u0131 Film",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "uploadcx",
+    "sha256": "0e8ac75b9d8e91f9f5c7bd725c3ce1b260b7947f0a7495e6e50c2f48ed901c32",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "upscalevault",
+    "sha256": "8f80c7f45c8314dc904a1c51d38179a1fac65b21194654a085d6ea8edcc20e1a",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "utopia",
+    "sha256": "3c3e7d173f48248435e8081aa3e55ad0b683fb9ded291d6f6be83a838290325f",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "vietmediaf",
+    "sha256": "eeb451cc096347a4231e7a0ecdc65b699b7e097d72e570bf86d705746046ee45",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "yuscene-api",
+    "sha256": "4e9e8195c393bb35d9c1a349cdc78f19634cf3c15ae5d5bd9ca3bf300af47d78",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  },
+  {
+    "id": "zenith",
+    "sha256": "9c4441ab08a5c78b4111e82a302b9bbec8f4e175f2660dfd311b44938b73abfe",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movies",
+    "offset": " +00:00",
+    "filename_setting": true,
+    "default_title": "Fixture Filename"
+  }
+]

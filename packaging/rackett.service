@@ -1,0 +1,19 @@
+[Unit]
+Description=Rackett local indexer service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/rackett --data-dir %h/.local/share/rackett
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+ReadWritePaths=%h/.local/share/rackett
+UMask=0077
+
+[Install]
+WantedBy=default.target

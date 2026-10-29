@@ -1,0 +1,35 @@
+[package]
+name = "rackett"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-2.0-only"
+description = "Local asynchronous torrent indexer gateway with a modern interface"
+
+[dependencies]
+regex = "1"
+base64 = "0.22"
+unicode-normalization = "0.1"
+html-escape = "0.2"
+anyhow = "1"
+axum = "0.8"
+chrono = { version = "0.4", features = ["serde"] }
+futures-util = "0.3"
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+roxmltree = "0.20"
+scraper = "0.23"
+selectors = "0.26"
+cssparser = "0.34"
+html5ever = "0.29"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["float_roundtrip"] }
+sha2 = "0.10"
+tokio = { version = "1", features = ["full"] }
+url = "2"
+yaml-rust2 = { version = "0.13", default-features = false }
+sha1 = "0.10"
+cookie = { version = "0.18", default-features = false }
+
+[dev-dependencies]
+tempfile = "3"
+tower = { version = "0.5", features = ["util"] }

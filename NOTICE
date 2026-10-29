@@ -1,0 +1,20 @@
+Rackett is an independent, experimental rewrite inspired by Jackett.
+It is not an official Jackett release and is not affiliated with its maintainers.
+
+Upstream research baseline:
+https://github.com/Jackett/Jackett
+commit fe8876d21b93dfda84eb12bd24e1c72e56fb8736
+
+Jackett upstream source and documentation are distributed under GNU GPL version 2.
+This repository is distributed under GPL-2.0-only; see LICENSE.
+Rackett's Rust code is a new implementation. Its Cardigann behaviour was
+reimplemented by studying Jackett's GPL-2.0 source at the commit above, so
+Rackett is distributed under the same license family and credits the Jackett
+contributors, including the community authors of every tracker definition.
+The pinned upstream tracker definition catalog, schema and model fixtures are
+vendored under vendor/jackett with provenance, checksums and the upstream license.
+No bundled upstream frontend library is shipped here.
+Synthetic adapter fixtures are included for offline tests.
+
+Rust dependencies retain their own licenses. Cargo.lock records exact versions;
+tools/dependency_licenses.py produces a license inventory for the locked build.

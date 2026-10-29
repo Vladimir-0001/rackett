@@ -1,0 +1,249 @@
+[
+  {
+    "id": "13city-api",
+    "sha256": "e2d3d3da26c18f225c63929212461e515c8c82f1d03dfb69b4fffdec639162bb",
+    "tracker_category": 401,
+    "minimumratio": "2.0",
+    "minimumseedtime": "86400",
+    "category": 2000
+  },
+  {
+    "id": "1ptbar-api",
+    "sha256": "af491ca91bf21607f93a7b26bfd0e7c1cf5f11365c0c7cbe0bf6af6f42cedd43",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": null,
+    "category": 2000
+  },
+  {
+    "id": "alingpt-api",
+    "sha256": "e5a846871383db0445216d9a626a7f7a00a9ad23351d0038642f09dbc1b946b5",
+    "tracker_category": 405,
+    "minimumratio": "2.0",
+    "minimumseedtime": "172800",
+    "category": 5070
+  },
+  {
+    "id": "baozipt-api",
+    "sha256": "ee556b369e9fb76d4a6dd17eaf41c774dc73f6ca702fa2417bc8391f47ed1a27",
+    "tracker_category": 401,
+    "minimumratio": "2.0",
+    "minimumseedtime": "86400",
+    "category": 2000
+  },
+  {
+    "id": "crabpt-api",
+    "sha256": "629dcabe5be192f12ee25bff2a6ced856638478c4893f6289ea4d66e016dea97",
+    "tracker_category": 401,
+    "minimumratio": "1.0",
+    "minimumseedtime": "86400",
+    "category": 2000
+  },
+  {
+    "id": "daxiangjiao-api",
+    "sha256": "01855f3327206454c52c575b888b1c547901b1d876687fd172d81020b5527e30",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": "86400",
+    "category": 2000
+  },
+  {
+    "id": "depthstudio-api",
+    "sha256": "878d0d9ae6fd66ddcd2f3906a3beca67a417ede47867675182a31b0e8ad928ad",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": "172800",
+    "category": 2000
+  },
+  {
+    "id": "discfan-api",
+    "sha256": "53f6e40e8067db9e7daa77e7a59a42cc03107ea81191e13ae4332aa3d7a9de29",
+    "tracker_category": 401,
+    "minimumratio": "0.9",
+    "minimumseedtime": "86400",
+    "category": 2000
+  },
+  {
+    "id": "freefarm-api",
+    "sha256": "5fcec295584870454e846423c59e448bd3a20f6074a5efbec4b7b87a1c1a3e88",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": {
+      "1": "604800",
+      "0": "259200"
+    },
+    "category": 2000
+  },
+  {
+    "id": "hdbao-api",
+    "sha256": "5331564d5bd314700bbb0cd17088e9a1156a92089061785adc4500b24dd781b5",
+    "tracker_category": 407,
+    "minimumratio": null,
+    "minimumseedtime": null,
+    "category": 5060
+  },
+  {
+    "id": "hdvideo-api",
+    "sha256": "519531a5f748583a53f0b7f260801f7f65b9d13ec12f6cdeec762381bd8c6f42",
+    "tracker_category": 406,
+    "minimumratio": null,
+    "minimumseedtime": "86400",
+    "category": 3000
+  },
+  {
+    "id": "kufei-api",
+    "sha256": "5412dd6f17cef5a56df4f14d4720d7bef6ad1c0606e86d79729fc90af176fcda",
+    "tracker_category": 410,
+    "minimumratio": "1.0",
+    "minimumseedtime": null,
+    "category": 1000
+  },
+  {
+    "id": "lajidui-api",
+    "sha256": "d06c822f4d5730ae4b3d29c2a77be6180919e96042a66c26b792469617407f7a",
+    "tracker_category": 401,
+    "minimumratio": "2.0",
+    "minimumseedtime": "172800",
+    "category": 2000
+  },
+  {
+    "id": "lemonhd-net-api",
+    "sha256": "c8516b4b0bbf10af80d036dbbfee5ebafabba9b305298365a097a7ba6d88decb",
+    "tracker_category": 401,
+    "minimumratio": "1.0",
+    "minimumseedtime": null,
+    "category": 2000
+  },
+  {
+    "id": "longpt-api",
+    "sha256": "3e57240d3dd03c8814d1d4c37c9ddbba600e75a6a075734f6a9b774ead8d36b3",
+    "tracker_category": 408,
+    "minimumratio": null,
+    "minimumseedtime": null,
+    "category": 3040
+  },
+  {
+    "id": "musopia-api",
+    "sha256": "f63d1afcdf61d63d8cbdd408503d323dfe5ac6352627cd2097a44457cf5290fe",
+    "tracker_category": 406,
+    "minimumratio": "1.0",
+    "minimumseedtime": "518400",
+    "category": 3020
+  },
+  {
+    "id": "nicept-api",
+    "sha256": "ddeefce8c253b1a001ded6ecc688c68608dda4a03b8b0b862c2b798cd1382319",
+    "tracker_category": 500,
+    "minimumratio": "1.0",
+    "minimumseedtime": "259200",
+    "category": 6000
+  },
+  {
+    "id": "oshenpt-api",
+    "sha256": "f034f9328940dec0e70a7aee6b5fb3c848471320ccd67f15edbc2e78d0d6bdd0",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": null,
+    "category": 2000
+  },
+  {
+    "id": "phoenixpt-api",
+    "sha256": "11d5d082576982edd100ce438a129961066db18bd80259e1c3457b22a3c1092d",
+    "tracker_category": 401,
+    "minimumratio": "2.0",
+    "minimumseedtime": "172800",
+    "category": 2000
+  },
+  {
+    "id": "ptcafe-api",
+    "sha256": "6d34a2d219f991200bdfaef8b204624d309b0de6e6c9b1c6e8128519b473ed41",
+    "tracker_category": 401,
+    "minimumratio": "0.8",
+    "minimumseedtime": null,
+    "category": 2000
+  },
+  {
+    "id": "ptgtk-api",
+    "sha256": "1b1b8d2caeee843599323fe985cdcac94535d1d8a2a2af11f88acc43b94e0c32",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": null,
+    "category": 2000
+  },
+  {
+    "id": "ptskit-api",
+    "sha256": "a2b6a48b30b24f027b7d4a994ec35a820e0205ff1229496cea9ee9add1711a71",
+    "tracker_category": 401,
+    "minimumratio": "1.0",
+    "minimumseedtime": "86400",
+    "category": 5050
+  },
+  {
+    "id": "ptzone-api",
+    "sha256": "a7c424076fb624713dc4b3d54f1190fd6ece25d893ed2683280d4dea26102dfa",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": null,
+    "category": 2000
+  },
+  {
+    "id": "soulvoice-api",
+    "sha256": "e4bd976d321821c908348967415b9f3d7eb79858c65dcc5559cba4db2e9f84e4",
+    "tracker_category": 401,
+    "minimumratio": "2.0",
+    "minimumseedtime": "259200",
+    "category": 2000
+  },
+  {
+    "id": "ultrahd-api",
+    "sha256": "fee5f830a568e643fe45fef7bce47f7f75ce7b99c540c2d520ec075e4f0d756f",
+    "tracker_category": 401,
+    "minimumratio": {
+      "1": "3.0",
+      "0": "2.0"
+    },
+    "minimumseedtime": {
+      "1": "1209600",
+      "0": "604800"
+    },
+    "category": 2000
+  },
+  {
+    "id": "vc-lib-api",
+    "sha256": "051f56d77cf05dcccc5a52976a2edff291871444c70c9d3cfd767961e9457d9d",
+    "tracker_category": 408,
+    "minimumratio": "0.8",
+    "minimumseedtime": "86400",
+    "category": 8000
+  },
+  {
+    "id": "xdy-api",
+    "sha256": "94b4bf567415b55e1c0388aee6ae32cc83e998e08f7f14647ceddc1abda0bc2e",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": "86400",
+    "category": 2000
+  },
+  {
+    "id": "xloli-api",
+    "sha256": "d4abd89ee8195b4bc8918eace4a40d8b9d6fad920299caf0e0a3b46570297502",
+    "tracker_category": 401,
+    "minimumratio": null,
+    "minimumseedtime": null,
+    "category": 2000
+  },
+  {
+    "id": "zmpt-api",
+    "sha256": "77ad6a8ae72e18b42d9eaa86ec9a20746fec4d29382f5adcc52bb55131a18226",
+    "tracker_category": 409,
+    "minimumratio": {
+      "1": "1.0",
+      "0": "0.4"
+    },
+    "minimumseedtime": {
+      "1": "259200",
+      "0": "86400"
+    },
+    "category": 8000
+  }
+]

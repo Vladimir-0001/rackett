@@ -1,0 +1,439 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#1f2622">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+<title>Rackett</title>
+<link rel="stylesheet" href="/app.css">
+<script defer src="/app.js"></script>
+</head>
+<body>
+<svg class="sprite" aria-hidden="true" focusable="false">
+  <symbol id="i-overview" viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.4-4.4"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 24 24"><path d="M3 12h4l2.5-7 5 14 2.5-7h4"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 24 24"><path d="M4 7h9m4 0h3M4 12h3m4 0h9M4 17h11m4 0h1"/><circle cx="15" cy="7" r="2"/><circle cx="9" cy="12" r="2"/><circle cx="17" cy="17" r="2"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 24 24"><path d="M9 3v5m6-5v5M6 8h12v3a6 6 0 0 1-12 0zm6 9v4"/></symbol>
+  <symbol id="i-external" viewBox="0 0 24 24"><path d="M14 4h6v6m0-6-9 9m7 1v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></symbol>
+  <symbol id="i-copy" viewBox="0 0 24 24"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M15.5 8.5V6a1.5 1.5 0 0 0-1.5-1.5H6A1.5 1.5 0 0 0 4.5 6v8A1.5 1.5 0 0 0 6 15.5h2.5"/></symbol>
+  <symbol id="i-refresh" viewBox="0 0 24 24"><path d="M19.5 10.5A7.5 7.5 0 0 0 6 7.2M4.5 4v4h4m-4 5.5A7.5 7.5 0 0 0 18 16.8m1.5 3.2v-4h-4"/></symbol>
+  <symbol id="i-download" viewBox="0 0 24 24"><path d="M12 4v11m-5-5 5 5 5-5M5 20h14"/></symbol>
+  <symbol id="i-magnet" viewBox="0 0 24 24"><path d="M5.5 4h4.5v8a2 2 0 0 0 4 0V4h4.5v8a6.5 6.5 0 0 1-13 0zm0 4.5H10m4 0h4.5"/></symbol>
+  <symbol id="i-more" viewBox="0 0 24 24"><circle cx="5.5" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="18.5" cy="12" r="1.6" fill="currentColor" stroke="none"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24"><path d="m5 12.5 4.5 4.5L19 7.5"/></symbol>
+  <symbol id="i-close" viewBox="0 0 24 24"><path d="M6.5 6.5l11 11m0-11-11 11"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 24 24"><path d="M10.3 4.4 2.9 17.5A2 2 0 0 0 4.6 20.5h14.8a2 2 0 0 0 1.7-3L13.7 4.4a2 2 0 0 0-3.4 0z"/><path d="M12 9.5v4m0 3.2v.1"/></symbol>
+  <symbol id="i-error" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5v5.5m0 3.2v.1"/></symbol>
+  <symbol id="i-info" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 11v5.5m0-9v.1"/></symbol>
+  <symbol id="i-ok" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="m8.5 12.3 2.4 2.4 4.6-5"/></symbol>
+  <symbol id="i-zap" viewBox="0 0 24 24"><path d="M13 3 5 13.5h6.5L11 21l8-10.5h-6.5z"/></symbol>
+  <symbol id="i-edit" viewBox="0 0 24 24"><path d="M4 20h4L19.3 8.7a2 2 0 0 0 0-2.8l-1.2-1.2a2 2 0 0 0-2.8 0L4 16z"/><path d="m13.5 6.5 4 4"/></symbol>
+  <symbol id="i-pause" viewBox="0 0 24 24"><path d="M9 5.5v13m6-13v13"/></symbol>
+  <symbol id="i-play" viewBox="0 0 24 24"><path d="M7.5 5.2v13.6a.7.7 0 0 0 1 .6l10.6-6.8a.7.7 0 0 0 0-1.2L8.5 4.6a.7.7 0 0 0-1 .6z"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24"><path d="M4.5 7h15M10 11v6m4-6v6M6.5 7l.9 12.1a1 1 0 0 0 1 .9h7.2a1 1 0 0 0 1-.9L17.5 7M9 7V4.5h6V7"/></symbol>
+  <symbol id="i-key" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16 6.5l2 2m-4.5.5 2 2"/></symbol>
+  <symbol id="i-eye" viewBox="0 0 24 24"><path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="i-eye-off" viewBox="0 0 24 24"><path d="M10.6 5.6A9.6 9.6 0 0 1 12 5.5c6 0 9.5 6.5 9.5 6.5a17 17 0 0 1-2.7 3.5M6.4 6.9C3.9 8.6 2.5 12 2.5 12S6 18.5 12 18.5a9 9 0 0 0 4.4-1.1M9.9 9.9a3 3 0 0 0 4.2 4.2M4 4l16 16"/></symbol>
+  <symbol id="i-chevron-down" viewBox="0 0 24 24"><path d="m6.5 9.5 5.5 5.5 5.5-5.5"/></symbol>
+  <symbol id="i-chevron-right" viewBox="0 0 24 24"><path d="m9.5 6.5 5.5 5.5-5.5 5.5"/></symbol>
+  <symbol id="i-arrow-left" viewBox="0 0 24 24"><path d="M19 12H5.5m5.5-6-6 6 6 6"/></symbol>
+  <symbol id="i-sort-up" viewBox="0 0 24 24"><path d="M12 18.5V6m-5 5 5-5 5 5"/></symbol>
+  <symbol id="i-sort-down" viewBox="0 0 24 24"><path d="M12 5.5V18m-5-5 5 5 5-5"/></symbol>
+  <symbol id="i-server" viewBox="0 0 24 24"><rect x="3.5" y="4" width="17" height="7" rx="2"/><rect x="3.5" y="13" width="17" height="7" rx="2"/><path d="M7.5 7.5h.1m-.1 9h.1"/></symbol>
+  <symbol id="i-database" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="7" ry="2.8"/><path d="M5 6v12c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8V6m-14 6c0 1.5 3.1 2.8 7 2.8s7-1.3 7-2.8"/></symbol>
+  <symbol id="i-heart" viewBox="0 0 24 24"><path d="M3 12h3.5l2-4 3 9 2.5-6 1.5 3H21"/></symbol>
+  <symbol id="i-layers" viewBox="0 0 24 24"><path d="m12 3.5 8.5 4.5-8.5 4.5L3.5 8z"/><path d="m3.5 12 8.5 4.5 8.5-4.5m-17 4 8.5 4.5 8.5-4.5"/></symbol>
+  <symbol id="i-filter" viewBox="0 0 24 24"><path d="M4 6h16M7 12h10m-7 6h4"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 24 24"><path d="M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1"/></symbol>
+</svg>
+<a class="skip-link" href="#main">Skip to content</a>
+<div class="shell">
+  <div class="sidebar">
+    <a class="brand" href="#overview" data-nav="overview" aria-label="Rackett, go to overview">
+      <span class="brandmark"><svg viewBox="0 0 48 48" width="30" height="30" aria-hidden="true" focusable="false"><defs><clipPath id="strings"><ellipse cx="28" cy="17" rx="11" ry="14"/></clipPath></defs><g transform="rotate(38 28 17)" fill="none" stroke="currentColor"><ellipse cx="28" cy="17" rx="11" ry="14" stroke-width="2.5"/><g clip-path="url(#strings)" stroke-width=".7" opacity=".65"><path d="M20 1v32m5-32v32m6-32v32m5-32v32M15 8h26M15 13h26M15 18h26M15 23h26M15 28h26"/></g><path d="M22 29l4 7h4l4-7M28 35v12" stroke-width="3" stroke-linecap="round"/></g><circle cx="9" cy="13" r="4" fill="currentColor" opacity=".6"/></svg></span>
+      <span class="brand-text">Rackett<small>Rust powered</small></span>
+    </a>
+    <nav class="nav" aria-label="Main">
+      <a href="#overview" data-nav="overview"><svg class="icon" aria-hidden="true"><use href="#i-overview"/></svg><span>Overview</span></a>
+      <a href="#search" data-nav="search"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span></a>
+      <a href="#activity" data-nav="activity"><svg class="icon" aria-hidden="true"><use href="#i-activity"/></svg><span>Activity</span></a>
+      <a href="#settings" data-nav="settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg><span>Settings</span></a>
+    </nav>
+    <div class="sidebar-foot">
+      <p class="conn" id="connection" data-state="connecting" role="status"><i aria-hidden="true"></i><span>Connecting…</span></p>
+      <p class="tagline">Good sources. Great returns.</p>
+    </div>
+  </div>
+
+  <main id="main" class="workspace" tabindex="-1">
+    <section id="view-overview" class="view" aria-labelledby="overview-title">
+      <header class="page-head">
+        <div>
+          <h1 id="overview-title" tabindex="-1">Overview</h1>
+          <p>Your sources, their health and how apps connect to them.</p>
+        </div>
+        <div class="page-actions">
+          <button type="button" class="btn" id="open-guide"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg><span>Connection guide</span></button>
+          <button type="button" class="btn primary" id="add-indexer"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg><span>Add source</span></button>
+        </div>
+      </header>
+
+      <h2 class="sr-only">Summary</h2>
+      <div class="stats">
+        <article class="stat">
+          <p class="stat-label"><svg class="icon" aria-hidden="true"><use href="#i-layers"/></svg>Sources</p>
+          <p class="stat-value" id="stat-total">—</p>
+          <p class="stat-sub" id="stat-total-sub">Loading…</p>
+        </article>
+        <article class="stat">
+          <p class="stat-label"><svg class="icon" aria-hidden="true"><use href="#i-heart"/></svg>Health</p>
+          <p class="stat-value" id="stat-health">—</p>
+          <div class="meter" id="stat-meter" aria-hidden="true"></div>
+          <p class="stat-sub" id="stat-health-sub">Test a source to check it.</p>
+        </article>
+        <article class="stat">
+          <p class="stat-label"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Searches</p>
+          <p class="stat-value" id="stat-searches">—</p>
+          <p class="stat-sub" id="stat-searches-sub">Since the server started</p>
+        </article>
+        <article class="stat">
+          <p class="stat-label"><svg class="icon" aria-hidden="true"><use href="#i-database"/></svg>Cache hits</p>
+          <p class="stat-value" id="stat-cache">—</p>
+          <p class="stat-sub" id="stat-cache-sub">Repeat searches served instantly</p>
+        </article>
+      </div>
+
+      <section class="panel" aria-labelledby="sources-title">
+        <header class="panel-head">
+          <div>
+            <h2 id="sources-title" tabindex="-1">Sources <span class="count" id="indexer-count">0</span></h2>
+            <p class="panel-sub" id="sources-summary">Each source is searched when it is enabled.</p>
+          </div>
+        </header>
+        <div class="toolbar" id="source-toolbar">
+          <label class="input-icon grow"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="indexer-filter" type="search" placeholder="Filter by name, address or tag" aria-label="Filter sources" aria-keyshortcuts="/" autocomplete="off"></label>
+          <select id="kind-filter" aria-label="Filter by adapter"><option value="">All adapters</option><option value="rss">RSS</option><option value="torznab">Torznab</option><option value="unit3d">UNIT3D</option><option value="json">JSON</option><option value="html">HTML</option><option value="cardigann">Bundled preset</option></select>
+          <select id="status-filter" aria-label="Filter by status"><option value="">Any status</option><option value="healthy">Healthy</option><option value="failing">Failing</option><option value="untested">Not tested</option><option value="paused">Paused</option></select>
+          <select id="tag-filter" aria-label="Filter by tag" hidden><option value="">All tags</option></select>
+          <button type="button" class="btn ghost" id="clear-filters" hidden>Clear filters</button>
+        </div>
+        <div id="indexer-list" aria-busy="true"></div>
+        <nav class="pagination" id="pagination" aria-label="Source pages" hidden></nav>
+      </section>
+
+      <aside class="note">
+        <svg class="icon" aria-hidden="true"><use href="#i-info"/></svg>
+        <p><strong>About bundled presets.</strong> Supported Cardigann presets are fixture tested and can be added alongside RSS, Torznab, UNIT3D and custom JSON or HTML sources. Definitions that need unsupported features stay unavailable, and support never implies live availability.</p>
+      </aside>
+    </section>
+
+    <section id="view-search" class="view" hidden aria-labelledby="search-title">
+      <header class="page-head">
+        <div>
+          <h1 id="search-title" tabindex="-1">Search</h1>
+          <p>One query across your enabled sources.</p>
+        </div>
+      </header>
+      <form id="search-form" class="panel search-panel" role="search" aria-label="Search releases" novalidate>
+        <div class="search-bar">
+          <label class="input-icon lg grow"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="search-query" name="q" type="search" placeholder="Search releases" aria-label="Search releases" aria-keyshortcuts="/" autocomplete="off" enterkeyhint="search"></label>
+          <button class="btn primary lg" id="search-submit"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span>Search</span></button>
+        </div>
+        <button type="button" class="filters-toggle" id="filters-toggle" aria-expanded="false" aria-controls="search-options"><svg class="icon" aria-hidden="true"><use href="#i-filter"/></svg><span>Filters</span><span class="filters-summary" id="filters-summary"></span><svg class="icon chevron" aria-hidden="true"><use href="#i-chevron-down"/></svg></button>
+        <div class="search-options collapsed" id="search-options">
+          <div class="field">
+            <label for="search-category">Category</label>
+            <div class="inline-fields">
+              <select id="search-category">
+                <option value="">Any category</option>
+                <option value="2000">Movies · 2000</option>
+                <option value="5000">TV · 5000</option>
+                <option value="3000">Audio · 3000</option>
+                <option value="7000">Books · 7000</option>
+                <option value="4000">PC · 4000</option>
+                <option value="1000">Console · 1000</option>
+                <option value="6000">XXX · 6000</option>
+                <option value="8000">Other · 8000</option>
+                <option value="custom">Custom IDs…</option>
+              </select>
+              <input id="search-cat-custom" name="cat" inputmode="numeric" placeholder="e.g. 2000, 5040" aria-label="Custom category IDs" autocomplete="off" hidden>
+            </div>
+            <p class="hint">Torznab categories. Sources without category data still match.</p>
+          </div>
+          <fieldset class="field sources-field">
+            <legend>Sources</legend>
+            <div id="search-sources" class="chips"></div>
+            <p class="hint" id="search-sources-hint"></p>
+          </fieldset>
+        </div>
+        <p class="field-error" id="search-form-error" role="alert" hidden></p>
+      </form>
+      <div class="sr-only" id="search-live" aria-live="polite"></div>
+      <section id="search-results" class="results" aria-label="Search results"></section>
+    </section>
+
+    <section id="view-activity" class="view" hidden aria-labelledby="activity-title">
+      <header class="page-head">
+        <div>
+          <h1 id="activity-title" tabindex="-1">Activity</h1>
+          <p>Searches and configuration changes since Rackett last started.</p>
+        </div>
+        <div class="page-actions">
+          <button type="button" class="btn" id="refresh-activity"><svg class="icon" aria-hidden="true"><use href="#i-refresh"/></svg><span>Refresh</span></button>
+        </div>
+      </header>
+      <section class="panel" aria-label="Activity events">
+        <div class="toolbar">
+          <div class="segmented" role="group" aria-label="Show events">
+            <button type="button" data-activity="all" aria-pressed="true">All</button>
+            <button type="button" data-activity="search" aria-pressed="false">Searches</button>
+            <button type="button" data-activity="configuration" aria-pressed="false">Configuration</button>
+          </div>
+          <p class="toolbar-note" id="activity-updated" aria-live="polite"></p>
+        </div>
+        <div id="activity-list"></div>
+      </section>
+      <p class="footnote">Rackett keeps the latest 100 events in memory. They are cleared when the server restarts.</p>
+    </section>
+
+    <section id="view-settings" class="view" hidden aria-labelledby="settings-title">
+      <header class="page-head">
+        <div>
+          <h1 id="settings-title" tabindex="-1">Settings</h1>
+          <p>Search behavior, your integration key and server details.</p>
+        </div>
+      </header>
+      <div class="settings">
+        <form id="settings-form" class="panel card" aria-labelledby="prefs-title" novalidate>
+          <div class="card-head">
+            <h2 id="prefs-title">Search behavior</h2>
+            <p>Balance fast repeat searches with considerate requests to your sources.</p>
+          </div>
+          <div class="card-body form-grid">
+            <div class="field">
+              <label for="set-ttl">Cache lifetime</label>
+              <div class="input-suffix"><input id="set-ttl" name="cache_ttl_seconds" type="number" min="0" max="86400" step="1" required inputmode="numeric" aria-describedby="set-ttl-hint"><span aria-hidden="true">seconds</span></div>
+              <p class="hint" id="set-ttl-hint">How long identical searches reuse results. 0 turns caching off; maximum 86400 (24 hours).</p>
+            </div>
+            <div class="field">
+              <label for="set-stale">Answer from expired results</label>
+              <div class="input-suffix"><input id="set-stale" name="cache_stale_seconds" type="number" min="0" max="604800" step="1" required inputmode="numeric" aria-describedby="set-stale-hint"><span aria-hidden="true">seconds</span></div>
+              <p class="hint" id="set-stale-hint">After the cache lifetime, results this old still answer at once while a fresh search runs behind them. 0 waits for the fresh search; maximum 604800 (7 days).</p>
+            </div>
+            <div class="field">
+              <label for="set-timeout">Request timeout</label>
+              <div class="input-suffix"><input id="set-timeout" name="request_timeout_seconds" type="number" min="1" max="120" step="1" required inputmode="numeric" aria-describedby="set-timeout-hint"><span aria-hidden="true">seconds</span></div>
+              <p class="hint" id="set-timeout-hint">Deadline for each source, including time spent waiting in the queue. 1 to 120.</p>
+            </div>
+            <div class="field">
+              <span class="label">Search capacity</span>
+              <p class="static-value" id="set-capacity">8 simultaneous source requests</p>
+              <p class="hint">Fixed by the server to keep requests considerate.</p>
+            </div>
+          </div>
+          <p class="field-error card-error" id="settings-error" role="alert" hidden></p>
+          <div class="card-foot">
+            <p class="hint" id="settings-status">Saving also clears cached search results.</p>
+            <button class="btn primary" id="save-settings" disabled>Save changes</button>
+          </div>
+        </form>
+
+        <section class="panel card" aria-labelledby="key-title">
+          <div class="card-head">
+            <h2 id="key-title">Integration key</h2>
+            <p>Apps such as Sonarr and Radarr use this key with your Torznab URL. Keep it private.</p>
+          </div>
+          <div class="card-body">
+            <div class="field">
+              <label for="settings-key">API key</label>
+              <div class="input-group">
+                <input id="settings-key" type="password" readonly autocomplete="off" spellcheck="false" class="mono">
+                <button type="button" class="btn" id="reveal-key" aria-pressed="false" aria-controls="settings-key"><svg class="icon" aria-hidden="true"><use href="#i-eye"/></svg><span>Show</span></button>
+                <button type="button" class="btn" id="copy-key"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+              </div>
+            </div>
+            <div class="field">
+              <label for="settings-url">Torznab URL for all enabled sources</label>
+              <div class="input-group">
+                <input id="settings-url" readonly class="mono">
+                <button type="button" class="btn" id="copy-settings-url"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+              </div>
+              <p class="hint">Need step-by-step help? <button type="button" class="btn link" id="settings-guide">Open the connection guide</button></p>
+            </div>
+          </div>
+          <div class="card-foot danger-zone">
+            <div>
+              <p class="foot-title">Rotate key</p>
+              <p class="hint">Connected apps stop working until you give them the new key.</p>
+            </div>
+            <button type="button" class="btn danger" id="rotate-key"><svg class="icon" aria-hidden="true"><use href="#i-key"/></svg><span>Rotate key…</span></button>
+          </div>
+        </section>
+
+        <section class="panel card" aria-labelledby="server-title">
+          <div class="card-head">
+            <h2 id="server-title">Server</h2>
+            <p>How this Rackett instance is reached. Change these with startup options.</p>
+          </div>
+          <dl class="card-body facts" id="server-facts"></dl>
+        </section>
+
+        <section class="panel card" aria-labelledby="cache-title">
+          <div class="card-head">
+            <h2 id="cache-title">Search cache</h2>
+            <p>Cached results make repeat searches instant. Clearing it keeps your sources and settings.</p>
+          </div>
+          <div class="card-foot">
+            <p class="hint" id="cache-facts">Loading…</p>
+            <button type="button" class="btn" id="clear-cache"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg><span>Clear cache</span></button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <footer class="foot"><span>Rackett · Rust powered</span><span>Good sources. Great returns.</span></footer>
+  </main>
+</div>
+
+<dialog id="indexer-dialog" class="dialog dialog-lg" aria-labelledby="dialog-title">
+  <form id="indexer-form" class="dialog-frame" novalidate>
+    <header class="dialog-head">
+      <div>
+        <p class="eyebrow" id="dialog-step"></p>
+        <h2 id="dialog-title">Add a source</h2>
+      </div>
+      <button type="button" class="btn ghost icon-only close-dialog" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+    </header>
+    <div class="dialog-body">
+      <section id="step-choose" aria-label="Choose a source">
+        <div class="catalog-tools">
+          <label class="input-icon grow"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><input id="catalog-search" type="search" placeholder="Search by name, language or type" aria-label="Search the source catalog" autocomplete="off"></label>
+          <label class="check"><input id="catalog-blocked" type="checkbox"> Show unsupported definitions</label>
+        </div>
+        <p id="catalog-summary" class="hint" aria-live="polite"></p>
+        <div id="catalog-list" class="catalog-list"></div>
+        <div id="catalog-blocked-list" class="catalog-blocked" hidden></div>
+      </section>
+      <section id="step-configure" aria-label="Configure the source" hidden>
+        <div class="chosen" id="chosen"></div>
+        <div id="preset-info" class="preset-info" hidden></div>
+        <div class="form-grid">
+          <div class="field">
+            <label for="f-name">Name</label>
+            <input id="f-name" name="name" required maxlength="120" placeholder="My source" autocomplete="off">
+          </div>
+          <div class="field">
+            <label for="f-kind">Adapter</label>
+            <select id="f-kind" name="kind"><option value="rss">RSS / Atom</option><option value="torznab">Torznab</option><option value="unit3d">UNIT3D</option><option value="json">JSON definition</option><option value="html">HTML definition</option><option value="cardigann">Bundled preset</option></select>
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-url" id="url-label">Endpoint URL</label>
+          <input id="f-url" name="url" type="url" required placeholder="https://example.com/feed" autocomplete="off" spellcheck="false">
+          <p class="hint" id="url-privacy-note" hidden>Private query values are hidden. Leave this unchanged to keep your saved URL, or enter the complete URL to replace it.</p>
+          <p class="inline-note warn" id="origin-note" hidden></p>
+        </div>
+        <div id="preset-settings" hidden></div>
+        <div class="form-grid" id="custom-credentials">
+          <div class="field">
+            <label for="f-api-key">API key</label>
+            <input id="f-api-key" name="api_key" type="password" autocomplete="off" placeholder="If required" spellcheck="false">
+          </div>
+          <div class="field">
+            <label for="f-cookie">Cookie</label>
+            <input id="f-cookie" name="cookie" type="password" autocomplete="off" placeholder="If required" spellcheck="false">
+          </div>
+        </div>
+        <div class="field">
+          <label for="f-tags">Tags</label>
+          <input id="f-tags" name="tags" placeholder="movies, public, favorites" autocomplete="off" aria-describedby="f-tags-hint">
+          <p class="hint" id="f-tags-hint">Separate tags with commas. Use them to filter your sources.</p>
+        </div>
+        <details id="advanced" class="advanced">
+          <summary><svg class="icon" aria-hidden="true"><use href="#i-chevron-right"/></svg>Advanced adapter settings</summary>
+          <div class="advanced-body">
+            <div class="field">
+              <label for="f-categories">Category IDs</label>
+              <input id="f-categories" name="categories" placeholder="2000, 5000" inputmode="numeric" autocomplete="off" aria-describedby="f-categories-hint">
+              <p class="hint" id="f-categories-hint">Optional Torznab categories, separated by commas. Leave empty to include all categories.</p>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label for="f-delay">Request delay</label>
+                <div class="input-suffix"><input id="f-delay" name="request_delay_ms" type="number" min="0" max="60000" value="1000" required inputmode="numeric"><span aria-hidden="true">ms</span></div>
+              </div>
+              <div class="field">
+                <label for="f-retries">Retries</label>
+                <input id="f-retries" name="retries" type="number" min="0" max="3" value="0" required inputmode="numeric">
+              </div>
+            </div>
+            <div class="field" id="definition-label">
+              <label for="f-definition">Definition JSON</label>
+              <textarea id="f-definition" name="definition" rows="6" placeholder='{"search": ...}' spellcheck="false" class="mono"></textarea>
+            </div>
+            <p class="hint">JSON and HTML adapters need a definition that matches your source. When editing, leave credentials and the definition blank to keep their saved values.</p>
+          </div>
+        </details>
+      </section>
+    </div>
+    <footer class="dialog-foot">
+      <p id="indexer-error" class="banner bad" role="alert" hidden></p>
+      <div class="dialog-actions">
+        <button type="button" class="btn ghost" id="step-back" hidden><svg class="icon" aria-hidden="true"><use href="#i-arrow-left"/></svg><span>Back</span></button>
+        <span class="spacer"></span>
+        <button type="button" class="btn close-dialog">Cancel</button>
+        <button class="btn primary" id="save-indexer"><span>Save and test</span></button>
+      </div>
+    </footer>
+  </form>
+</dialog>
+
+<dialog id="guide-dialog" class="dialog" aria-labelledby="guide-title">
+  <div class="dialog-frame">
+    <header class="dialog-head">
+      <div>
+        <p class="eyebrow">Connection guide</p>
+        <h2 id="guide-title">Connect Sonarr, Radarr and more</h2>
+      </div>
+      <button type="button" class="btn ghost icon-only close-dialog" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-close"/></svg></button>
+    </header>
+    <div class="dialog-body">
+      <ol class="steps">
+        <li><p class="step-title">Add a Torznab indexer in your app</p><p class="hint">In Sonarr or Radarr, open Settings → Indexers, add a Torznab indexer, then fill in the fields below.</p></li>
+        <li>
+          <p class="step-title"><label for="guide-url">Paste this URL</label></p>
+          <div class="input-group">
+            <input id="guide-url" readonly class="mono">
+            <button type="button" class="btn" id="copy-url"><svg class="icon" aria-hidden="true"><use href="#i-copy"/></svg><span>Copy</span></button>
+          </div>
+          <p class="hint">It searches every enabled source. For a single source, open that source’s menu and choose Copy Torznab URL.</p>
+        </li>
+        <li><p class="step-title">Enter your API key</p><p class="hint">Your private integration key is in Settings. <button type="button" class="btn link" id="guide-settings">Open Settings</button></p></li>
+      </ol>
+    </div>
+    <footer class="dialog-foot"><div class="dialog-actions"><span class="spacer"></span><button type="button" class="btn close-dialog">Done</button></div></footer>
+  </div>
+</dialog>
+
+<dialog id="confirm-dialog" class="dialog dialog-sm" aria-labelledby="confirm-title" aria-describedby="confirm-text">
+  <div class="dialog-frame">
+    <div class="dialog-body confirm-body">
+      <span class="confirm-icon"><svg class="icon" aria-hidden="true"><use href="#i-alert"/></svg></span>
+      <div>
+        <h2 id="confirm-title"></h2>
+        <p id="confirm-text"></p>
+      </div>
+    </div>
+    <footer class="dialog-foot"><div class="dialog-actions"><span class="spacer"></span><button type="button" class="btn" id="confirm-cancel">Cancel</button><button type="button" class="btn danger-solid" id="confirm-ok">Confirm</button></div></footer>
+  </div>
+</dialog>
+
+<div id="menu" class="menu" role="menu" hidden></div>
+<div id="toasts" class="toasts" aria-live="polite" aria-relevant="additions"></div>
+</body>
+</html>
