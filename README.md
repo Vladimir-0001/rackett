@@ -7,6 +7,10 @@
 > **Status: early preview (0.1.0).** It works and is tested, but expect rough edges and
 > missing features. See [Current limitations](#current-limitations).
 
+> **Built by AI agents.** Rackett was written by a team of AI coding agents (Claude
+> and OpenAI Codex models) directed by its human owner. See
+> [How Rackett was built](AI_CREDITS.md).
+
 ## What is this?
 
 Apps such as [Sonarr](https://sonarr.tv/) (TV) and [Radarr](https://radarr.video/)
