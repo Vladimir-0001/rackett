@@ -1,7 +1,7 @@
 # How Rackett was built
 
 Rackett was written almost entirely by AI coding agents, directed by its human owner,
-[@Vladimir-0001](https://github.com/Vladimir-0001), over 27–29 October 2026.
+[@Vladimir-0001](https://github.com/Vladimir-0001), over 27–30 October 2026.
 
 ## Who did the work
 
@@ -10,6 +10,7 @@ Rackett was written almost entirely by AI coding agents, directed by its human o
 | **@Vladimir-0001** (human) | Started and directed the project, set priorities, made product decisions, approved publication |
 | **Claude Opus 5.5** (Anthropic) | Lead and integrator agents, engine work, reviews, merges, documentation |
 | **GPT-6.1-Sol** (OpenAI Codex) | Engine features, audits of Jackett's source, backend and frontend work, reviews |
+| **Claude Sonnet 5.5** (Anthropic) | Batches of tracker-site fixtures and test cases |
 | **GPT-6-Luna** (OpenAI Codex) | Small, fast tasks, mostly fixtures and test cases for individual tracker sites |
 | **GPT-6-Astra** (OpenAI Codex) | One focused task |
 
@@ -17,11 +18,12 @@ Agent sessions, from the orchestration records:
 
 | Model | Agent threads |
 | --- | --- |
-| Claude Opus 5.5 | 53 |
-| GPT-6.1-Sol | 32 |
-| GPT-6-Luna | 20 |
+| Claude Opus 5.5 | 57 |
+| Claude Sonnet 5.5 | 3 |
+| GPT-6.1-Sol | 33 |
+| GPT-6-Luna | 44 |
 | GPT-6-Astra | 1 |
-| **Total** | **106** (103 agent-started, 3 started by the owner) |
+| **Total** | **138** (133 agent-started, 5 started by the owner) |
 
 ## How the agents worked together
 
@@ -35,8 +37,9 @@ Agent sessions, from the orchestration records:
   proving login, search, caching and downloads end to end.
 - The **integrator agent** reviewed and merged each contribution, fixed what the
   combined test run caught, and did the larger engine work itself. For example, it
-  added legacy Windows/ISO character encodings, found and fixed a double-decoding
-  bug, and fixed flaky test deadlines.
+  added legacy Windows/ISO character encodings, download-page resolution, XML
+  responses, .NET regex look-around and pinned site certificates, found and fixed a
+  double-decoding bug, and fixed flaky test deadlines.
 - Changes reached the main branch only after automated checks (format, lint and
   the full test suite) passed on a CI server.
 

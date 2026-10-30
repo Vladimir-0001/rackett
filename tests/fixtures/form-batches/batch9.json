@@ -1,0 +1,168 @@
+[
+  {
+    "id": "bestcore",
+    "direct_post": true,
+    "sha256": "a8440a00ecd142f1956576a9fe0433fdb94e5fd7f4c3146cbc84373f58bbd286",
+    "search_fixture": "post:bestcore",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "login_path": "/index.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c80",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "expected_title": "Fixture Különleges Kiadás",
+    "free_markup": "<img src=\"pic/free.png\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "category": 2020,
+    "custom_category": 100080,
+    "error_html": "<table><tr><td>Sikertelen bejelentkezés fixture-private-error</td></tr></table>",
+    "expected_size": 1199369617408
+  },
+  {
+    "id": "libranet",
+    "direct_post": true,
+    "sha256": "bfce02b828d2e132a07a9405bd0b7c3b7ab710188f15ffb924ab16143de976ec",
+    "search_fixture": "post:libranet",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "login_path": "/",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "cat1",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42&hit=1",
+    "published": "2026-10-28T09:30:00Z",
+    "expected_title": "Fixture Különleges Kiadás",
+    "free_markup": "<img src=\"/pic/freeleech.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "category": 7020,
+    "custom_category": 100001,
+    "error_html": "<table><tr><td class=\"text\">Error fixture-private-error</td></tr></table>"
+  },
+  {
+    "id": "party-tracker",
+    "direct_post": true,
+    "sha256": "ae87b1b47e068fc8af3119ebb0d398fe6d29ccfc00c5baba4fcea4f98acbb958",
+    "search_fixture": "post:party-tracker",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "login_path": "/index.php",
+    "search_path": "/letoltes.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c43",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "expected_title": "Fixture Különleges Kiadás",
+    "free_markup": "<img src=\"fajlok/kepek/free.gif\"><img src=\"fajlok/kepek/x2.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 2,
+    "category": 2030,
+    "custom_category": 100043,
+    "error_html": "<table class=\"main\"><tr><td>Hiba fixture-private-error</td></tr></table>"
+  },
+  {
+    "id": "redstartorrent",
+    "direct_post": true,
+    "sha256": "b670ad013530b2453072b83a0aed431c38d86ce47cb35c39a7bba13bbccfb9cf",
+    "search_fixture": "post:redstartorrent",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "login_path": "/browse.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c5",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php/42.torrent",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T10:30:00Z",
+    "expected_title": "Fixture Különleges Wydanie",
+    "free_markup": "<td class=\"darmowy\">Free</td>",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "category": 2040,
+    "custom_category": 100005,
+    "error_html": "<table><tr><td class=\"embedded\"><h2>failed fixture-private-error</h2></td></tr></table>"
+  },
+  {
+    "id": "whiteangel",
+    "direct_post": true,
+    "sha256": "6ea8c124c94ceba843bdec9486c7212527514818f04c34785dde0f6bf5a2a821",
+    "search_fixture": "post:whiteangel",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "login_path": "/index.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c38",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php?torrent=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "expected_title": "Fixture Különleges Kiadás",
+    "free_markup": "<span class=\"tt-row-flag\">FREE x2</span>",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 2,
+    "category": 2040,
+    "custom_category": 100038,
+    "error_html": "<table><tr><td>bejelentkezés nem sikerült fixture-private-error</td></tr></table>"
+  }
+]

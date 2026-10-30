@@ -22,6 +22,28 @@ fn stock(id: &str, url: &str) -> Indexer {
         ..Default::default()
     }
 }
+/// Public layout cases: the original manifest plus independently merged batches.
+const PUBLIC_MANIFESTS: [&str; 11] = [
+    include_str!("fixtures/public-layouts/cases.json"),
+    include_str!("fixtures/public-batches/batch1.json"),
+    include_str!("fixtures/public-batches/batch2.json"),
+    include_str!("fixtures/public-batches/batch3.json"),
+    include_str!("fixtures/public-batches/batch4.json"),
+    include_str!("fixtures/public-batches/batch5.json"),
+    include_str!("fixtures/public-batches/batch6.json"),
+    include_str!("fixtures/public-batches/batch7.json"),
+    include_str!("fixtures/public-batches/batch8.json"),
+    include_str!("fixtures/public-batches/batch9.json"),
+    include_str!("fixtures/public-batches/batch10.json"),
+];
+/// Cookie layout cases: the original manifest plus independently merged batches.
+const COOKIE_MANIFESTS: [&str; 5] = [
+    include_str!("fixtures/cookie-layouts/cases.json"),
+    include_str!("fixtures/cookie-batches/batch1.json"),
+    include_str!("fixtures/cookie-batches/batch2.json"),
+    include_str!("fixtures/cookie-batches/batch3.json"),
+    include_str!("fixtures/cookie-batches/batch4.json"),
+];
 #[test]
 fn catalog_is_embedded_and_conservatively_gated() {
     assert_eq!(builtin::SOURCES.len(), 583);
@@ -52,8 +74,10 @@ fn catalog_is_embedded_and_conservatively_gated() {
     let nexus_api: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("fixtures/nexusphp-api/cases.json")).unwrap();
     expected.extend(nexus_api.iter().map(|v| v["id"].as_str().unwrap()));
-    let cookie_layouts: Vec<serde_json::Value> =
-        serde_json::from_str(include_str!("fixtures/cookie-layouts/cases.json")).unwrap();
+    let cookie_layouts: Vec<serde_json::Value> = COOKIE_MANIFESTS
+        .iter()
+        .flat_map(|m| serde_json::from_str::<Vec<serde_json::Value>>(m).unwrap())
+        .collect();
     expected.extend(cookie_layouts.iter().map(|v| v["id"].as_str().unwrap()));
     let forms: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("fixtures/form-layouts/cases.json")).unwrap();
@@ -61,8 +85,36 @@ fn catalog_is_embedded_and_conservatively_gated() {
     let posts: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("fixtures/post-layouts/cases.json")).unwrap();
     expected.extend(posts.iter().map(|v| v["id"].as_str().unwrap()));
-    let public: Vec<serde_json::Value> =
-        serde_json::from_str(include_str!("fixtures/public-layouts/cases.json")).unwrap();
+    let batches: Vec<Vec<serde_json::Value>> = [
+        include_str!("fixtures/form-batches/batch1.json"),
+        include_str!("fixtures/form-batches/batch2.json"),
+        include_str!("fixtures/form-batches/batch3.json"),
+        include_str!("fixtures/form-batches/batch4.json"),
+        include_str!("fixtures/form-batches/batch5.json"),
+        include_str!("fixtures/form-batches/batch6.json"),
+        include_str!("fixtures/form-batches/batch7.json"),
+        include_str!("fixtures/form-batches/batch8.json"),
+        include_str!("fixtures/form-batches/batch9.json"),
+        include_str!("fixtures/form-batches/batch10.json"),
+        include_str!("fixtures/form-batches/batch11.json"),
+        include_str!("fixtures/form-batches/batch12.json"),
+        include_str!("fixtures/form-batches/batch13.json"),
+        include_str!("fixtures/form-batches/batch14.json"),
+        include_str!("fixtures/form-batches/batch15.json"),
+        include_str!("fixtures/form-batches/batch16.json"),
+        include_str!("fixtures/form-batches/batch17.json"),
+        include_str!("fixtures/form-batches/batch18.json"),
+        include_str!("fixtures/form-batches/batch19.json"),
+        include_str!("fixtures/form-batches/batch20.json"),
+    ]
+    .iter()
+    .map(|b| serde_json::from_str(b).unwrap())
+    .collect();
+    expected.extend(batches.iter().flatten().map(|v| v["id"].as_str().unwrap()));
+    let public: Vec<serde_json::Value> = PUBLIC_MANIFESTS
+        .iter()
+        .flat_map(|m| serde_json::from_str::<Vec<serde_json::Value>>(m).unwrap())
+        .collect();
     expected.extend(public.iter().map(|v| v["id"].as_str().unwrap()));
     expected.extend([
         "1337x",
@@ -440,7 +492,7 @@ async fn executable_serves_embedded_catalog_outside_repository() {
             .iter()
             .filter(|v| v["ready"] == true)
             .count(),
-        296
+        builtin::READY_IDS.len()
     );
     let sources: serde_json::Value = client
         .get(format!("{url}/api/indexers"))

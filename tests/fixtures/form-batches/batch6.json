@@ -1,0 +1,38 @@
+[
+  {
+    "id": "deildu",
+    "direct_post": true,
+    "sha256": "987c271277399ee722c64630f3c968c04ce1830a18e0beab943434b9460ffbc1",
+    "search_fixture": "post:deildu",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "keeplogged": "1"
+    },
+    "login_path": "/index.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c6",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T10:30:00Z",
+    "expected_title": "Fixture Íslensk Útgáfa",
+    "free_markup": "",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "normal_download": 0,
+    "category": 2000,
+    "custom_category": 100006,
+    "error_html": "<table class=\"main\"><tr><td>Login failed fixture-private-error</td></tr></table>",
+    "notes": "ISO-8859-1 definition: pages are served as Latin-1 bytes under a misleading UTF-8 header and the credential POST uses HttpUtility.UrlEncode with Latin-1 bytes. Download and upload factors are fixed literals (0 and 1)."
+  }
+]

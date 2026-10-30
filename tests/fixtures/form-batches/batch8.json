@@ -1,0 +1,99 @@
+[
+  {
+    "id": "kinorun",
+    "direct_post": true,
+    "sha256": "7e8d9581d6f7cc99465678ecd58c623478b4bc3887380a247a70006533f586f7",
+    "search_fixture": "post:kinorun",
+    "form_path": "/takelogin1.php",
+    "submit_path": "/takelogin1.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "expected_title": "Fixture Тестовый Релиз",
+    "login_path": "/",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category": 6000,
+    "custom_category": 100024,
+    "category_input": [
+      "c9",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T10:30:00Z",
+    "free_markup": "<img src=\"pic/freedownload.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "error_html": "<table><tr><td class=\"embedded\"><div class=\"error\">fixture-private-error</div></td></tr></table>"
+  },
+  {
+    "id": "peersfm",
+    "direct_post": true,
+    "sha256": "8038f94497fdf39855d9a8a0aabc8b652c66a3c86766ab683c1886c95e71b749",
+    "search_fixture": "post:peersfm",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "SSL": "1"
+    },
+    "expected_title": "Fixture Тестовый Релиз",
+    "login_path": "/browse.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category": 2070,
+    "custom_category": 100004,
+    "category_input": [
+      "c4",
+      "1"
+    ],
+    "request_count": 1,
+    "download_path": "/download.php/42.torrent",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T10:30:00Z",
+    "free_markup": "<img src=\"pic/free_100.png\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "error_html": "<table width=\"400\"><tr><td>fixture-private-error</td></tr></table>"
+  },
+  {
+    "id": "traht",
+    "direct_post": true,
+    "sha256": "5b9fd3439d4e2ffbf0ffa2fdbaab50d4643dc6dd0efe51994cadc560d56df988",
+    "search_fixture": "post:traht",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "expected_title": "Fixture Тестовый Релиз",
+    "login_path": "/",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category": 6000,
+    "category_input": null,
+    "request_count": 1,
+    "download_path": "/download.php?id=42&ok=",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-29T12:00:00Z",
+    "free_markup": "",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "error_html": "<table><tr><td class=\"embedded\"><div class=\"error\">fixture-private-error</div></td></tr></table>",
+    "normal_download": 0
+  }
+]

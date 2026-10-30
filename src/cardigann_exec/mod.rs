@@ -9,7 +9,9 @@ pub(crate) mod login_form;
 pub mod request;
 mod rowfilters;
 pub mod selector;
+mod single_byte;
 pub mod template;
+mod xml;
 use crate::{
     cardigann::{self, Diagnostic, Node, Severity},
     models::{Release, SearchQuery},
@@ -270,7 +272,7 @@ impl Plan {
                     }
                     None => Vec::new(),
                 };
-                if i >= 32 {
+                if i >= 64 {
                     return Err(error(&path, "Filter count limit exceeded"));
                 }
                 fs.push(
@@ -433,7 +435,7 @@ impl Plan {
             }
         }
         let requests = request::RequestPlan::compile(root).map_err(|e| error("$.search", e))?;
-        if !row_values.is_empty() && requests.response_types().any(|format| format != "html") {
+        if !row_values.is_empty() && requests.response_types().any(|format| format == "json") {
             return Err(error(
                 "$.search.rows.selector",
                 "Row selector values are only supported for HTML responses",
@@ -447,8 +449,8 @@ impl Plan {
             ));
         }
         // Positive values are honoured upstream only on the HTML/XML branches
-        // (CardigannIndexer.cs:1834-1852); XML stays unsupported here.
-        if after > 0 && requests.response_types().any(|format| format != "html") {
+        // (CardigannIndexer.cs:1834-1852).
+        if after > 0 && requests.response_types().any(|format| format == "json") {
             return Err(error(
                 AFTER_PATH,
                 "Row merging is only supported for HTML responses",
@@ -883,10 +885,19 @@ impl Plan {
                     s.extract_json(row, &|v| Template::compile(v)?.render(c))
                 })?);
             }
-        } else if request.response_type == "html" {
+        } else if matches!(request.response_type.as_str(), "html" | "xml") {
+            let parse = |source: &str| {
+                if request.response_type == "xml" {
+                    xml::parse_document(source).map_err(|e| error("$.response", e))
+                } else {
+                    Ok(css::parse_document(source))
+                }
+            };
             // Upstream checks error blocks on the raw document before preprocessing
             // (CardigannIndexer.cs:1816-1826); without filters that DOM is reused.
-            let raw = if self.errors.is_empty() {
+            let raw = if request.response_type == "xml" {
+                Some(parse(body)?)
+            } else if self.errors.is_empty() {
                 None
             } else {
                 let html = css::parse_document(body);
@@ -895,13 +906,13 @@ impl Plan {
             };
             let mut html = match raw {
                 Some(html) if self.preprocessing_filters.is_empty() => html,
-                _ => css::parse_document(&apply_pipeline(
+                _ => parse(&apply_pipeline(
                     &self.preprocessing_filters,
                     body,
                     ctx,
                     &mut budget,
                     "$.search.preprocessingfilters",
-                )?),
+                )?)?,
             };
             let mut visits = 20_000_000;
             let rows = self.row_selector(ctx)?;
@@ -1367,7 +1378,7 @@ fn compile_pipeline(
     let items = node
         .items()
         .ok_or_else(|| error(path, "Filter pipeline must be a sequence"))?;
-    if items.len() > 32 {
+    if items.len() > 64 {
         return Err(error(path, "Filter count limit exceeded"));
     }
     items

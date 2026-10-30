@@ -5,10 +5,13 @@
 //! scanner reads the original .NET tokens; generated Rust syntax (nested block classes,
 //! canonical classes) is only ever appended to the output and never rescanned. Constructs
 //! whose .NET and Rust readings diverge are rewritten only when the .NET reading is exact
-//! from source, and otherwise rejected here. Other constructs Rust does not support
-//! (look-around, `\1` backreferences, octal, ...) are left for Rust to reject; constructs the
-//! scanner rejects first (e.g. `(?#..)`, `\'name'` references) get this module's message.
-//! Every non-BMP pattern character is rejected: a deliberately conservative scope limit,
+//! from source, and otherwise rejected here. Look-around, atomic groups and numbered
+//! backreferences are classified for the fancy-regex fallback (see [`scan`] and
+//! docs/dotnet-regex-lookaround.md); balancing groups and conditionals are rejected here.
+//! Other constructs Rust does not support (octal, `\G`, ...) are left for Rust to reject;
+//! constructs the scanner rejects first (e.g. `(?#..)`, `\'name'` references) get this
+//! module's message. Every non-BMP pattern character is rejected: a deliberately conservative
+//! scope limit,
 //! since .NET matches UTF-16 code units and Rust matches scalar values.
 use std::borrow::Cow;
 use std::fmt::Write as _;
@@ -114,6 +117,9 @@ fn escape(chars: &[char], i: usize, in_class: bool) -> Result<(Escape, usize), S
         }
         // Non-word ASCII is literal in .NET (ScanCharEscape default) and escapable in Rust.
         c if c.is_ascii() && !c.is_ascii_alphanumeric() => Escape::Char(c),
+        // Also literal there: White_Space is never a .NET boundary word character (L, Mn,
+        // Nd, Pc, ZWJ/ZWNJ). Rust rejects the escape, so it is re-emitted as `\x{..}`.
+        c if c.is_whitespace() => Escape::Char(c),
         _ if in_class => return err(&format!("escape \\{kind} in a character class")),
         _ => Escape::Verbatim,
     };
@@ -247,6 +253,9 @@ fn class(chars: &[char], mut i: usize) -> Result<(Class, usize), String> {
         };
         // Only a literal `\-` (not `\x2D`) skips range detection (:640).
         let escaped_dash = escaped && chars[start + 1] == '-';
+        if escaped && !chars[start + 1].is_ascii() {
+            c.hazard = Some("escaped non-ASCII literal");
+        }
         let skips_range = escaped_dash || matches!(atom, Escape::Set | Escape::Block(..));
         let next = chars.get(i).copied();
         let after = chars.get(i + 1).copied();
@@ -338,15 +347,36 @@ fn push_canonical(out: &mut String, class: &Class) {
 }
 
 /// Normalize a definition regex. Returns the input unchanged unless it uses a .NET block
-/// property, a literal `{` (not IsTrueQuantifier), or a character class Rust would read
-/// differently. Block properties stay rejected next to any other rewrite, inline options,
-/// comments or look-around, as before.
+/// property, a literal `{` (not IsTrueQuantifier), an escaped non-ASCII whitespace literal,
+/// or a character class Rust would read differently. Block properties stay rejected next to
+/// any other rewrite, inline options, comments, look-around or backreferences, as before.
+#[cfg(test)]
 pub(super) fn normalize(pattern: &str) -> Result<Cow<'_, str>, String> {
+    scan(pattern).map(|n| n.text)
+}
+
+/// A normalized definition regex and the engine class it needs.
+pub(super) struct Normalized<'a> {
+    pub(super) text: Cow<'a, str>,
+    /// Look-around, atomic groups or backreferences, which only a backtracking engine runs
+    /// (docs/dotnet-regex-lookaround.md). Everything else stays on Rust's linear engine.
+    pub(super) backtracking: bool,
+}
+
+/// [`normalize`], also classifying the constructs that need a backtracking engine. Those are
+/// accepted only together with syntax both engines read as .NET does: other escapes that
+/// Rust rejects but fancy-regex reads with its own (Oniguruma/PCRE) meaning stay rejected.
+pub(super) fn scan(pattern: &str) -> Result<Normalized<'_>, String> {
     #[cfg(test)]
     tests::SEEN.with(|seen| seen.borrow_mut().push(pattern.to_owned()));
     let chars = pattern.chars().collect::<Vec<_>>();
     let mut out = String::with_capacity(pattern.len());
     let (mut rewritten, mut has_block, mut gate) = (false, false, None::<&str>);
+    // First construct needing backtracking; first escape only fancy-regex would accept.
+    let (mut backtracking, mut foreign) = (None::<&str>, None::<String>);
+    // Capture groups as .NET counts them, numbered backreferences, and any `i` option.
+    let (mut unnamed, mut named, mut casei) = (0usize, 0usize, false);
+    let mut backrefs = Vec::new();
     // 0: no quantifier, 1: after a quantifier, 2: after a lazy quantifier.
     let mut quantified = 0u8;
     let mut i = 0;
@@ -358,12 +388,38 @@ pub(super) fn normalize(pattern: &str) -> Result<Cow<'_, str>, String> {
         let mut quantifier = false;
         match c {
             '\\' => {
-                let (escape, end) = escape(&chars, i, false)?;
-                if let Escape::Block(range, negated) = escape {
-                    push_block(&mut out, range, negated);
-                    has_block = true;
-                } else {
-                    out.extend(&chars[i..end]);
+                let (escape, mut end) = escape(&chars, i, false)?;
+                let kind = chars.get(i + 1).copied().unwrap_or('\\');
+                match escape {
+                    Escape::Block(range, negated) => {
+                        push_block(&mut out, range, negated);
+                        has_block = true;
+                    }
+                    Escape::Char(c) if !kind.is_ascii() => {
+                        push_class_char(&mut out, c);
+                        rewritten = true;
+                    }
+                    // ScanBasicBackslash :1137: `\1`-`\9` start a decimal group reference.
+                    Escape::Verbatim if matches!(kind, '1'..='9') => {
+                        let digits = chars[i + 1..]
+                            .iter()
+                            .take_while(|c| c.is_ascii_digit())
+                            .collect::<String>();
+                        // Overflowing numbers cannot name a group (checked below).
+                        backrefs.push(digits.parse::<usize>().unwrap_or(usize::MAX));
+                        backtracking = backtracking.or(Some("backreference"));
+                        gate = Some("backreference");
+                        end = i + 1 + digits.len();
+                        out.extend(&chars[i..end]);
+                    }
+                    // Assertions both engines read as .NET does (RegexNode Boundary,
+                    // NonBoundary, Beginning, End). `\G`, `\Z`, `\k`, octal, `\e`, ... differ
+                    // in or are absent from Rust, and fancy-regex has its own meanings.
+                    Escape::Verbatim if !matches!(kind, 'b' | 'B' | 'A' | 'z') => {
+                        foreign.get_or_insert_with(|| format!("escape \\{kind}"));
+                        out.extend(&chars[i..end]);
+                    }
+                    _ => out.extend(&chars[i..end]),
                 }
                 i = end;
             }
@@ -396,16 +452,41 @@ pub(super) fn normalize(pattern: &str) -> Result<Cow<'_, str>, String> {
                     // differ or do not exist in .NET.
                     return err("unsupported inline option or group");
                 }
+                casei |= flags.iter().take_while(|c| ***c != '-').any(|c| **c == 'i');
                 let plain = match rest {
                     [':', ..] => true,
                     ['<', n, ..] => n.is_alphanumeric() || *n == '_',
                     _ => false,
                 };
+                // ScanGroupOpen :766-1010. Balancing groups and conditionals have no Rust
+                // equivalent; `(?'name')` and digit names have different or no Rust readings.
+                match rest {
+                    ['<', '=' | '!', ..] => backtracking = backtracking.or(Some("look-behind")),
+                    ['=' | '!', ..] => backtracking = backtracking.or(Some("look-ahead")),
+                    ['>', ..] => backtracking = backtracking.or(Some("atomic group")),
+                    ['(', ..] => return err("conditional group (?(...)"),
+                    ['\'', ..] => return err("(?'name') group"),
+                    ['<', '-', ..] => return err("balancing group (?<-name>)"),
+                    ['<', n, ..] if n.is_ascii_digit() => return err("numbered group (?<N>)"),
+                    ['<', ..] if plain => {
+                        let name = rest[1..].iter().take_while(|c| **c != '>');
+                        if name.clone().any(|c| *c == '-') {
+                            return err("balancing group (?<name1-name2>)");
+                        }
+                        named += 1;
+                    }
+                    _ => {}
+                }
                 if !plain {
                     gate = Some("inline option, comment, or look-around group");
                 }
                 out.push_str("(?");
                 i += 2;
+            }
+            '(' => {
+                unnamed += 1;
+                out.push(c);
+                i += 1;
             }
             '*' | '+' | '?' => {
                 quantifier = true;
@@ -442,11 +523,32 @@ pub(super) fn normalize(pattern: &str) -> Result<Cow<'_, str>, String> {
             return err(&format!("{what} with a .NET block property"));
         }
     }
-    Ok(if rewritten || has_block {
+    if let Some(what) = backtracking {
+        if let Some(escape) = foreign {
+            return err(&format!("{escape} with a {what}"));
+        }
+        // RegexParser numbers unnamed groups before named ones; Rust numbers both in order.
+        if !backrefs.is_empty() && named > 0 {
+            return err("numbered backreference with named groups");
+        }
+        // IsCaptureSlot, else ScanBasicBackslash throws (<= 9) or reads octal (> 9).
+        if backrefs.iter().any(|n| *n > unnamed) {
+            return err("backreference to an undefined group");
+        }
+        // .NET compares case-insensitive references with its culture case table.
+        if !backrefs.is_empty() && casei {
+            return err("case-insensitive backreference");
+        }
+    }
+    let text = if rewritten || has_block {
         Cow::Owned(out)
     } else {
         debug_assert_eq!(out, pattern);
         Cow::Borrowed(pattern)
+    };
+    Ok(Normalized {
+        text,
+        backtracking: backtracking.is_some(),
     })
 }
 
@@ -469,8 +571,11 @@ mod tests {
     const PUNTO_SHORT: &str = r"(?i)T[\s-_]?(\d{1,2})\b";
     const NEKO_TITLE: &str = "(.+?)( {Tags:.+)";
     const NEKO_TAGS: &str = ".+ {(Tags:.+?)}";
+    /// Pinned ebookbay/btarg: escaped no-break spaces, which .NET reads as literals.
+    const EBOOK: &str = "E book under:\\s+(.+?)\\s?\\\u{a0}";
+    const BTARG_NBSP: &str = "\\\u{a0}(\\d+)\\\u{a0}";
     /// Every corpus rewrite: (pattern, normalized, captures_len).
-    const EXPECTED: [(&str, &str, usize); 5] = [
+    const EXPECTED: [(&str, &str, usize); 7] = [
         (PUNCT, PUNCT_OUT, 1),
         (
             PUNTO_FULL,
@@ -480,6 +585,8 @@ mod tests {
         (PUNTO_SHORT, r"(?i)T[\s\x{2D}\x{5F}]?(\d{1,2})\b", 2),
         (NEKO_TITLE, r"(.+?)( \{Tags:.+)", 3),
         (NEKO_TAGS, r".+ \{(Tags:.+?)}", 2),
+        (EBOOK, r"E book under:\s+(.+?)\s?\x{A0}", 2),
+        (BTARG_NBSP, r"\x{A0}(\d+)\x{A0}", 2),
     ];
 
     fn ctx() -> Context {
@@ -684,7 +791,10 @@ mod tests {
             }
         }
         let re = definition_regex(NEKO_TAGS).unwrap();
-        assert_eq!(&re.captures("Show {Tags: a}").unwrap()[1], "Tags: a");
+        assert_eq!(
+            re.captures("Show {Tags: a}").unwrap().unwrap().get(1),
+            Some("Tags: a")
+        );
         for q in ["a{2}", "a{2,}", "a{2,3}", "a{2}?", "a{0}", "(ab){1,2}"] {
             assert_eq!(normalize(q).unwrap(), q);
             assert!(matches!(normalize(q).unwrap(), Cow::Borrowed(_)));
@@ -815,9 +925,6 @@ mod tests {
             "a+*",
             "a*??",
             "a?{2}",
-            "(?<=a)b",
-            "(?!a)b",
-            r"(a)\1",
             r"\k<n>",
         ] {
             assert!(definition_regex(pattern).is_err(), "{pattern}");
@@ -825,7 +932,8 @@ mod tests {
         // ScanBlank skips comments without RegexOptions.IgnorePatternWhitespace.
         assert!(normalize("a(?#b)c").unwrap_err().contains("comment group"));
         for ok in [
-            "a*?", "a??", "a{2}?", "(?i)a", "(?i:a)", "(?-i)a", "(?s)a.", "(?m)^a",
+            "a*?", "a??", "a{2}?", "(?i)a", "(?i:a)", "(?-i)a", "(?s)a.", "(?m)^a", "(?<=a)b",
+            "(?!a)b", r"(a)\1",
         ] {
             assert!(definition_regex(ok).is_ok(), "{ok}");
         }
@@ -957,6 +1065,8 @@ mod tests {
         assert_eq!(
             files,
             [
+                "btarg",
+                "ebookbay",
                 "girotorrent",
                 "ilcorsaroblu",
                 "jpopsuki",
@@ -966,7 +1076,7 @@ mod tests {
             .map(String::from)
             .into()
         );
-        assert_eq!(changed_uses, 9);
+        assert_eq!(changed_uses, 11);
         for (pattern, out, captures) in EXPECTED {
             assert!(bounded_regex(pattern).is_err(), "{pattern} used to fail");
             let re = definition_regex(pattern).unwrap();
@@ -978,5 +1088,428 @@ mod tests {
                 "{pattern}"
             );
         }
+    }
+
+    /// The pinned French/Polish tracker filters, applied as `re_replace` with the
+    /// `multilanguage` setting. Expected values follow .NET semantics: `.` excludes only
+    /// `\n`, `\b` and `(?i)` apply inside the look-ahead, and look-ahead text is not consumed.
+    const MULTI_FR: &str = r"(?i)\b(MULTI(?!.*(?:FRENCH|ENGLISH|VOSTFR)))\b";
+    const MULTI_FR_EXT: &str =
+        r"(?i)\b(MULTI(?!.*(?:FRENCH|ENGLISH|VOSTFR|VF2|VFF|VFQ|VOQ|VFI|VOF)))\b";
+    const MULTI_PL: &str = r"(?i)\b(MULTI(?!.*(?:POLISH|ENGLISH|\bPL\b)))\b";
+
+    #[test]
+    fn multi_negative_lookahead_follows_dotnet() {
+        let lang = "MULTI.FRENCH";
+        for (pattern, input, want) in [
+            (
+                MULTI_FR,
+                "Movie.2023.MULTI.1080p.WEB",
+                "Movie.2023.MULTI.FRENCH.1080p.WEB",
+            ),
+            (
+                MULTI_FR,
+                "Movie.2023.MULTI.FRENCH.1080p",
+                "Movie.2023.MULTI.FRENCH.1080p",
+            ),
+            (
+                MULTI_FR,
+                "Movie.2023.multi.1080p.English",
+                "Movie.2023.multi.1080p.English",
+            ),
+            (MULTI_FR, "Film MULTi VOSTFR 720p", "Film MULTi VOSTFR 720p"),
+            (
+                MULTI_FR,
+                "Show.S01.multi.720p",
+                "Show.S01.MULTI.FRENCH.720p",
+            ),
+            // `\b` needs a non-word neighbour; "MULTiSUBS" has none after MULTI.
+            (MULTI_FR, "Movie.MULTiSUBS.1080p", "Movie.MULTiSUBS.1080p"),
+            // Substring search: FRENCHY still contains FRENCH.
+            (
+                MULTI_FR,
+                "Movie MULTI 1080p FRENCHY",
+                "Movie MULTI 1080p FRENCHY",
+            ),
+            // `.` stops at `\n`, so the look-ahead does not see the next line.
+            (
+                MULTI_FR,
+                "Movie MULTI\nFRENCH",
+                "Movie MULTI.FRENCH\nFRENCH",
+            ),
+            (MULTI_FR, "MULTI.FRENCH.MULTI", "MULTI.FRENCH.MULTI.FRENCH"),
+            (MULTI_FR, "MULTI.x.MULTI.vostfr", "MULTI.x.MULTI.vostfr"),
+            // VFF is only in the extended list.
+            (
+                MULTI_FR,
+                "Movie.MULTI.VFF.1080p",
+                "Movie.MULTI.FRENCH.VFF.1080p",
+            ),
+            (
+                MULTI_FR_EXT,
+                "Movie.MULTI.VFF.1080p",
+                "Movie.MULTI.VFF.1080p",
+            ),
+            (
+                MULTI_FR_EXT,
+                "Movie.MULTI.VF2.TRUEFRENCH",
+                "Movie.MULTI.VF2.TRUEFRENCH",
+            ),
+            (MULTI_FR_EXT, "Movie.MULTI.WEB", "Movie.MULTI.FRENCH.WEB"),
+            // Non-ASCII letters are word characters for both \b readings.
+            (MULTI_FR, "ÉtéMULTI 1080p", "ÉtéMULTI 1080p"),
+            (MULTI_FR, "Été MULTIé 1080p", "Été MULTIé 1080p"),
+            (MULTI_FR, "Été MULTI 1080p", "Été MULTI.FRENCH 1080p"),
+            (
+                MULTI_FR,
+                "Été.MULTI.Française",
+                "Été.MULTI.FRENCH.Française",
+            ),
+            // `\bPL\b` inside the look-ahead.
+            (MULTI_PL, "Film.MULTI.PL.1080p", "Film.MULTI.PL.1080p"),
+            (
+                MULTI_PL,
+                "Film.MULTI.PLAY.1080p",
+                "Film.MULTI.FRENCH.PLAY.1080p",
+            ),
+            (MULTI_PL, "Film.MULTI.polish", "Film.MULTI.polish"),
+            (MULTI_PL, "Film.MULTI.pl", "Film.MULTI.pl"),
+            (MULTI_PL, "Film.MULTI.Żółw", "Film.MULTI.FRENCH.Żółw"),
+        ] {
+            assert_eq!(apply(&[pattern, lang], input), want, "{pattern} {input:?}");
+        }
+        let re = definition_regex(MULTI_FR).unwrap();
+        assert!(re.is_backtracking());
+        assert_eq!(re.captures_len(), 2);
+        assert_eq!(re.as_str(), MULTI_FR);
+    }
+
+    #[test]
+    fn other_pinned_lookaround_and_backreference_patterns() {
+        // (pattern, replacement, input, .NET Regex.Replace result)
+        for (pattern, rep, input, want) in [
+            // amigosshare: positive look-ahead with `$`.
+            (
+                r#"(\{"id":\d+,.*?\})(?=,\{"id":\d+,|$)"#,
+                "<$1>",
+                r#"{"id":1,"a":"x"},{"id":2,"b":"y"}"#,
+                r#"<{"id":1,"a":"x"}>,<{"id":2,"b":"y"}>"#,
+            ),
+            // animetosho-xyz: constant-width look-behind and look-ahead.
+            (
+                r"(?i)(?<![A-Za-z0-9])(Movies?|OVA|OAV)(?![A-Za-z0-9])",
+                "[$1]",
+                "Movie OVAs ova MOVIES oav2 xMovie",
+                "[Movie] OVAs [ova] [MOVIES] oav2 xMovie",
+            ),
+            // arabp2p
+            (
+                r"(?i)\bS(\d)(?=E)",
+                "S0$1",
+                "Show s1E02 S2x03 S3e04",
+                "Show S01E02 S2x03 S03e04",
+            ),
+            // arabscene: look-behind and look-ahead around consumed whitespace.
+            (
+                r"(?<=\d)\s+(?=\d)",
+                "",
+                "Size 1 024 MB 2 a 3  4",
+                "Size 1024 MB 2 a 34",
+            ),
+            // btarg
+            (
+                r"(?i)(S(\d{1,3}))(?![\dE])",
+                "$1E01",
+                "Show S02 s03E04 S1234",
+                "Show S02E01 s03E04 S1234",
+            ),
+            // hdonly: numbered backreference.
+            (
+                r"(\.MULTI)\1",
+                ".MULTI",
+                "Movie.MULTI.MULTI.1080p",
+                "Movie.MULTI.1080p",
+            ),
+            (
+                r"(\.MULTI)\1",
+                ".MULTI",
+                "Movie.MULTI.multi",
+                "Movie.MULTI.multi",
+            ),
+            // nyaasi: lazy gap then a negative look-ahead.
+            (
+                r"(?i)\b(?:S|Seasons?)\s?(\d+(?:-\d+)?)(?:.+?)(?:EP|Episodes?)\s?(\d+(?:-\d+)?)\b(?!(?:-\d+)?\sS\d+(?:-\d+)?E\d+(?:-\d+)?)",
+                "S$1E$2",
+                "Season 2 - Episode 5 [1080p]",
+                "S2E5 [1080p]",
+            ),
+            (
+                r"(?i)\b(?:S\s|Seasons?\s?)(\d+(?:-\d+)?)\b(?!(?:-\d+)?\s(?:EP|Episodes?)?\s?(?:\d+(?:-\d+)?)?\s?S\d+(?:E\d+(?:-\d+)?)?)",
+                "S$1",
+                "Season 3 complete / Season 4 S04E01",
+                "S3 complete / Season 4 S04E01",
+            ),
+        ] {
+            assert_eq!(apply(&[pattern, rep], input), want, "{pattern}");
+        }
+        // hdolimpo: group 1 sits inside a negative look-behind, so it never participates
+        // in a successful match; replacements use $2 (a .NET numbering match: no named groups).
+        let hdolimpo = r"(?<!(SPANiSH|ENGLiSH|CATALAN|FRENCHx|JAPANES|iTALiAN|RUSSiAN|GERMANx)[\s.])\b(ENGLiSH|CATALAN|FRENCHx|JAPANES|iTALiAN|RUSSiAN|GERMANx)\b(?![\s.]SPANiSH)";
+        for (input, want) in [
+            ("Movie ENGLiSH 1080p", "Movie MULTi SPANiSH ENGLiSH 1080p"),
+            ("Movie SPANiSH ENGLiSH 1080p", "Movie SPANiSH ENGLiSH 1080p"),
+            ("Movie ENGLiSH.SPANiSH", "Movie ENGLiSH.SPANiSH"),
+            ("Movie.CATALAN.x", "Movie.MULTi SPANiSH CATALAN.x"),
+            ("Movie english", "Movie english"),
+        ] {
+            assert_eq!(
+                apply(&[hdolimpo, "MULTi SPANiSH $2"], input),
+                want,
+                "{input}"
+            );
+            assert_eq!(
+                apply(&[hdolimpo, "[$1]"], input).contains("[]"),
+                want != input
+            );
+        }
+        // ebookbay: escaped no-break space is a literal on the linear engine.
+        let ebook = Filter::compile("regexp", &[EBOOK.into()]).unwrap();
+        assert_eq!(
+            ebook
+                .apply("E book under:  Fiction\u{a0}more", &ctx())
+                .unwrap(),
+            "Fiction"
+        );
+        assert!(!definition_regex(EBOOK).unwrap().is_backtracking());
+        let btarg = Filter::compile("regexp", &[BTARG_NBSP.into()]).unwrap();
+        assert_eq!(btarg.apply("Seeds\u{a0}42\u{a0}", &ctx()).unwrap(), "42");
+        assert_eq!(btarg.apply("Seeds 42 ", &ctx()).unwrap(), "");
+        assert_eq!(normalize("[\\\u{3000}]").unwrap(), r"[\x{3000}]");
+        assert_eq!(normalize("\\\u{2028}").unwrap(), r"\x{2028}");
+        // Non-whitespace non-ASCII escapes stay rejected (\é is a .NET word-character error).
+        assert!(definition_regex("\\é").is_err());
+    }
+
+    #[test]
+    fn atomic_groups_and_lookaround_captures() {
+        let find = |p: &str, s: &str| {
+            definition_regex(p).unwrap().captures(s).unwrap().map(|c| {
+                (0..3)
+                    .map(|i| c.get(i).map(String::from))
+                    .collect::<Vec<_>>()
+            })
+        };
+        // (?>...) never gives back: .NET finds no match where a plain group would.
+        assert_eq!(find("(?>a+)ab", "aaab"), None);
+        assert!(find("(?:a+)ab", "aaab").is_some());
+        assert_eq!(find("a(?>bc|b)c", "abc"), None);
+        assert_eq!(
+            find("(?>a+)b", "xaab"),
+            Some(vec![Some("aab".into()), None, None])
+        );
+        // Captures inside a successful positive look-ahead are kept; inside a negative
+        // look-around they never are.
+        assert_eq!(
+            find(r"(?=(\d+))\d", "a42"),
+            Some(vec![Some("4".into()), Some("42".into()), None])
+        );
+        assert_eq!(
+            find(r"(?<=(x))y(?!(z))", "xy"),
+            Some(vec![Some("y".into()), Some("x".into()), None])
+        );
+        // Backreference to a group that did not participate fails, as in .NET.
+        assert_eq!(find(r"(?:(a)|b)\1", "b"), None);
+        assert_eq!(
+            find(r"(a)?b\1?", "b"),
+            Some(vec![Some("b".into()), None, None])
+        );
+    }
+
+    #[test]
+    fn backtracking_engine_keeps_dotnet_word_and_case_semantics() {
+        // Same Unicode \b, \w, \d and simple case folding as the linear engine (the module's
+        // documented .NET compatibility level), including inside the backtracking VM.
+        for (pattern, input, matched) in [
+            (r"(?i)\bmulti\b(?!x)", "ÉTÉ MULTI x", true),
+            (r"(?i)\bmulti\b(?!x)", "éMULTI", false),
+            (r"(?i)\bmulti\b(?!x)", "MULTIé", false),
+            (r"(?i)\bmulti\b(?!x)", "MULTI١", false),
+            (r"(?i)(?<=é)t", "ÉT", true),
+            (r"(?i)été(?=!)", "ÉTÉ!", true),
+            (r"(?i)k(?=!)", "\u{212a}!", true),
+            (r"(?-i)k(?=!)", "K!", false),
+            (r"\w+(?=!)", "żółw!", true),
+            (r"\d(?=!)", "٣!", true),
+            (r"(?<=\s)x", "\u{a0}x", true),
+            (r"^(?=a).$", "a\n", false),
+        ] {
+            let re = definition_regex(pattern).unwrap();
+            assert!(re.is_backtracking());
+            assert_eq!(re.is_match(input), matched, "{pattern} {input:?}");
+        }
+    }
+
+    /// Every pinned pattern the linear engine accepts, wrapped so fancy-regex must run it in
+    /// its VM, gives the same matches and replacements: both engines read normalized syntax
+    /// identically.
+    #[test]
+    fn backtracking_engine_agrees_with_linear_engine_on_corpus_patterns() {
+        let dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("vendor/jackett/definitions");
+        SEEN.with(|s| s.borrow_mut().clear());
+        for entry in std::fs::read_dir(&dir).unwrap() {
+            let path = entry.unwrap().path();
+            if path.extension().is_some_and(|e| e == "yml") {
+                if let Ok(node) = crate::cardigann::load(&path, crate::cardigann::Limits::default())
+                {
+                    let _ = crate::cardigann_exec::Plan::compile(&node);
+                }
+            }
+        }
+        let patterns = SEEN
+            .with(|s| std::mem::take(&mut *s.borrow_mut()))
+            .into_iter()
+            .collect::<BTreeSet<_>>();
+        let inputs = [
+            "",
+            "Movie.Title.2023.MULTI.1080p.WEB-DL.x264-GRP",
+            "Série Été S01E02 VOSTFR 720p [Rus, Eng] (2019)",
+            "Фильм / Film (2019) BDRip 1080p | Сезон 1, Серии 1-10 из 12",
+            r#"<a href="details.php?id=123&amp;x=1">Name</a> 1.5 GB 2024-01-02 10:00 +0100"#,
+            "S01-S03 Episode 5 - 12 [1080p] {Tags: a, b}",
+            "ſKK ß straße İstanbul ǅ ﬁ",
+            "line1\nline2\r\n 12,345 seeds; 3 leechers",
+            "日本語のタイトル 第1話 (BD 1920x1080) 【中文】",
+            "Uploaded 3 days ago by user_1 - 700.5 MiB, ratio 1.0",
+        ];
+        let mut compared = 0;
+        for pattern in &patterns {
+            let Ok(linear) = definition_regex(pattern) else {
+                continue;
+            };
+            if linear.is_backtracking() {
+                continue;
+            }
+            let wrapped = format!(r"(?:{pattern})(?!￿)");
+            let Ok(vm) = definition_regex(&wrapped) else {
+                continue;
+            };
+            assert!(vm.is_backtracking(), "{wrapped}");
+            assert_eq!(vm.captures_len(), linear.captures_len(), "{pattern}");
+            for input in inputs {
+                let spans = |re: &super::super::filters::DefinitionRegex| {
+                    re.captures(input).unwrap().map(|c| {
+                        (0..re.captures_len())
+                            .map(|i| c.get(i).map(String::from))
+                            .collect::<Vec<_>>()
+                    })
+                };
+                assert_eq!(spans(&vm), spans(&linear), "{pattern} on {input:?}");
+                assert_eq!(
+                    replace_regex(&vm, input, "<$0|$1>"),
+                    replace_regex(&linear, input, "<$0|$1>"),
+                    "{pattern} on {input:?}"
+                );
+            }
+            compared += 1;
+        }
+        assert!(compared > 450, "{compared}");
+    }
+
+    #[test]
+    fn backtracking_rejects_what_it_cannot_run_as_dotnet() {
+        for (pattern, why) in [
+            // hawke-uno: .NET balancing groups and a group conditional.
+            (
+                r"\(((?>[^()]+|(?<o>)\(|(?<-o>)\))*(?(o)(?!)))(?<!\bHONE)(?<=\s*- [\w]+)\)$",
+                "balancing group",
+            ),
+            ("(?<a-b>x)", "balancing group"),
+            ("(?(a)b|c)", "conditional group"),
+            ("(?'n'a)", "(?'name') group"),
+            ("(?<1>a)", "numbered group"),
+            // fancy-regex reads these with Oniguruma/PCRE meanings.
+            (r"\Gx(?=a)", r"escape \G with a look-ahead"),
+            (r"x\Z(?<=x)", r"escape \Z with a look-behind"),
+            (r"(?<n>a)\k<n>(?=a)", r"escape \k with a look-ahead"),
+            (r"\e(?=a)", r"escape \e with a look-ahead"),
+            (r"\0(?=a)", r"escape \0 with a look-ahead"),
+            (r"\K(?=a)", r"escape \K with a look-ahead"),
+            (r"\h(?=a)", r"escape \h with a look-ahead"),
+            // Numbering, undefined groups and culture-dependent case comparison.
+            (r"(?<n>a)(b)\1", "numbered backreference with named groups"),
+            (r"(a)\2", "backreference to an undefined group"),
+            (r"(a)\10", "backreference to an undefined group"),
+            (r"(?i)(a)\1", "case-insensitive backreference"),
+            (r"(?i:x)(a)\1", "case-insensitive backreference"),
+            // Block properties stay gated next to any backtracking construct.
+            (r"\p{IsCyrillic}(?=a)", "with a .NET block property"),
+            (r"(\p{IsCyrillic})\1", "with a .NET block property"),
+        ] {
+            let e = definition_regex(pattern).unwrap_err();
+            assert!(e.contains(why), "{pattern}: {e}");
+        }
+        // Variable-width look-behind (valid .NET) is rejected by the engine configuration.
+        for pattern in [
+            r"(?<=a+)b",
+            r"(?<=\s*- [\w]+)\)",
+            r"(?<=a?)b",
+            r"(?<!(ab)*)c",
+        ] {
+            let e = definition_regex(pattern).unwrap_err();
+            assert!(
+                e.starts_with("unsupported/invalid .NET regex"),
+                "{pattern}: {e}"
+            );
+        }
+        // Alternatives of different constant widths are each checked, as .NET's right-to-left
+        // look-behind does.
+        let re = definition_regex(r"(?<!ab|c)d").unwrap();
+        for (input, matched) in [("abd", false), ("cd", false), ("bd", true), ("xd", true)] {
+            assert_eq!(re.is_match(input), matched, "{input}");
+        }
+        // Still allowed: case-sensitive scope after (?-i), and assertions both engines share.
+        assert!(definition_regex(r"(?-i)(a)\1").is_ok());
+        assert!(definition_regex(r"\Ax\b\B(?=y)\z").is_ok());
+        assert!(definition_regex(r"(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\10").is_ok());
+    }
+
+    #[test]
+    fn backtrack_limit_is_a_bounded_error_not_a_hang() {
+        // Two ways to match each `a` and a final failure: 2^40 paths without the limit.
+        let pattern = r"^(?:a|(?=a)a)*b";
+        let input = "a".repeat(40);
+        let started = std::time::Instant::now();
+        let re = definition_regex(pattern).unwrap();
+        assert!(re.is_backtracking());
+        let limit = "regex backtrack limit exceeded";
+        assert_eq!(re.captures(&input).err().as_deref(), Some(limit));
+        assert_eq!(replace_regex(&re, &input, "x").unwrap_err(), limit);
+        let regexp = Filter::compile("regexp", &[format!("({pattern})")]).unwrap();
+        assert_eq!(regexp.apply(&input, &ctx()).unwrap_err(), limit);
+        let re_replace = Filter::compile("re_replace", &[pattern.into(), "x".into()]).unwrap();
+        assert_eq!(re_replace.apply(&input, &ctx()).unwrap_err(), limit);
+        let template = format!(r#"{{{{ re_replace .Query.Q "{pattern}" "x" }}}}"#);
+        let mut c = ctx();
+        c.values.insert(".Query.Q".into(), serde_json::json!(input));
+        assert_eq!(
+            Template::compile(&template)
+                .unwrap()
+                .render(&c)
+                .unwrap_err(),
+            limit
+        );
+        // The same pattern succeeds when the search is short.
+        assert_eq!(apply(&[pattern, "x"], "aaab"), "x");
+        assert!(started.elapsed() < std::time::Duration::from_secs(30));
+        // Backtracking regexes have a tighter input cap than the linear engine.
+        let big = "a".repeat(super::super::filters::MAX_BACKTRACKING_INPUT + 1);
+        let e = definition_regex("a(?=a)").unwrap().captures(&big).err();
+        assert_eq!(
+            e.as_deref(),
+            Some("backtracking regex input limit exceeded")
+        );
+        assert!(definition_regex("aa").unwrap().captures(&big).is_ok());
+        const { assert!(super::super::filters::BACKTRACK_LIMIT == 100_000) };
     }
 }

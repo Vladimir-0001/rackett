@@ -76,6 +76,7 @@ fn compile(root: &Node) -> Result<Family> {
         if !unique(root)
             || root.string("encoding") != Some("UTF-8")
             || root.get("followredirect").is_some()
+            || super::auth::search_follows_redirects(root)
             || root.get("download").is_some()
         {
             return None;
@@ -295,6 +296,7 @@ impl ApiSession {
                 content_type,
                 body: bytes,
                 rendered: false,
+                decoded: false,
             });
         }
         unreachable!()

@@ -1,0 +1,36 @@
+[
+  {
+    "id": "0daykiev",
+    "direct_post": true,
+    "sha256": "0ab55191544a0803b3dada554746b2f81e8249bfe4e02e6f6c5d7287bf253712",
+    "search_fixture": "post:0daykiev",
+    "form_path": "/takelogin.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "returnto": "/browse.php"
+    },
+    "error_html": "<div class=\"maintitle\">Ошибка <div class=\"borderwrap\"><table class=\"embedded\"><tr><td>fixture-private-error</td></tr></table></div></div>",
+    "category": 2000,
+    "custom_category": 100010,
+    "request_count": 1,
+    "login_path": "/browse.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c10",
+      "1"
+    ],
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T08:30:00Z",
+    "free_markup": "<img src=\"pic/freedownload.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "expected_title": "Fixture «Release» №1"
+  }
+]

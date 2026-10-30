@@ -14,6 +14,8 @@ fn bound(
         CookiePlan {
             aidoru_fragment: false,
             user_agent: None,
+            charset: crate::cardigann_exec::request::Charset::Utf8,
+            certificates: None,
             path: "index.php".into(),
             selector: "a[href='logout.php']".into(),
         },

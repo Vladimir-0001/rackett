@@ -147,11 +147,19 @@ systemctl --user enable --now rackett
 - **Downloads** go through short-lived Rackett links, so your site credentials are
   never handed to other apps.
 
+## Performance
+
+In a matched test against Jackett 0.24 (same site definition, same 20 results, both
+answering from cache), Rackett answered a repeat search in about 0.6–0.8 ms versus
+1.9–2.2 ms for Jackett: roughly **3× faster**, with a smaller response. A first,
+uncached search is limited by the site itself and the delay its definition asks for
+between requests, so it takes about as long in either program.
+
 ## Current limitations
 
-- **Not every Jackett site works yet.** About half of the 583 bundled definitions
-  are ready. The rest are listed with the feature they still need, for example
-  CAPTCHA logins or some non-UTF-8 sites.
+- **Not every Jackett site works yet.** 354 of the 583 bundled definitions (about
+  60%) are ready. The rest are listed with the feature they still need, for example
+  CAPTCHA logins or a few rare character sets.
 - **Fixture-tested, not live-tested.** Ready means the definition passes a complete
   automated test against a simulated copy of the site: login, search, caching,
   downloads and session expiry. It does not guarantee the real site is online or
@@ -173,7 +181,13 @@ trying the interface without touching real sites. `tools/release.sh` runs all ch
 and builds a release archive in `dist/`.
 
 [How Rackett works](docs/how-it-works.md) covers the code layout, how Cardigann
-definitions are run, and how a site becomes *ready*.
+definitions are run, and how a site becomes *ready*. Notes on specific engine
+features: [legacy character sets](docs/legacy-encodings.md),
+[download-page resolution](docs/download-selectors.md),
+[XML responses](docs/xml-responses.md),
+[.NET regex look-around](docs/dotnet-regex-lookaround.md),
+[pinned certificates](docs/pinned-certificates.md) and
+[logged-in search shapes](docs/session-search-shapes.md).
 
 ## Acknowledgements
 

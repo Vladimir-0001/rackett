@@ -1,0 +1,28 @@
+[
+  {
+    "id": "plugintorrent",
+    "sha256": "b2f227f83b4e1369998a35b5962662400c7fd6d2a779988c99eb89a889a310a4",
+    "category": 4000,
+    "request_count": 1,
+    "search_path": "/",
+    "query_pair": [
+      "s",
+      "Fixture"
+    ],
+    "download_path": "/release/42",
+    "details_path": "/release/42",
+    "seeders": 1,
+    "peers": 2,
+    "published": "2026-10-29T00:00:00Z",
+    "expected_size": 536870912,
+    "fixed_size": true,
+    "delay_ms": 0,
+    "title": "Fixture Plugin Release",
+    "json": false,
+    "container": "main",
+    "detail": {
+      "html": "<!doctype html><html><body><a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\">Download</a></body></html>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+    }
+  }
+]

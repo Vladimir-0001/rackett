@@ -16,6 +16,12 @@ pub enum Charset {
     Utf8,
     /// .NET Latin1Encoding: code points U+0000..=U+00FF map to the identical byte.
     Latin1,
+    /// Single-byte Windows/ISO code pages from CodePagesEncodingProvider (ASCII low half).
+    Windows1250,
+    Windows1251,
+    Windows1252,
+    Windows1256,
+    Iso8859_2,
 }
 impl Charset {
     pub fn from_definition(root: &Node) -> Result<Self, String> {
@@ -25,31 +31,146 @@ impl Charset {
         let encoding = node
             .text()
             .ok_or("$.encoding: unsupported non-scalar encoding")?;
-        if encoding.eq_ignore_ascii_case("utf-8") || encoding.eq_ignore_ascii_case("utf8") {
-            Ok(Self::Utf8)
-        } else if encoding.eq_ignore_ascii_case("iso-8859-1") {
-            Ok(Self::Latin1)
-        } else {
-            Err(format!("$.encoding: unsupported encoding {encoding}"))
+        // Encoding.GetEncoding matches names case-insensitively.
+        match encoding.to_ascii_lowercase().as_str() {
+            "utf-8" | "utf8" => Ok(Self::Utf8),
+            "iso-8859-1" => Ok(Self::Latin1),
+            "windows-1250" => Ok(Self::Windows1250),
+            "windows-1251" => Ok(Self::Windows1251),
+            "windows-1252" => Ok(Self::Windows1252),
+            "windows-1256" => Ok(Self::Windows1256),
+            "iso-8859-2" => Ok(Self::Iso8859_2),
+            _ => Err(format!("$.encoding: unsupported encoding {encoding}")),
         }
     }
-    /// WebUtilityHelpers.UrlEncode(value, encoding). Unrepresentable Latin-1 text is an
-    /// explicit error rather than .NET's '?' replacement fallback.
+    /// The canonical label, for diagnostics.
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Utf8 => "UTF-8",
+            Self::Latin1 => "ISO-8859-1",
+            Self::Windows1250 => "windows-1250",
+            Self::Windows1251 => "windows-1251",
+            Self::Windows1252 => "windows-1252",
+            Self::Windows1256 => "windows-1256",
+            Self::Iso8859_2 => "ISO-8859-2",
+        }
+    }
+    fn high_half(self) -> Option<&'static [char; 128]> {
+        use super::single_byte::*;
+        match self {
+            Self::Utf8 | Self::Latin1 => None,
+            Self::Windows1250 => Some(&WINDOWS_1250),
+            Self::Windows1251 => Some(&WINDOWS_1251),
+            Self::Windows1252 => Some(&WINDOWS_1252),
+            Self::Windows1256 => Some(&WINDOWS_1256),
+            Self::Iso8859_2 => Some(&ISO_8859_2),
+        }
+    }
+    /// Encoding.GetBytes for a single-byte charset. Unrepresentable text is None; .NET's
+    /// best-fit or '?' replacement is never guessed.
+    pub(crate) fn encode_single_byte(self, value: &str) -> Option<Vec<u8>> {
+        match (self, self.high_half()) {
+            (Self::Latin1, _) => value
+                .chars()
+                .map(|c| u8::try_from(u32::from(c)).ok())
+                .collect(),
+            (_, Some(high)) => value
+                .chars()
+                .map(|c| {
+                    if c.is_ascii() {
+                        Some(c as u8)
+                    } else {
+                        high.iter().position(|&h| h == c).map(|i| 0x80 + i as u8)
+                    }
+                })
+                .collect(),
+            _ => None,
+        }
+    }
+    /// Encoding.GetBytes without fallback guesses: None for unrepresentable text.
+    pub fn encode(self, value: &str) -> Option<Vec<u8>> {
+        match self {
+            Self::Utf8 => Some(value.as_bytes().to_vec()),
+            _ => self.encode_single_byte(value),
+        }
+    }
+    /// WebUtilityHelpers.UrlEncode(value, encoding). Unrepresentable text is an explicit
+    /// error rather than .NET's best-fit or '?' replacement fallback.
     pub(crate) fn url_encode(self, value: &str) -> Result<String, String> {
         match self {
             Self::Utf8 => Ok(super::filters::url_encode(value)),
-            Self::Latin1 => value
-                .chars()
-                .map(|c| u8::try_from(u32::from(c)).ok())
-                .collect::<Option<Vec<_>>>()
+            _ => self
+                .encode_single_byte(value)
                 .map(|bytes| super::filters::url_encode_bytes(&bytes))
-                .ok_or_else(|| "value contains text not representable in ISO-8859-1".into()),
+                .ok_or_else(|| {
+                    format!("value contains text not representable in {}", self.label())
+                }),
         }
+    }
+    /// WebClient.FormUrlEncodedContentWithEncoding for a non-UTF-8 definition: each key and
+    /// value is HttpUtility.UrlEncode(text, encoding), which is WebUtility's safe set with
+    /// lowercase hex. Unrepresentable text is an error, never a '?' or best-fit guess.
+    pub(crate) fn form_body(self, fields: &[(String, String)]) -> Result<String, String> {
+        let encode = |text: &str| {
+            self.encode_single_byte(text)
+                .map(|bytes| super::filters::url_encode_bytes(&bytes).replace_hex_lowercase())
+                .ok_or_else(|| format!("form field not representable in {}", self.label()))
+        };
+        let mut out = String::new();
+        for (key, value) in fields {
+            if !out.is_empty() {
+                out.push('&');
+            }
+            out.push_str(&encode(key)?);
+            out.push('=');
+            out.push_str(&encode(value)?);
+        }
+        Ok(out)
     }
     /// Encoding.GetString for a response: every Latin-1 byte maps to the same code point,
     /// with no BOM or meta sniffing. Output may be twice the input length in UTF-8.
     pub fn decode_latin1(bytes: &[u8]) -> String {
         bytes.iter().copied().map(char::from).collect()
+    }
+    /// Encoding.GetString with the definition charset; the definition wins over headers,
+    /// BOMs and meta tags. Single-byte pages are total, so only UTF-8 can fail.
+    /// Output may be up to three times the input length in UTF-8.
+    pub fn decode(self, bytes: Vec<u8>) -> Result<String, std::string::FromUtf8Error> {
+        match (self, self.high_half()) {
+            (Self::Utf8, _) => String::from_utf8(bytes),
+            (Self::Latin1, _) => Ok(Self::decode_latin1(&bytes)),
+            (_, Some(high)) => Ok(bytes
+                .iter()
+                .map(|&b| {
+                    if b < 0x80 {
+                        char::from(b)
+                    } else {
+                        high[usize::from(b - 0x80)]
+                    }
+                })
+                .collect()),
+            _ => unreachable!("every non-UTF-8 charset is single-byte"),
+        }
+    }
+}
+trait LowercaseHex {
+    fn replace_hex_lowercase(self) -> String;
+}
+impl LowercaseHex for String {
+    /// Lowercases only the two hex digits after each '%'; other text is unchanged.
+    fn replace_hex_lowercase(self) -> String {
+        let mut out = String::with_capacity(self.len());
+        let mut pending = 0;
+        for c in self.chars() {
+            if pending > 0 {
+                out.push(c.to_ascii_lowercase());
+                pending -= 1;
+            } else {
+                pending = if c == '%' { 2 } else { 0 };
+                out.push(c);
+            }
+        }
+        out
     }
 }
 #[derive(Clone, Debug)]
@@ -296,11 +417,11 @@ impl RequestPlan {
                     "{prefix}.queryseparator: unsupported for upstream search requests"
                 ));
             }
-            if boolean(node.get("followredirect"), false, &prefix)? {
-                return Err(format!(
-                    "{prefix}.followredirect: redirect execution requires session integration"
-                ));
-            }
+            // HandleRedirectableRequestAsync: the bundled transport already follows at
+            // most five same-origin, method-preserving redirects for every search, so
+            // `followredirect: true` adds nothing. Authenticated session plans reject it
+            // themselves (their search redirect means login expiry).
+            boolean(node.get("followredirect"), false, &prefix)?;
             let mut fields =
                 if path_nodes.is_some() && boolean(node.get("inheritinputs"), true, &prefix)? {
                     inputs(common, "$.search.inputs")?
@@ -326,7 +447,7 @@ impl RequestPlan {
                 .and_then(|n| n.string("type"))
                 .unwrap_or("html")
                 .to_owned();
-            if !matches!(response_type.as_str(), "html" | "json") {
+            if !matches!(response_type.as_str(), "html" | "json" | "xml") {
                 return Err(format!(
                     "{prefix}.response.type: unsupported {response_type}"
                 ));
@@ -608,6 +729,79 @@ mod tests {
         ctx
     }
     #[test]
+    fn single_byte_code_pages_round_trip_and_reject_unrepresentable_text() {
+        for (label, charset) in [
+            ("windows-1250", Charset::Windows1250),
+            ("Windows-1251", Charset::Windows1251),
+            ("WINDOWS-1252", Charset::Windows1252),
+            ("windows-1256", Charset::Windows1256),
+            ("ISO-8859-2", Charset::Iso8859_2),
+        ] {
+            assert_eq!(
+                encoded_plan(label, "  path: search\n").unwrap().charset(),
+                charset
+            );
+            let all: Vec<u8> = (0..=255).collect();
+            let text = charset.decode(all.clone()).unwrap();
+            assert_eq!(text.chars().count(), 256, "{label}");
+            assert_eq!(charset.encode_single_byte(&text).unwrap(), all, "{label}");
+            assert!(charset.url_encode("\u{4e2d}").is_err(), "{label}");
+        }
+        // Spot checks against the published code-page charts.
+        assert_eq!(
+            Charset::Windows1251
+                .decode(vec![0xcf, 0xf0, 0xe8, 0xe2, 0xe5, 0xf2])
+                .unwrap(),
+            "\u{41f}\u{440}\u{438}\u{432}\u{435}\u{442}"
+        );
+        assert_eq!(
+            Charset::Windows1251.decode(vec![0x98, 0x88]).unwrap(),
+            "\u{98}\u{20ac}"
+        );
+        assert_eq!(
+            Charset::Windows1252.decode(vec![0x80, 0x81, 0x9f]).unwrap(),
+            "\u{20ac}\u{81}\u{178}"
+        );
+        assert_eq!(
+            Charset::Windows1250.decode(vec![0x8a, 0xb9]).unwrap(),
+            "\u{160}\u{105}"
+        );
+        assert_eq!(
+            Charset::Iso8859_2.decode(vec![0xa1, 0xb1, 0x80]).unwrap(),
+            "\u{104}\u{105}\u{80}"
+        );
+        assert_eq!(
+            Charset::Windows1256.decode(vec![0xc7, 0x81]).unwrap(),
+            "\u{627}\u{67e}"
+        );
+        assert_eq!(
+            Charset::Windows1251.url_encode("Привет 1").unwrap(),
+            "%CF%F0%E8%E2%E5%F2+1"
+        );
+        assert_eq!(Charset::Iso8859_2.url_encode("Łódź").unwrap(), "%A3%F3d%BC");
+        // ISO-8859-2 lacks the euro sign; windows-1250 has it at 0x80.
+        assert!(Charset::Iso8859_2.url_encode("\u{20ac}").is_err());
+        assert_eq!(Charset::Windows1250.url_encode("\u{20ac}").unwrap(), "%80");
+    }
+    #[test]
+    fn non_utf8_form_bodies_match_http_utility_url_encode() {
+        let fields = [
+            ("login".to_string(), "Иван Петров".to_string()),
+            ("pass/word".to_string(), "a&b=c~é".to_string()),
+        ];
+        // HttpUtility.UrlEncode: '+' for space, lowercase hex, '~' escaped.
+        assert_eq!(
+            Charset::Windows1251.form_body(&fields[..1]).unwrap(),
+            "login=%c8%e2%e0%ed+%cf%e5%f2%f0%ee%e2"
+        );
+        assert_eq!(
+            Charset::Latin1.form_body(&fields[1..]).unwrap(),
+            "pass%2fword=a%26b%3dc%7e%e9"
+        );
+        assert!(Charset::Windows1251.form_body(&fields[1..]).is_err());
+        assert_eq!(Charset::Iso8859_2.form_body(&[]).unwrap(), "");
+    }
+    #[test]
     fn latin1_labels_are_exact_and_other_labels_keep_errors() {
         for label in ["iso-8859-1", "ISO-8859-1", "Iso-8859-1"] {
             assert_eq!(
@@ -626,7 +820,10 @@ mod tests {
             "latin1",
             "ISO_8859-1",
             "iso-8859-15",
-            "windows-1252",
+            "windows-1255",
+            "windows-874",
+            "tis-620",
+            "cp1251",
             "iso8859-1",
         ] {
             assert_eq!(

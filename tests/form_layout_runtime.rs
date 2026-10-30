@@ -6,9 +6,42 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+/// A `download.selectors` source: its release link is a detail page whose selector
+/// leads to `resolved`, a same-origin torrent path or an expected magnet URI.
+#[derive(Clone, Deserialize)]
+struct Detail {
+    html: String,
+    resolved: String,
+}
 #[derive(Clone, Deserialize)]
 struct Case {
     id: String,
+    /// The search response is JSON (`response: {type: json}`): the fixture file is the
+    /// JSON body (no rows markers) and `empty_body` is the source's empty result.
+    #[serde(default)]
+    json: bool,
+    #[serde(default)]
+    empty_body: Option<String>,
+    #[serde(default)]
+    detail: Option<Detail>,
+    /// Extra markup on the login landing page after the form, e.g. the token a
+    /// `login.selectorinputs` entry copies. The copied value must also appear in
+    /// `expected_inputs` under its input name.
+    #[serde(default)]
+    landing_html: Option<String>,
+    /// A `login.cookies` seed (e.g. `JAVA=OK`) the landing request must carry.
+    #[serde(default)]
+    landing_cookie: Option<String>,
+    /// The definition searches with `method: post`; keyword and category pairs are
+    /// matched in the form body instead of the query string.
+    #[serde(default)]
+    search_post: bool,
+    /// A `download.before` request path (e.g. `/thanks.php`); the fixture answers it
+    /// with 200. `before_fields` must all be present in its POST body.
+    #[serde(default)]
+    before_path: Option<String>,
+    #[serde(default)]
+    before_fields: BTreeMap<String, String>,
     #[serde(default)]
     direct_post: bool,
     sha256: String,
@@ -43,8 +76,33 @@ struct Case {
     normal_markup: String,
     free_download: f64,
     free_upload: f64,
+    /// Upload factor of a non-promoted row when the source declares one (default 1).
+    normal_upload: Option<f64>,
     normal_download: Option<f64>,
 }
+/// Independently reviewed admission batches; each file uses the same `Case` schema.
+const FORM_BATCHES: [&str; 20] = [
+    include_str!("fixtures/form-batches/batch1.json"),
+    include_str!("fixtures/form-batches/batch2.json"),
+    include_str!("fixtures/form-batches/batch3.json"),
+    include_str!("fixtures/form-batches/batch4.json"),
+    include_str!("fixtures/form-batches/batch5.json"),
+    include_str!("fixtures/form-batches/batch6.json"),
+    include_str!("fixtures/form-batches/batch7.json"),
+    include_str!("fixtures/form-batches/batch8.json"),
+    include_str!("fixtures/form-batches/batch9.json"),
+    include_str!("fixtures/form-batches/batch10.json"),
+    include_str!("fixtures/form-batches/batch11.json"),
+    include_str!("fixtures/form-batches/batch12.json"),
+    include_str!("fixtures/form-batches/batch13.json"),
+    include_str!("fixtures/form-batches/batch14.json"),
+    include_str!("fixtures/form-batches/batch15.json"),
+    include_str!("fixtures/form-batches/batch16.json"),
+    include_str!("fixtures/form-batches/batch17.json"),
+    include_str!("fixtures/form-batches/batch18.json"),
+    include_str!("fixtures/form-batches/batch19.json"),
+    include_str!("fixtures/form-batches/batch20.json"),
+];
 fn cases() -> Vec<Case> {
     let mut cases: Vec<Case> =
         serde_json::from_str(include_str!("fixtures/form-layouts/cases.json")).unwrap();
@@ -52,6 +110,9 @@ fn cases() -> Vec<Case> {
         serde_json::from_str::<Vec<Case>>(include_str!("fixtures/post-layouts/cases.json"))
             .unwrap(),
     );
+    for batch in FORM_BATCHES {
+        cases.extend(serde_json::from_str::<Vec<Case>>(batch).unwrap());
+    }
     cases
 }
 fn credentials(c: &Case, user: &str, password: &str) -> serde_json::Value {
@@ -86,6 +147,12 @@ fn page(c: &Case, free: bool) -> String {
             &c.normal_markup
         },
     )
+}
+fn empty_for(c: &Case, page: &str) -> String {
+    match (&c.empty_body, c.json) {
+        (Some(body), true) => body.clone(),
+        _ => empty(page),
+    }
 }
 fn empty(page: &str) -> String {
     let (before, rest) = page.split_once("<!-- rows:start -->").unwrap();
@@ -139,7 +206,14 @@ fn check_layout(c: Case) {
     let requests = p.build_requests(&ctx).unwrap();
     assert_eq!(requests.len(), c.request_count, "{}", c.id);
     let request = &requests[0];
-    request_matches(&c, &url::Url::parse(&request.url).unwrap());
+    let mut url = url::Url::parse(&request.url).unwrap();
+    if c.search_post {
+        assert_eq!(request.method, "POST", "{}", c.id);
+        let body = request.body.clone().unwrap_or_default();
+        let query = url.query().map(|q| format!("{q}&{body}")).unwrap_or(body);
+        url.set_query(Some(&query));
+    }
+    request_matches(&c, &url);
     if let Some(error_html) = &c.search_error_html {
         let error = p
             .extract(request, &(page(&c, false) + error_html), &ctx)
@@ -204,26 +278,34 @@ fn check_layout(c: Case) {
                 .get("uploadvolumefactor")
                 .map(|v| v.parse::<f64>().unwrap())
                 .unwrap_or(1.0),
-            if free { c.free_upload } else { 1.0 },
+            if free {
+                c.free_upload
+            } else {
+                c.normal_upload.unwrap_or(1.0)
+            },
             "{}",
             c.id
         );
         assert!(
-            p.extract(request, &empty(&body), &ctx).unwrap().is_empty(),
+            p.extract(request, &empty_for(&c, &body), &ctx)
+                .unwrap()
+                .is_empty(),
             "{}",
             c.id
         );
-        let no_title = p.extract(
-            request,
-            &body
-                .replace("Fixture Release", "")
-                .replace("Fixture%20Release", ""),
-            &ctx,
-        );
+        let mut untitled = body
+            .replace("Fixture Release", "")
+            .replace("Fixture%20Release", "");
+        if let Some(title) = &c.expected_title {
+            untitled = untitled.replace(title.as_str(), "");
+        }
+        let no_title = p.extract(request, &untitled, &ctx);
         if let Some(fallback) = &c.missing_title {
             assert_eq!(no_title.unwrap()[0].title, *fallback, "{}", c.id);
-        } else {
-            assert!(no_title.is_err(), "{}: empty title accepted", c.id);
+        } else if let Ok(rows) = no_title {
+            // An error, or a row a declared row filter (andmatch) drops, both keep an
+            // untitled release out of results.
+            assert!(rows.is_empty(), "{}: empty title accepted", c.id);
         }
     }
 }
@@ -357,22 +439,17 @@ fn additional_form_layouts_preserve_source_specific_filters_and_row_merges() {
 #[test]
 fn form_admission_matches_the_fixture_manifest_and_keeps_secrets_private() {
     let cases = cases();
-    assert_eq!(
-        cases
+    let ids = |post: bool| {
+        let mut ids: Vec<_> = cases
             .iter()
-            .filter(|c| !c.direct_post)
+            .filter(|c| c.direct_post == post)
             .map(|c| c.id.as_str())
-            .collect::<Vec<_>>(),
-        builtin::FORM_IDS
-    );
-    assert_eq!(
-        cases
-            .iter()
-            .filter(|c| c.direct_post)
-            .map(|c| c.id.as_str())
-            .collect::<Vec<_>>(),
-        builtin::POST_IDS
-    );
+            .collect();
+        ids.sort_unstable();
+        ids
+    };
+    assert_eq!(ids(false), builtin::FORM_IDS);
+    assert_eq!(ids(true), builtin::POST_IDS);
     for c in cases {
         let root = root(&c);
         if c.direct_post {
@@ -447,14 +524,27 @@ fn form_admission_matches_the_fixture_manifest_and_keeps_secrets_private() {
 #[tokio::test]
 async fn every_form_provider_passes_login_cache_download_expiry_edit_and_restart() {
     use futures_util::{stream, StreamExt};
-    stream::iter(cases())
-        .for_each_concurrent(8, |case| async move {
+    // Every case runs to completion; failures are collected so one run lists them all.
+    let failed: Vec<String> = stream::iter(cases())
+        .map(|case| async move {
             let name = case.id.clone();
-            tokio::time::timeout(std::time::Duration::from_secs(300), lifecycle(case))
-                .await
-                .unwrap_or_else(|_| panic!("{name}: lifecycle deadline"));
+            let run = tokio::spawn(tokio::time::timeout(
+                std::time::Duration::from_secs(300),
+                lifecycle(case),
+            ));
+            match run.await {
+                Ok(Ok(())) => None,
+                Ok(Err(_)) => Some(format!("{name} (lifecycle deadline)")),
+                Err(_) => Some(name),
+            }
         })
+        // Pinned delays of up to 5 s make some lifecycles minutes long; more parallel
+        // cases on a shared host push their searches past the request deadline.
+        .buffer_unordered(4)
+        .filter_map(|r| async move { r })
+        .collect()
         .await;
+    assert!(failed.is_empty(), "Failed lifecycles: {failed:?}");
 }
 async fn lifecycle(c: Case) {
     use axum::{
@@ -465,12 +555,30 @@ async fn lifecycle(c: Case) {
         routing::any,
         Router,
     };
+    use rackett::cardigann_exec::request::Charset;
     use rackett::{
         engine::{Download, Engine},
         models::Indexer,
     };
     use std::sync::{Arc, Mutex};
-    const USER: &str = "fixture-user";
+    // Non-UTF-8 sources log in with text native to their code page, proving that the
+    // credential body is encoded with the definition charset rather than UTF-8.
+    let charset = Plan::compile(&root(&c)).unwrap().charset();
+    let user: &'static str = match charset {
+        Charset::Utf8 => "fixture-user",
+        Charset::Latin1 | Charset::Windows1252 => "fixture-usér",
+        Charset::Windows1251 => "fixture-юзер",
+        Charset::Windows1250 | Charset::Iso8859_2 => "fixture-użytkownik",
+        Charset::Windows1256 => "fixture-مستخدم",
+    };
+    if charset != Charset::Utf8 {
+        assert!(
+            c.expected_title.as_deref().is_some_and(|t| !t.is_ascii()),
+            "{}: a {} fixture needs a native non-ASCII expected_title",
+            c.id,
+            charset.label()
+        );
+    }
     const PASS: &str = "fixture-password";
     const CHANGED: &str = "fixture-changed-password";
     const TORRENT: &[u8] = b"d4:infod4:name7:fixture6:lengthi42eee";
@@ -487,9 +595,67 @@ async fn lifecycle(c: Case) {
         case: Case,
         body: String,
         base: String,
+        charset: Charset,
+        user: &'static str,
         state: Mutex<StateData>,
     }
     impl Fixture {
+        /// Serves HTML in the definition charset. Non-UTF-8 pages deliberately claim
+        /// UTF-8 in the header: the pinned WebResult uses the definition encoding.
+        fn html(&self, page: impl Into<String>) -> axum::response::Response {
+            let page = page.into();
+            if self.charset == Charset::Utf8 {
+                return Html(page).into_response();
+            }
+            let bytes = self.charset.encode(&page).unwrap_or_else(|| {
+                panic!(
+                    "{}: fixture text outside {}",
+                    self.case.id,
+                    self.charset.label()
+                )
+            });
+            ([("content-type", "text/html; charset=utf-8")], bytes).into_response()
+        }
+        /// Parses a form body, decoding percent-escaped bytes with the definition charset.
+        fn form(&self, body: &[u8]) -> BTreeMap<String, String> {
+            if self.charset == Charset::Utf8 {
+                return url::form_urlencoded::parse(body).into_owned().collect();
+            }
+            let text = std::str::from_utf8(body).expect("percent-encoded body is ASCII");
+            // HttpUtility.UrlEncode emits lowercase hex escapes.
+            for escape in text.split('%').skip(1) {
+                assert!(
+                    escape.len() >= 2
+                        && escape[..2]
+                            .bytes()
+                            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+                    "{}: non-HttpUtility escape in {text}",
+                    self.case.id
+                );
+            }
+            let decode = |part: &str| {
+                let raw = part.replace('+', " ");
+                let mut bytes = Vec::new();
+                let mut i = 0;
+                while i < raw.len() {
+                    if raw.as_bytes()[i] == b'%' {
+                        bytes.push(u8::from_str_radix(&raw[i + 1..i + 3], 16).unwrap());
+                        i += 3;
+                    } else {
+                        bytes.push(raw.as_bytes()[i]);
+                        i += 1;
+                    }
+                }
+                self.charset.decode(bytes).unwrap()
+            };
+            text.split('&')
+                .filter(|pair| !pair.is_empty())
+                .map(|pair| {
+                    let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                    (decode(k), decode(v))
+                })
+                .collect()
+        }
         fn take(&self) -> Vec<(String, String)> {
             std::mem::take(&mut self.state.lock().unwrap().hits)
         }
@@ -534,13 +700,37 @@ async fn lifecycle(c: Case) {
                     }
                 )
             });
-            let html=format!("<form {attributes}><input type=hidden name=csrf value='fixture-csrf'><input name=username value=obsolete><input type=checkbox name=ignored value=no><input type=hidden name=hidden value=kept></form>");
-            let mut r = Html(html).into_response();
+            if let Some(seed) = &f.case.landing_cookie {
+                assert!(
+                    cookie.split("; ").any(|p| p == seed),
+                    "{}: login cookie seed missing",
+                    f.case.id
+                );
+            }
+            let html=format!("<form {attributes}><input type=hidden name=csrf value='fixture-csrf'><input name=username value=obsolete><input type=checkbox name=ignored value=no><input type=hidden name=hidden value=kept></form>{}", f.case.landing_html.as_deref().unwrap_or(""));
+            let mut r = f.html(html);
             r.headers_mut()
                 .insert("set-cookie", "csrf=fixture-csrf; Path=/".parse().unwrap());
             return r;
         }
-        if method == Method::POST {
+        if f.case.before_path.as_deref() == Some(uri.path()) {
+            if method == Method::POST {
+                let posted = f.form(&body);
+                for (k, v) in &f.case.before_fields {
+                    assert_eq!(posted.get(k), Some(v), "{}: before field {k}", f.case.id);
+                }
+            }
+            return f.html("<p>Thanks recorded</p>");
+        }
+        let search_post =
+            f.case.search_post && method == Method::POST && uri.path() == f.case.search_path;
+        if search_post {
+            // Record the body as query pairs so search matching sees one request shape.
+            let hit = state.hits.last_mut().unwrap();
+            hit.0.push(if hit.0.contains('?') { '&' } else { '?' });
+            hit.0.push_str(std::str::from_utf8(&body).unwrap());
+        }
+        if method == Method::POST && !search_post {
             assert_eq!(
                 uri.to_string(),
                 f.case.submit_path,
@@ -558,8 +748,7 @@ async fn lifecycle(c: Case) {
                 f.case.id
             );
             assert_eq!(h["content-type"], "application/x-www-form-urlencoded");
-            let posted: BTreeMap<String, String> =
-                url::form_urlencoded::parse(&body).into_owned().collect();
+            let posted = f.form(&body);
             if f.case.direct_post {
                 assert!(
                     cookie.is_empty(),
@@ -588,7 +777,7 @@ async fn lifecycle(c: Case) {
                 .iter()
                 .map(|(k, v)| {
                     let v = match v.as_str() {
-                        "{{ .Config.username }}" => USER.into(),
+                        "{{ .Config.username }}" => f.user.into(),
                         "{{ .Config.password }}" => state.password.clone(),
                         "{{ .Config.sitelink }}" => f.base.clone(),
                         "{{ .Config.passid }}" => "0".into(),
@@ -615,10 +804,10 @@ async fn lifecycle(c: Case) {
             state.posted.push(posted);
             state.posts += 1;
             if !valid || state.mode == 5 {
-                return Html(f.case.error_html.clone()).into_response();
+                return f.html(f.case.error_html.clone());
             }
             state.token = format!("session=fixture-form-{}", state.posts);
-            let mut r = Html("<p>Submitted</p>").into_response();
+            let mut r = f.html("<p>Submitted</p>");
             r.headers_mut().insert(
                 "set-cookie",
                 format!("{}; Path=/; HttpOnly", state.token)
@@ -627,17 +816,29 @@ async fn lifecycle(c: Case) {
             );
             return r;
         }
-        assert_eq!(method, Method::GET);
+        assert!(
+            method == Method::GET || search_post,
+            "{}: method",
+            f.case.id
+        );
         if state.token.is_empty() || !cookie.split("; ").any(|p| p == state.token) {
             return StatusCode::UNAUTHORIZED.into_response();
         }
-        if uri.to_string() == f.case.download_path {
+        if let Some(detail) = &f.case.detail {
+            if uri.to_string() == f.case.download_path {
+                return f.html(detail.html.clone());
+            }
+            if uri.to_string() == detail.resolved {
+                return TORRENT.into_response();
+            }
+        } else if uri.to_string() == f.case.download_path {
             return TORRENT.into_response();
         }
         let search = uri.path() == f.case.search_path
-            && uri.query().is_some_and(|q| {
-                url::form_urlencoded::parse(q.as_bytes()).any(|(key, _)| key == f.case.keyword)
-            });
+            && (search_post
+                || uri.query().is_some_and(|q| {
+                    url::form_urlencoded::parse(q.as_bytes()).any(|(key, _)| key == f.case.keyword)
+                }));
         if !search {
             assert_eq!(
                 uri.to_string(),
@@ -648,7 +849,7 @@ async fn lifecycle(c: Case) {
         }
         if search {
             if state.mode == 2 {
-                return Html("<form>Sign in fixture-private-error</form>").into_response();
+                return f.html("<form>Sign in fixture-private-error</form>");
             }
             if state.mode == 4 {
                 return (StatusCode::SERVICE_UNAVAILABLE, "fixture-private-error").into_response();
@@ -664,7 +865,7 @@ async fn lifecycle(c: Case) {
             }
         }
         let page = if search && state.mode == 1 {
-            empty(&f.body)
+            empty_for(&f.case, &f.body)
         } else {
             f.body.clone()
         };
@@ -673,7 +874,11 @@ async fn lifecycle(c: Case) {
         } else {
             page
         };
-        let mut r = Html(page).into_response();
+        let mut r = if search && f.case.json && [0, 1].contains(&state.mode) {
+            ([("content-type", "application/json")], page).into_response()
+        } else {
+            f.html(page)
+        };
         if search && state.mode == 3 {
             r.headers_mut()
                 .insert("cf-mitigated", "challenge".parse().unwrap());
@@ -694,6 +899,8 @@ async fn lifecycle(c: Case) {
         case: c.clone(),
         body: page(&c, true),
         base: base.clone(),
+        charset,
+        user,
         state: Mutex::new(StateData {
             mode: 0,
             token: String::new(),
@@ -711,12 +918,16 @@ async fn lifecycle(c: Case) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.json");
     let engine = Arc::new(Engine::new(path.clone()).await.unwrap());
-    if let Some(seconds) = c.timeout_seconds {
-        engine
-            .update_settings(json!({"request_timeout_seconds": seconds}))
-            .await
-            .unwrap();
-    }
+    // Pinned request delays of 2-3 s make a first authenticated search five spaced
+    // requests. The default 20 s deadline is not under test here and is too tight
+    // when eight lifecycles share a loaded host, so give each case at least 60 s.
+    // A case's timeout_seconds records the minimum its source needs in production.
+    engine
+        .update_settings(
+            json!({"request_timeout_seconds": c.timeout_seconds.unwrap_or(60).max(60)}),
+        )
+        .await
+        .unwrap();
     let i = engine
         .put_indexer(
             Indexer {
@@ -724,16 +935,21 @@ async fn lifecycle(c: Case) {
                 name: c.id.clone(),
                 url: base.clone(),
                 request_delay_ms: 0,
-                definition: Some(json!({"builtin_id":c.id,"settings":credentials(&c, USER, PASS)})),
+                definition: Some(json!({"builtin_id":c.id,"settings":credentials(&c, user, PASS)})),
                 ..Default::default()
             },
             false,
         )
         .await
         .unwrap_or_else(|e| panic!("{} create: {e}", c.id));
-    assert!(fixture.take().is_empty());
+    let early = fixture.take();
+    assert!(
+        early.is_empty(),
+        "{}: requests before search {early:?}",
+        c.id
+    );
     let public = builtin::public_definition(&i).unwrap().to_string();
-    assert!(!public.contains(USER) && !public.contains(PASS));
+    assert!(!public.contains(user) && !public.contains(PASS));
     for value in c.configured_settings.values().filter(|v| !v.is_empty()) {
         assert!(
             !public.contains(value),
@@ -794,20 +1010,38 @@ async fn lifecycle(c: Case) {
     assert!(shown.results[0]
         .link
         .starts_with("http://127.0.0.1:9117/dl/"));
-    for secret in [USER, PASS, "fixture-form", "fixture-csrf"] {
+    for secret in [user, PASS, "fixture-form", "fixture-csrf"] {
         assert!(!serde_json::to_string(&shown).unwrap().contains(secret));
     }
     assert_eq!(
         engine
             .download(&i.id, r.source_epoch, &r.link)
             .await
-            .unwrap(),
-        Download::Torrent {
-            bytes: TORRENT.to_vec(),
-            content_type: "application/x-bittorrent".into()
+            .unwrap_or_else(|e| panic!("{} download: {e}", c.id)),
+        match c.detail.as_ref().map(|d| d.resolved.as_str()) {
+            Some(magnet) if magnet.starts_with("magnet:") => Download::Magnet(magnet.into()),
+            _ => Download::Torrent {
+                bytes: TORRENT.to_vec(),
+                content_type: "application/x-bittorrent".into(),
+            },
         }
     );
-    assert!(fixture.take().iter().all(|(_, c)| c.contains("-renewed")));
+    let hits = fixture.take();
+    assert!(hits.iter().all(|(_, c)| c.contains("-renewed")));
+    if let Some(before) = &c.before_path {
+        assert!(
+            hits.iter()
+                .any(|(u, _)| u.split('?').next() == Some(before.as_str())),
+            "{}: before request not sent",
+            c.id
+        );
+    }
+    if let Some(detail) = &c.detail {
+        assert!(hits.iter().any(|(u, _)| *u == c.download_path), "{}", c.id);
+        if !detail.resolved.starts_with("magnet:") {
+            assert!(hits.iter().any(|(u, _)| *u == detail.resolved), "{}", c.id);
+        }
+    }
     assert!(engine
         .download(
             &i.id,
@@ -906,7 +1140,7 @@ async fn lifecycle(c: Case) {
             c.id
         );
         let text = serde_json::to_string(&result).unwrap();
-        for secret in [USER, PASS, CHANGED, "fixture-private-error"] {
+        for secret in [user, PASS, CHANGED, "fixture-private-error"] {
             assert!(!text.contains(secret));
         }
         assert!(!fixture.take().is_empty());
@@ -937,7 +1171,10 @@ async fn lifecycle(c: Case) {
     assert!(!serde_json::to_string(&failed)
         .unwrap()
         .contains("fixture-private-error"));
-    server.abort();
+    // The server stays bound until the test binary exits. A dropped engine's background
+    // stale refresh can outlive the case; aborting here would free the port for a later
+    // case's fixture, which would then receive that stray traffic.
+    drop(server);
 }
 
 #[test]

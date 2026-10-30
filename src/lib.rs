@@ -6,6 +6,7 @@ pub mod cardigann;
 pub mod cardigann_exec;
 pub mod engine;
 pub mod models;
+pub mod pinned_tls;
 pub mod protocol;
 pub mod store;
 pub mod torrent;

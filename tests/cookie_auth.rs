@@ -34,11 +34,15 @@ async fn serve(router: Router) -> (String, tokio::task::JoinHandle<()>) {
 #[test]
 fn pinned_complete_schema_and_only_reviewed_cookie_preset_is_admitted() {
     assert!(plan(SOURCE).is_ok());
+    // Modelled single-byte code pages are accepted; see docs/legacy-encodings.md.
+    for label in ["ISO-8859-1", "iso-8859-1", "windows-1251", "ISO-8859-2"] {
+        assert!(plan(&SOURCE.replace("encoding: UTF-8", &format!("encoding: {label}"))).is_ok());
+    }
     for yaml in [
         SOURCE.replace("encoding: UTF-8", "encoding: [windows-1252]"),
         SOURCE.replace("encoding: UTF-8", "encoding: {name: windows-1252}"),
-        SOURCE.replace("encoding: UTF-8", "encoding: ISO-8859-1"),
-        SOURCE.replace("encoding: UTF-8", "encoding: iso-8859-1"),
+        SOURCE.replace("encoding: UTF-8", "encoding: ISO-8859-15"),
+        SOURCE.replace("encoding: UTF-8", "encoding: windows-874"),
         SOURCE.replace("method: cookie", "method: form"),
         SOURCE.replace("method: cookie", "method: post"),
         SOURCE.replace("method: cookie", "method: get"),
@@ -53,7 +57,7 @@ fn pinned_complete_schema_and_only_reviewed_cookie_preset_is_admitted() {
         format!("{SOURCE}\nfollowredirect: true\n"),
         format!("{SOURCE}\nlogin: {{method: form}}\n"),
         format!("{SOURCE}\nsearch: {{headers: {{X-Test: abc}}}}\n"),
-        format!("{SOURCE}\nencoding: windows-1252\n"),
+        format!("{SOURCE}\nencoding: windows-1255\n"),
         format!("{SOURCE}\ndownload: {{headers: {{X-Test: abc}}}}\n"),
         SOURCE.replace("  - name: cookie", "  - name: cookie\n    name: password"),
         SOURCE.replace("    type: text", "    type: text\n    type: info"),
@@ -615,7 +619,9 @@ fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it
         );
         checked.push(*id);
     }
-    assert_eq!(checked.len(), 101);
+    // 105 after single-byte encodings (bithumen, newheaven, trezzorcookie,
+    // xwtorrents2fa); 109 after form POST searches and JSON/XML session responses.
+    assert_eq!(checked.len(), 109);
     for id in [
         "animebybelka",
         "hdtime",
@@ -637,21 +643,29 @@ fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it
 
 #[test]
 fn cookie_transport_rejects_search_shapes_it_cannot_execute() {
+    // Form POST searches are executable: the request plan encodes their body.
+    // Form POST searches and JSON/XML responses are executable (session-search-shapes.md).
     for yaml in [
         SOURCE.replace("search:\n", "search:\n  method: post\n"),
-        SOURCE.replace("search:\n", "search:\n  response: {type: json}\n"),
         SOURCE.replace(
             "    - path: torrents.php",
             "    - path: torrents.php\n      method: post",
         ),
+        SOURCE.replace("search:\n", "search:\n  response: {type: json}\n"),
         SOURCE.replace(
             "    - path: torrents.php",
-            "    - path: torrents.php\n      response: {type: json}",
+            "    - path: torrents.php\n      response: {type: xml}",
         ),
+    ] {
+        assert!(plan(&yaml).is_ok());
+    }
+    for yaml in [
+        SOURCE.replace("search:\n", "search:\n  method: put\n"),
+        SOURCE.replace("search:\n", "search:\n  response: {type: csv}\n"),
     ] {
         assert_eq!(
             plan(&yaml).err().unwrap().to_string(),
-            "Cookie search requires plain HTML GET paths"
+            "Cookie search requires plain HTML GET or form POST paths"
         );
     }
 }

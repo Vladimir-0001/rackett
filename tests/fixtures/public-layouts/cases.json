@@ -403,5 +403,45 @@
     "title": "Fixture Release",
     "json": false,
     "container": null
+  },
+  {
+    "id": "bigfangroup",
+    "sha256": "b5f6b1e43736f22d098ecc3c0c686a99af393908e3b140b8c4c3ff48feae9c0a",
+    "category": 2000,
+    "request_count": 1,
+    "search_path": "/browse.php",
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "seeders": 11,
+    "peers": 15,
+    "published": "2026-10-01T12:34:00Z",
+    "delay_ms": 0,
+    "title": "Fixture Тестовый Релиз",
+    "json": false,
+    "container": "tbody#highlighted"
+  },
+  {
+    "id": "megapeer",
+    "sha256": "88fcd486dd42ea2884334aa2dfd67d6c5bc661888a00947ab5b39ff6e5ca1735",
+    "category": 100169,
+    "request_count": 1,
+    "search_path": "/browse.php",
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "/download/42.torrent",
+    "details_path": "/torrent/42",
+    "seeders": 11,
+    "peers": 15,
+    "published": "2026-09-30T21:00:00Z",
+    "delay_ms": 0,
+    "title": "Fixture Тестовый Релиз",
+    "json": false,
+    "container": "table"
   }
 ]

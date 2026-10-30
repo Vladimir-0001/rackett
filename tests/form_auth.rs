@@ -356,7 +356,7 @@ fn compiler_bounds_and_credential_types_fail_before_network() {
         );
     }
     for bad in [
-        YAML.replace("UTF-8", "ISO-8859-1"),
+        YAML.replace("UTF-8", "ISO-8859-15"),
         YAML.replace("UTF-8", "[UTF-8]"),
         YAML.replace("method: form", "method: cookie"),
         YAML.replace("method: form", "method: [form]"),
@@ -371,7 +371,7 @@ fn compiler_bounds_and_credential_types_fail_before_network() {
         YAML.replace("type: text", "type: checkbox"),
         YAML.replace(
             "paths: [{path: search}]",
-            "paths: [{path: search, method: post}]",
+            "paths: [{path: search, method: put}]",
         ),
         YAML.replace(
             "paths: [{path: search}]",
@@ -379,7 +379,7 @@ fn compiler_bounds_and_credential_types_fail_before_network() {
         ),
         YAML.replace(
             "paths: [{path: search}]",
-            "paths: [{path: search, response: {type: json}}]",
+            "paths: [{path: search, response: {type: csv}}]",
         ),
         YAML.replace(
             "paths: [{path: search}]",
@@ -749,11 +749,22 @@ fn legacy_single_search_path_has_the_same_bounded_html_get_gate() {
     let original = credential_post_yaml();
     let single = original.replace("paths: [{path: search}]", "path: search");
     assert!(plan(&single).is_ok());
+    // Form POST searches and JSON/XML responses are executable (session-search-shapes.md).
+    for replacement in [
+        "path: search\n  method: post",
+        "path: search\n  response: {type: json}",
+        "path: search\n  response: {type: xml}",
+    ] {
+        assert!(
+            plan(&original.replace("paths: [{path: search}]", replacement)).is_ok(),
+            "{replacement}"
+        );
+    }
     for replacement in [
         "path: search\n  paths: [{path: search}]",
-        "path: search\n  method: post",
+        "path: search\n  method: put",
         "path: search\n  method: [get]",
-        "path: search\n  response: {type: json}",
+        "path: search\n  response: {type: csv}",
         "path: search\n  headers: {Authorization: secret}",
         "path: search\n  followredirect: true",
         "path: [search]",

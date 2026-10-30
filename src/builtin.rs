@@ -15,6 +15,7 @@ pub const PROVENANCE: &str =
     "Jackett/Jackett fe8876d21b93dfda84eb12bd24e1c72e56fb8736; vendor/jackett/SHA256SUMS";
 pub const READY_IDS: &[&str] = &[
     "0dayfiles-api",
+    "0daykiev",
     "1337x",
     "13city",
     "13city-api",
@@ -22,6 +23,7 @@ pub const READY_IDS: &[&str] = &[
     "1ptbar-api",
     "3dvault-api",
     "4thd",
+    "52pt",
     "abtorrents",
     "acgrip",
     "agsvpt",
@@ -29,6 +31,7 @@ pub const READY_IDS: &[&str] = &[
     "aither-api",
     "alingpt",
     "alingpt-api",
+    "anibt",
     "animebybelka",
     "animeworld-api",
     "anirena",
@@ -43,20 +46,26 @@ pub const READY_IDS: &[&str] = &[
     "baozipt-api",
     "beload",
     "best-torrents",
+    "bestcore",
     "bibliotik",
     "bigcore",
+    "bigfangroup",
     "bitded",
     "bitgamer",
+    "bithumen",
     "bitporn",
+    "bitturk",
     "bluraytracker",
     "blutopia-api",
     "bootytape",
     "btetree",
+    "btschool",
     "bwtorrents",
     "byrbt",
     "cangbaoge",
     "capybarabr",
     "carpathians",
+    "carpt",
     "cathoderaytube",
     "ceskeforum",
     "cgpeers",
@@ -64,25 +73,30 @@ pub const READY_IDS: &[&str] = &[
     "cinematik",
     "clearjav-api",
     "concertos",
+    "crabpt",
     "crabpt-api",
     "crnaberza",
     "crnaberza2fa",
     "crt2fa",
     "cspt",
+    "cyanbug",
     "danishbits-api",
     "darkpeers",
     "datascene-api",
     "daxiangjiao",
     "daxiangjiao-api",
+    "deildu",
     "depthstudio",
     "depthstudio-api",
     "diablotorrent",
+    "discfan",
     "discfan-api",
     "dmhy",
     "docspedia",
     "dreadvault-api",
     "dreamingtree",
     "dubhe",
+    "ehentai",
     "empornium",
     "empornium2fa",
     "emuwarez",
@@ -99,8 +113,11 @@ pub const READY_IDS: &[&str] = &[
     "freefarm-api",
     "funzone-api",
     "futuretorrent",
+    "gay-torrents",
     "ggpt",
     "gigatorrents",
+    "haidan",
+    "haitang",
     "happyfappy",
     "happyfappy2fa",
     "hd-club",
@@ -108,6 +125,7 @@ pub const READY_IDS: &[&str] = &[
     "hdbao",
     "hdbao-api",
     "hddolby",
+    "hdfans",
     "hdhome",
     "hdkylin",
     "hdroute",
@@ -115,6 +133,7 @@ pub const READY_IDS: &[&str] = &[
     "hdspacecookie",
     "hdtime",
     "hdtorrentsit",
+    "hdu",
     "hdvideo-api",
     "hdzero",
     "hellenic-hd-api",
@@ -122,6 +141,7 @@ pub const READY_IDS: &[&str] = &[
     "hhd-api",
     "houseofdevil",
     "hqmusic",
+    "hudbt",
     "huntorrent",
     "hxpt",
     "indietorrents",
@@ -130,11 +150,13 @@ pub const READY_IDS: &[&str] = &[
     "internetarchive",
     "itatorrents",
     "jme-reunit3d-api",
+    "jpopsuki",
     "jptv4us-api",
     "kamept",
     "keepfriends",
     "kickasstorrents-to",
     "kickasstorrents-ws",
+    "kinorun",
     "korsar",
     "kufei",
     "kufei-api",
@@ -145,10 +167,13 @@ pub const READY_IDS: &[&str] = &[
     "lastdigitalunderground",
     "lat-team-api",
     "learnflakes",
+    "lemonhd-net",
     "lemonhd-net-api",
+    "libranet",
     "linkomanija",
     "linuxtracker",
     "locadora",
+    "longpt",
     "longpt-api",
     "losslessclub",
     "lp-bits",
@@ -156,11 +181,13 @@ pub const READY_IDS: &[&str] = &[
     "luckpt",
     "luminarr-api",
     "madsrevolution",
+    "magico",
     "majomparade",
     "malayabits-api",
     "march",
     "matrix",
     "mdan",
+    "megapeer",
     "mesevilag",
     "metalguru",
     "midnightscene",
@@ -178,14 +205,18 @@ pub const READY_IDS: &[&str] = &[
     "muxuege",
     "mvgroupforum",
     "mvgroupmain",
+    "mypornclub",
     "nanyangpt",
+    "nekobt",
     "nethd",
     "new-team",
     "newstudio",
+    "newstudiol",
     "nicept",
     "nicept-api",
     "nipponsei",
     "nirvana",
+    "njtupt",
     "nobs",
     "nordicbytes",
     "nordicquality",
@@ -196,12 +227,17 @@ pub const READY_IDS: &[&str] = &[
     "opencd",
     "opensharing",
     "order66",
+    "oshenpt",
     "oshenpt-api",
     "ourbits",
     "p2pbg",
     "panda",
+    "pandacd",
     "parabellumhd-api",
+    "party-tracker",
+    "pctorrent",
     "peergarden",
+    "peersfm",
     "phoenixproject",
     "phoenixpt",
     "phoenixpt-api",
@@ -209,15 +245,21 @@ pub const READY_IDS: &[&str] = &[
     "pixelcove",
     "pixelcove2fa",
     "playletpt",
+    "plugintorrent",
     "podzemlje",
     "pornorip",
+    "pornotorrent",
     "portugas-api",
     "proaudiotorrents",
+    "ptcafe",
     "ptcafe-api",
     "ptcc",
     "pterclub",
     "ptfans",
+    "ptgtk",
     "ptgtk-api",
+    "ptitzmx",
+    "ptlgs",
     "ptskit",
     "ptskit-api",
     "pttey",
@@ -233,14 +275,18 @@ pub const READY_IDS: &[&str] = &[
     "r3vwtf",
     "racing4everyone-api",
     "racing4us",
+    "railgunpt",
     "rastastugan-api",
+    "redstartorrent",
     "reelflix-api",
     "retromoviesclub-api",
+    "rintor",
     "riperam",
     "rockethd",
     "rutracker-ru",
     "samaritano",
     "sapibr",
+    "sbpt",
     "scenerush",
     "seedcore-api",
     "seedfile",
@@ -254,6 +300,7 @@ pub const READY_IDS: &[&str] = &[
     "skipthecommercials-api",
     "sktorrent-org",
     "snowpt",
+    "soulvoice",
     "soulvoice-api",
     "sportscult",
     "springsunday",
@@ -263,12 +310,14 @@ pub const READY_IDS: &[&str] = &[
     "theempire",
     "thekitchen",
     "theleachzone-api",
+    "themixingbowl",
     "thenewfun",
     "theoccult",
     "therarbg",
     "thevault",
     "thorhub-api",
     "tjupt",
+    "tlfbits",
     "tokyotosho",
     "torrent-pirat",
     "torrentbyte",
@@ -280,7 +329,11 @@ pub const READY_IDS: &[&str] = &[
     "torrentmasters",
     "totheglory",
     "totheglory2fa",
+    "traht",
     "trancetraffic",
+    "trezzor",
+    "trezzorcookie",
+    "tribalmixes",
     "turkseed-api",
     "turktorrent",
     "u3c3",
@@ -294,8 +347,11 @@ pub const READY_IDS: &[&str] = &[
     "vc-lib",
     "vc-lib-api",
     "vietmediaf",
+    "whiteangel",
+    "wintersakura",
     "xdy",
     "xdy-api",
+    "xingtan",
     "xingwan",
     "xingyung",
     "xloli",
@@ -303,6 +359,8 @@ pub const READY_IDS: &[&str] = &[
     "xtremebytes",
     "xwtclassics",
     "xwtclassics2fa",
+    "xwtorrents",
+    "xwtorrents2fa",
     "xxxtor",
     "yuscene-api",
     "zamundalife",
@@ -329,6 +387,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "baozipt",
     "beload",
     "bigcore",
+    "bithumen",
     "byrbt",
     "cangbaoge",
     "cgpeers",
@@ -406,6 +465,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "torrenting",
     "torrentmasters",
     "totheglory2fa",
+    "trezzorcookie",
     "turktorrent",
     "ubits",
     "ultrahd",
@@ -415,6 +475,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "xingyung",
     "xloli",
     "xwtclassics2fa",
+    "xwtorrents2fa",
     "zmpt",
     "zrpt",
 ];
@@ -471,37 +532,90 @@ pub(crate) fn cookie_session(
 /// Form-login presets with source-pinned engine/search/download/restart fixtures.
 pub const FORM_IDS: &[&str] = &[
     "4thd",
+    "52pt",
     "aussierules",
+    "bitturk",
     "bluraytracker",
+    "btschool",
+    "carpt",
     "cathoderaytube",
+    "crabpt",
     "crnaberza",
+    "cyanbug",
     "diablotorrent",
+    "discfan",
     "dreamingtree",
     "empornium",
     "femdomcult",
     "gigatorrents",
+    "haidan",
+    "haitang",
     "happyfappy",
+    "hdfans",
+    "hdu",
+    "hudbt",
     "indietorrents",
     "kufirc",
+    "lemonhd-net",
+    "longpt",
+    "magico",
     "mesevilag",
     "mojblink",
     "mousebits",
     "mvgroupforum",
     "mvgroupmain",
     "new-team",
+    "njtupt",
+    "oshenpt",
     "p2pbg",
     "pixelcove",
+    "ptcafe",
+    "ptgtk",
+    "ptitzmx",
+    "ptlgs",
     "putao",
     "r3vwtf",
+    "railgunpt",
     "riperam",
+    "sbpt",
     "sewerpt",
     "snowpt",
+    "soulvoice",
+    "tlfbits",
     "totheglory",
+    "wintersakura",
+    "xingtan",
 ];
 /// Credential-POST presets with pinned layouts and complete authenticated lifecycle tests.
+/// API-key presets with a `login: get` probe and complete fixture lifecycle tests.
+pub const GET_IDS: &[&str] = &[];
+/// The `login: get` probe of an admitted [`GET_IDS`] preset, with its configured URL.
+pub(crate) fn get_login(
+    i: &Indexer,
+) -> Result<Option<(crate::builtin_runtime::get_login::GetLogin, url::Url)>> {
+    let Ok(id) = id(i) else {
+        return Ok(None);
+    };
+    if !GET_IDS.contains(&id) {
+        return Ok(None);
+    }
+    let login = crate::builtin_runtime::get_login::GetLogin::compile(&root(id)?)?;
+    let settings: BTreeMap<String, Value> = i
+        .definition
+        .as_ref()
+        .and_then(|d| d.get("settings"))
+        .and_then(Value::as_object)
+        .map(|m| m.iter().map(|(k, v)| (k.clone(), v.clone())).collect())
+        .unwrap_or_default();
+    let base = url::Url::parse(&i.url).map_err(|_| anyhow!("Invalid source URL"))?;
+    let url = login.url(&base, &settings)?;
+    Ok(Some((login, url)))
+}
 pub const POST_IDS: &[&str] = &[
+    "0daykiev",
     "backups",
     "best-torrents",
+    "bestcore",
     "bibliotik",
     "bitded",
     "bitgamer",
@@ -510,16 +624,21 @@ pub const POST_IDS: &[&str] = &[
     "carpathians",
     "ceskeforum",
     "cinemageddon",
+    "deildu",
     "estone",
     "exkinoray",
     "fanoin",
     "fenyarnyek-tracker",
     "futuretorrent",
+    "gay-torrents",
     "hd-club",
     "hdroute",
     "hdspace",
     "houseofdevil",
     "insanetracker",
+    "jpopsuki",
+    "kinorun",
+    "libranet",
     "linkomanija",
     "losslessclub",
     "madsrevolution",
@@ -527,19 +646,30 @@ pub const POST_IDS: &[&str] = &[
     "metalguru",
     "mnv",
     "nethd",
+    "newstudiol",
+    "party-tracker",
+    "peersfm",
     "phoenixproject",
     "pttime",
     "pussytorrents",
     "pwtorrents",
     "racing4us",
+    "redstartorrent",
+    "rintor",
     "scenerush",
     "seedfile",
     "sktorrent-org",
     "sportscult",
+    "themixingbowl",
     "thenewfun",
+    "traht",
     "trancetraffic",
+    "trezzor",
+    "tribalmixes",
+    "whiteangel",
     "xtremebytes",
     "xwtclassics",
+    "xwtorrents",
 ];
 /// Share the same pinned minimum between authenticated and ordinary source requests.
 fn request_delay_ms(root: &Node, configured: u64) -> Result<u64> {
@@ -710,6 +840,14 @@ fn root(id: &str) -> Result<Node> {
     cardigann::parse(SOURCES[n].1, cardigann::Limits::default())
         .map_err(|_| anyhow!("Invalid bundled definition"))
 }
+/// The bundled definition's validated `certificates` pins (see [`crate::pinned_tls`]);
+/// `None` for unpinned or non-bundled sources.
+pub(crate) fn certificates(i: &Indexer) -> Result<Option<crate::pinned_tls::Pins>> {
+    match id(i).and_then(root) {
+        Ok(r) => crate::pinned_tls::Pins::compile(&r),
+        Err(_) => Ok(None),
+    }
+}
 /// Which link the fallback download selector of [`DetailMagnet`] is configured to select.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Fallback {
@@ -753,6 +891,17 @@ fn link_setting<'a>(r: &'a Node, name: &str) -> Option<&'a Node> {
         && s.string("default")
             .is_some_and(|d| LINK_OPTIONS.contains(&d)))
     .then_some(s)
+}
+/// The general `download.selectors` resolver of a ready definition, compiled from the
+/// pinned source on demand. `None` when it has no download block or uses [`DetailMagnet`].
+pub fn download_selectors(
+    i: &Indexer,
+) -> Result<Option<crate::builtin_runtime::download::DownloadSelectors>> {
+    let r = root(id(i)?)?;
+    if r.get("download").is_none() || detail_magnet_shape(&r) {
+        return Ok(None);
+    }
+    crate::builtin_runtime::download::DownloadSelectors::compile(&r).map(Some)
 }
 /// Whether `r`'s `download` block is exactly the admitted [`DetailMagnet`] shape. Any
 /// other selector, filter, key, header or setting declaration keeps it blocked.
@@ -804,19 +953,20 @@ fn eligible(r: &Node) -> Result<Plan> {
         && crate::builtin_runtime::auth::CookiePlan::compile(r).is_ok();
     let form = (FORM_IDS.contains(&catalog_id(r)) || POST_IDS.contains(&catalog_id(r)))
         && crate::builtin_runtime::form_auth::FormPlan::compile(r).is_ok();
+    let get = GET_IDS.contains(&catalog_id(r))
+        && crate::builtin_runtime::get_login::GetLogin::compile(r).is_ok();
+    let pinned = crate::pinned_tls::Pins::compile(r).is_ok_and(|p| p.is_some());
     if let Some(b) = p.blockers().iter().find(|b| {
-        !(b.path == "$.download" && detail_magnet_shape(r)
-            || b.path == "$.login" && (cookie || api || form))
+        !(b.path == "$.download"
+            && (detail_magnet_shape(r)
+                || crate::builtin_runtime::download::DownloadSelectors::compile(r).is_ok())
+            || b.path == "$.login" && (cookie || api || form || get)
+            // Engine and session clients install well-formed pins (see pinned_tls.rs).
+            || b.path == "$.certificates" && pinned)
     }) {
         bail!("{}: {}", b.path, b.feature);
     }
-    if !r
-        .string("encoding")
-        .unwrap_or("UTF-8")
-        .eq_ignore_ascii_case("utf-8")
-    {
-        bail!("Response encoding requires unimplemented transcoding");
-    }
+    // Plan::compile admitted the definition charset; every runtime decoder uses it.
     for s in r.get("settings").and_then(Node::items).unwrap_or_default() {
         if ![
             "text",
@@ -1054,8 +1204,9 @@ impl Runtime {
         let plan = gate(&r)?;
         plan.check_settings(&settings)
             .map_err(|_| anyhow!("Invalid bundled setting value"))?;
-        // `gate` admitted any download block as the DetailMagnet shape; resolve its settings.
-        let download = if r.get("download").is_some() {
+        // Resolve the settings of the admitted DetailMagnet shape. Any other admitted
+        // download block is general selector resolution, see [`download_selectors`].
+        let download = if detail_magnet_shape(&r) {
             let [primary, fallback] = LINK_SETTINGS.map(|name| {
                 settings
                     .get(name)
@@ -1097,6 +1248,17 @@ impl Runtime {
                 "btetree" => Some("table[bgcolor=\"#CCCCCC\"] tbody".into()),
                 "tokyotosho" => Some("table.listing".into()),
                 "uindex" => Some("table.sr-table".into()),
+                "bigfangroup" => Some("tbody#highlighted".into()),
+                "megapeer" => Some("table".into()),
+                "mypornclub" => Some("div.torrents_list".into()),
+                // DataLife Engine (its /engine/download.php links) wraps results here.
+                "pctorrent" => Some("div#dle-content".into()),
+                "ehentai" => Some("table.itg".into()),
+                "plugintorrent" => Some("main".into()),
+                "anibt" => Some("channel".into()),
+                "nekobt" => Some("channel".into()),
+                "pandacd" => Some("channel".into()),
+                "pornotorrent" => Some("channel".into()),
                 _ => None,
             },
             download,
@@ -1281,11 +1443,20 @@ mod tests {
                 .to_owned()
         };
         assert!(catalog().iter().find(|e| e["id"] == "1337x").unwrap()["blocked_reason"].is_null());
-        // Same settings and rewrite, other selectors; or a magnet-only selector.
-        // torrentdownloads stops earlier, at its search redirect policy.
-        for id in ["limetorrents", "torrentgalaxyclone"] {
-            assert_eq!(reason(id), "$.download: download-resolution", "{id}");
-        }
+        // Same settings and rewrite with templated selectors stays blocked. A plain
+        // magnet selector is general download.selectors resolution: eligible, but
+        // still not ready without fixtures. torrentdownloads stops earlier, at its
+        // search redirect policy.
+        assert_eq!(
+            reason("limetorrents"),
+            "$.download: download-resolution",
+            "limetorrents"
+        );
+        assert!(eligible(&root("torrentgalaxyclone").unwrap()).is_ok());
+        assert_eq!(
+            reason("torrentgalaxyclone"),
+            "Runtime integration has not been fixture-validated for this definition"
+        );
         assert!(eligible(&root("1337x").unwrap()).is_ok());
     }
     #[test]
@@ -1406,8 +1577,9 @@ mod tests {
             .contains("fixture-validated"));
     }
     #[test]
-    fn latin1_plans_compile_but_stay_runtime_ineligible() {
-        // A login-free definition with a ready ID still stops at the transcoding gate.
+    fn single_byte_plans_are_eligible_but_need_fixture_admission() {
+        // The definition charset no longer blocks eligibility; readiness still needs an
+        // explicit fixture-backed ID and every login family keeps its own gate.
         let r = cardigann::parse("id: acgrip\nname: Latin\ndescription: Synthetic\nlanguage: en-US\ntype: public\nencoding: ISO-8859-1\nlinks: [https://example.test/]\ncaps:\n  categories: {1: Other}\n  modes: {search: [q]}\nsettings: []\nsearch:\n  path: search\n  rows: {selector: article}\n  fields:\n    category: {text: 1}\n    size: {text: 0}\n    seeders: {text: 0}\n    title: {text: x}\n    download: {text: /d}\n", cardigann::Limits::default()).unwrap();
         let plan = Plan::compile(&r).unwrap();
         assert_eq!(
@@ -1415,20 +1587,12 @@ mod tests {
             crate::cardigann_exec::request::Charset::Latin1
         );
         assert!(plan.blockers().is_empty());
-        assert!(eligible(&r)
-            .err()
-            .unwrap()
-            .to_string()
-            .contains("unimplemented transcoding"));
-        for id in [
-            "aftershock",
-            "deildu",
-            "karagarga",
-            "newheaven",
-            "thenewheaven",
-            "tribalmixes",
-        ] {
+        assert!(eligible(&r).is_ok());
+        // Non-UTF-8 definitions with other blockers: urldecode, windows-1255/874,
+        // TIS-620 and POST search.
+        for id in ["aftershock", "fuzer", "siambit", "unlimitz", "file-tracker"] {
             assert!(eligible(&root(id).unwrap()).is_err(), "{id}");
+            assert!(ready(&root(id).unwrap()).is_err(), "{id}");
         }
     }
 }

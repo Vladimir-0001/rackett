@@ -140,6 +140,13 @@
     "repository": "https://github.com/chronotope/chrono"
   },
   {
+    "name": "cookie",
+    "version": "0.18.2",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/SergioBenitez/cookie-rs"
+  },
+  {
     "name": "core-foundation-sys",
     "version": "0.8.7",
     "license": "MIT OR Apache-2.0",
@@ -180,6 +187,13 @@
     "license": "MPL-2.0",
     "license_file": null,
     "repository": "https://github.com/servo/rust-cssparser"
+  },
+  {
+    "name": "deranged",
+    "version": "0.5.9",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/jhpratt/deranged"
   },
   {
     "name": "derive_more",
@@ -630,6 +644,13 @@
     "repository": "https://github.com/mbrubeck/rust-debug-unreachable"
   },
   {
+    "name": "num-conv",
+    "version": "0.2.2",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/jhpratt/num-conv"
+  },
+  {
     "name": "num-traits",
     "version": "0.2.19",
     "license": "MIT OR Apache-2.0",
@@ -712,6 +733,13 @@
     "license": "Unicode-3.0",
     "license_file": null,
     "repository": "https://github.com/unicode-org/icu4x"
+  },
+  {
+    "name": "powerfmt",
+    "version": "0.2.1",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/jhpratt/powerfmt"
   },
   {
     "name": "ppv-lite86",
@@ -817,6 +845,13 @@
     "license": "MIT OR Apache-2.0",
     "license_file": null,
     "repository": "https://github.com/rust-random/rngs"
+  },
+  {
+    "name": "rcgen",
+    "version": "0.13.2",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/rustls/rcgen"
   },
   {
     "name": "redox_syscall",
@@ -1125,6 +1160,27 @@
     "license": "MIT OR Apache-2.0",
     "license_file": null,
     "repository": "https://github.com/dtolnay/thiserror"
+  },
+  {
+    "name": "time",
+    "version": "0.3.55",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/time-rs/time"
+  },
+  {
+    "name": "time-core",
+    "version": "0.1.9",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/time-rs/time"
+  },
+  {
+    "name": "time-macros",
+    "version": "0.2.32",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/time-rs/time"
   },
   {
     "name": "tinystr",
@@ -1489,6 +1545,13 @@
     "license": "MIT OR Apache-2.0",
     "license_file": null,
     "repository": "https://github.com/Ethiraric/yaml-rust2"
+  },
+  {
+    "name": "yasna",
+    "version": "0.5.2",
+    "license": "MIT OR Apache-2.0",
+    "license_file": null,
+    "repository": "https://github.com/qnighy/yasna.rs"
   },
   {
     "name": "yoke",

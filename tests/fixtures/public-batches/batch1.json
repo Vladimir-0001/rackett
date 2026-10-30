@@ -1,0 +1,27 @@
+[
+  {
+    "id": "ehentai",
+    "sha256": "83431bebe474351e71caf9f13ed803b248dff7efd002db30ceff4960b6b6f79d",
+    "category": 5070,
+    "request_count": 2,
+    "search_path": "/torrents.php",
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "/gallerytorrents.php?gid=42",
+    "details_path": "/g/42/fixture",
+    "seeders": 1,
+    "peers": 2,
+    "published": "2026-10-28T12:00:00Z",
+    "expected_size": 1073741824,
+    "delay_ms": 2000,
+    "title": "Fixture Release",
+    "json": false,
+    "container": "table.itg",
+    "detail": {
+      "html": "<a href=\"/get/42/fixture.torrent\">Torrent</a>",
+      "resolved": "/get/42/fixture.torrent"
+    }
+  }
+]

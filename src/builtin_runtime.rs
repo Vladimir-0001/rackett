@@ -2,8 +2,10 @@
 pub mod api_auth;
 pub mod auth;
 mod cookies;
+pub mod download;
 pub mod flaresolverr;
 pub mod form_auth;
+pub mod get_login;
 mod session_store;
 use crate::{
     builtin::{DetailMagnet, Runtime},
@@ -219,7 +221,30 @@ pub fn detail_target(base: &url::Url, raw: &str) -> Result<url::Url, DetailFailu
 }
 /// The resolved form of an admitted magnet href: a plain `magnet:?` URI without
 /// whitespace, controls or fragment that names a BitTorrent infohash.
-fn detail_magnet_uri(raw: &str) -> Option<String> {
+/// Search headers to send with a `login: get` source's downloads, as upstream sends
+/// `Download.Headers ?? Search.Headers`. Other sources keep their existing downloads.
+pub fn get_login_download_headers(
+    rt: &Runtime,
+    source: &Source,
+) -> Result<reqwest::header::HeaderMap> {
+    if source.get_login.is_none() {
+        return Ok(reqwest::header::HeaderMap::new());
+    }
+    let ctx = rt.plan.context(
+        &rt.settings,
+        &crate::models::SearchQuery::default(),
+        chrono::Utc::now(),
+    );
+    let requests = rt
+        .plan
+        .build_requests(&ctx)
+        .map_err(|_| anyhow!("Unable to build bundled search requests"))?;
+    match requests.first() {
+        Some(r) => headers(r),
+        None => Ok(reqwest::header::HeaderMap::new()),
+    }
+}
+pub(crate) fn detail_magnet_uri(raw: &str) -> Option<String> {
     if raw.len() > 16 * 1024
         || !raw.starts_with("magnet:?")
         || raw.chars().any(|c| c.is_control() || c.is_whitespace())
@@ -300,6 +325,10 @@ pub struct Source {
     saved: Vec<(String, String)>,
     solver: Option<Arc<flaresolverr::Solver>>,
     clearance: std::sync::Mutex<Option<flaresolverr::Clearance>>,
+    /// `login: get` probe and its configured URL; see [`get_login`].
+    get_login: Option<(get_login::GetLogin, url::Url)>,
+    /// Whether this runtime's GET login probe has succeeded.
+    probed: std::sync::atomic::AtomicBool,
 }
 impl Source {
     /// A saved cookie and the solver are admitted only for [`crate::builtin::CHALLENGE_IDS`].
@@ -323,6 +352,8 @@ impl Source {
             saved,
             solver: solver.filter(|_| admitted),
             clearance: std::sync::Mutex::new(None),
+            get_login: crate::builtin::get_login(i)?,
+            probed: std::sync::atomic::AtomicBool::new(false),
         })
     }
     fn clearance(&self) -> Option<flaresolverr::Clearance> {
@@ -388,6 +419,9 @@ pub struct Fetched {
     pub body: Vec<u8>,
     /// The body is FlareSolverr's rendered page, not the origin's raw response.
     pub rendered: bool,
+    /// The body is UTF-8 text an authenticated session already decoded with the
+    /// definition charset; decoding it again would corrupt non-ASCII text.
+    pub decoded: bool,
 }
 
 /// One source operation sharing the source's rate gate, its epoch state and a deadline.
@@ -412,13 +446,22 @@ impl Transport<'_> {
                 .await;
         }
         if let Some(session) = &self.source.cookie_session {
-            if request.method != "GET" || request.response_type != "html" || request.body.is_some()
+            // HTML GET, or a form POST whose body the request plan already encoded.
+            let post = request.method == "POST" && request.body.is_some();
+            if !(post || request.method == "GET" && request.body.is_none())
+                || !["html", "json", "xml"].contains(&request.response_type.as_str())
             {
                 bail!("Unsupported authenticated search request");
             }
             session.check_search_headers(&request.headers)?;
             let url = checked_url(&request.url, self.base)?;
-            let body = session.fetch_html(url.as_str()).await?;
+            let body = session
+                .fetch_search(
+                    url.as_str(),
+                    request.body.as_deref(),
+                    request.response_type != "html",
+                )
+                .await?;
             return Ok(Fetched {
                 status: 200,
                 redirected: false,
@@ -427,6 +470,7 @@ impl Transport<'_> {
                 content_type: Some("text/html; charset=utf-8".into()),
                 body: body.into_bytes(),
                 rendered: false,
+                decoded: true,
             });
         }
         let solving = solvable && request.method == "GET" && self.source.solver.is_some();
@@ -467,6 +511,7 @@ impl Transport<'_> {
                     content_type,
                     body,
                     rendered: false,
+                    decoded: false,
                 })
             }
             Sent::Challenge(target, redirected) => self.solve(request, target, redirected).await,
@@ -502,6 +547,7 @@ impl Transport<'_> {
             content_type: None,
             body: solution.body,
             rendered: true,
+            decoded: false,
         })
     }
 }
@@ -537,6 +583,112 @@ pub async fn detail_magnet_source(
     })
     .await
     .map_err(|_| DetailFailure::Fetch)??)
+}
+/// Resolve a ticketed detail page through general `download.selectors` (see
+/// [`download`]). Public sources use the plain transport; cookie, form and
+/// credential-POST sources fetch through their authenticated session. Candidates
+/// must be magnets or same-origin links: a cross-origin link is skipped like an
+/// upstream selector exception. With `test_link`, a downloaded body that does not
+/// start like a bencoded dictionary moves on to the next selector, as upstream does.
+pub async fn resolve_download_selectors(
+    selectors: std::sync::Arc<download::DownloadSelectors>,
+    rt: &Runtime,
+    transport: &mut Transport<'_>,
+    page_url: &url::Url,
+) -> Result<Option<crate::engine::Download>> {
+    if transport.source.api_session.is_some() {
+        bail!("Download selectors are not supported for API sources");
+    }
+    let mut before_ctx = rt.plan.context(
+        &rt.settings,
+        &crate::models::SearchQuery::default(),
+        chrono::Utc::now(),
+    );
+    download::add_download_uri(&mut before_ctx, page_url);
+    if let Some(before) = selectors
+        .before_request(&before_ctx)
+        .map_err(|_| anyhow!("Download request could not be rendered"))?
+    {
+        let session = transport
+            .source
+            .cookie_session
+            .as_ref()
+            .ok_or_else(|| anyhow!("Download before requests need a login session"))?;
+        let target = page_url
+            .join(&before.path)
+            .ok()
+            .and_then(|t| checked_url(t.as_str(), transport.base).ok())
+            .ok_or_else(|| anyhow!("Download before request target rejected"))?;
+        session
+            .send_before(target.as_str(), before.fields.as_deref(), page_url.as_str())
+            .await?;
+    }
+    if !selectors.selects() {
+        // Upstream then downloads the release link itself.
+        return Ok(None);
+    }
+    let page_request = BuiltRequest::html_get(page_url.to_string());
+    let fetched = transport.fetch(&page_request, false).await?;
+    if fetched.refresh || !(200..300).contains(&fetched.status) {
+        bail!("Source detail page could not be fetched");
+    }
+    let page = if fetched.decoded || fetched.rendered {
+        String::from_utf8(fetched.body).map_err(|_| anyhow!("Invalid detail page text"))?
+    } else {
+        rt.plan
+            .charset()
+            .decode(fetched.body)
+            .map_err(|_| anyhow!("Only UTF-8 response encoding supported"))?
+    };
+    let ctx = rt.plan.context(
+        &rt.settings,
+        &crate::models::SearchQuery::default(),
+        chrono::Utc::now(),
+    );
+    let permit = parser_permit().await?;
+    let candidates = tokio::task::spawn_blocking({
+        let selectors = selectors.clone();
+        move || {
+            let _permit = permit;
+            selectors.candidates(&page, &ctx)
+        }
+    })
+    .await
+    .map_err(|_| anyhow!("Download page parser failed"))?
+    .map_err(|_| anyhow!("Download page could not be parsed"))?;
+    for candidate in candidates.into_iter().flatten() {
+        let Ok(target) = page_url.join(candidate.trim()) else {
+            continue;
+        };
+        if target.scheme() == "magnet" {
+            if let Some(magnet) = detail_magnet_uri(target.as_str()) {
+                return Ok(Some(crate::engine::Download::Magnet(magnet)));
+            }
+            continue;
+        }
+        let Ok(target) = checked_url(target.as_str(), transport.base) else {
+            continue;
+        };
+        let bytes = if let Some(session) = &transport.source.cookie_session {
+            session.fetch_download(target.as_str()).await?
+        } else {
+            let fetched = transport
+                .fetch(&BuiltRequest::html_get(target.to_string()), false)
+                .await?;
+            if fetched.refresh || !(200..300).contains(&fetched.status) {
+                continue;
+            }
+            fetched.body
+        };
+        if selectors.test_link && bytes.first().is_some_and(|b| *b != b'd') {
+            continue;
+        }
+        return Ok(Some(crate::engine::Download::Torrent {
+            bytes,
+            content_type: "application/x-bittorrent".into(),
+        }));
+    }
+    bail!("Download selectors did not match")
 }
 #[cfg(test)]
 async fn detail_magnet(
@@ -631,6 +783,25 @@ pub async fn search_source(
         delay_ms: rt.delay_ms,
         deadline,
     };
+    if let Some((login, url)) = &source.get_login {
+        use std::sync::atomic::Ordering;
+        if !source.probed.load(Ordering::Acquire) {
+            let headers = requests
+                .first()
+                .map(|r| r.headers.clone())
+                .unwrap_or_default();
+            let probe = transport
+                .fetch(&login.probe_request(url, &headers), false)
+                .await?;
+            let body = if probe.decoded || probe.rendered {
+                String::from_utf8(probe.body).unwrap_or_default()
+            } else {
+                charset.decode(probe.body).unwrap_or_default()
+            };
+            login.check(probe.status, &body)?;
+            source.probed.store(true, Ordering::Release);
+        }
+    }
     for mut request in requests {
         // A rendered page is decoded DOM text, usable only as UTF-8 HTML.
         let solvable = request.response_type == "html" && charset == Charset::Utf8;
@@ -651,6 +822,7 @@ pub async fn search_source(
                 bail!("Only UTF-8 response encoding supported");
             }
         }
+        let text = fetched.decoded || fetched.rendered;
         let bytes = fetched.body;
         let meta = crate::cardigann_exec::ResponseMeta {
             status,
@@ -658,13 +830,14 @@ pub async fn search_source(
             refresh,
             body_bytes: bytes.len(),
         };
-        // The raw cap stays 8 MiB; Latin-1 decoding can yield up to 16 MiB of UTF-8, which
-        // Plan::extract's existing 8 MiB text budget rejects rather than truncates.
-        let body = match charset {
-            Charset::Utf8 => String::from_utf8(bytes)
-                .map_err(|_| anyhow!("Only UTF-8 response encoding supported"))?,
-            Charset::Latin1 => Charset::decode_latin1(&bytes),
-        };
+        // The raw cap stays 8 MiB; single-byte decoding can yield up to 24 MiB of UTF-8,
+        // which Plan::extract's existing 8 MiB text budget rejects rather than truncates.
+        let body = if text {
+            String::from_utf8(bytes)
+        } else {
+            charset.decode(bytes)
+        }
+        .map_err(|_| anyhow!("Only UTF-8 response encoding supported"))?;
         let permit = parser_permit().await?;
         let plan = rt.plan.clone();
         let context = ctx.clone();
@@ -680,7 +853,9 @@ pub async fn search_source(
             } else {
                 plan.extract_response(&request, &meta, &body, &context)?
             };
-            if rows.is_empty() && request.response_type == "html" {
+            // An empty HTML or XML result must still show the source's result container
+            // (e.g. an RSS `channel`); an error page without it is not "no results".
+            if rows.is_empty() && ["html", "xml"].contains(&request.response_type.as_str()) {
                 if dmhy_empty_marker {
                     // Actual no-match response captured through the protected namespace;
                     // an unrelated table is never evidence of an empty DMHY search.

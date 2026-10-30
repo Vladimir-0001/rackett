@@ -6,13 +6,30 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
+/// A `download.selectors` source: its release link is a detail page whose selector
+/// leads to `resolved`, a same-origin torrent path or an expected magnet URI.
+#[derive(Clone, Deserialize)]
+struct Detail {
+    html: String,
+    resolved: String,
+}
 #[derive(Clone, Deserialize)]
 struct Case {
     id: String,
+    /// The search response is JSON (`response: {type: json}`): the fixture file is the
+    /// JSON body (no rows markers) and `empty_body` is the source's empty result.
+    #[serde(default)]
+    json: bool,
+    #[serde(default)]
+    empty_body: Option<String>,
+    #[serde(default)]
+    detail: Option<Detail>,
     sha256: String,
     category: u32,
     custom_category: Option<u32>,
     missing_title: Option<String>,
+    /// Required, and non-ASCII, for non-UTF-8 definitions to prove transcoding.
+    expected_title: Option<String>,
     request_count: usize,
     login_path: String,
     search_path: String,
@@ -40,8 +57,19 @@ fn one() -> f64 {
 }
 const AGENT: &str = "Fixture Browser/1.0";
 const AGENT_CHANGED: &str = "Fixture Browser/2.0";
+/// Cookie layout cases: the original manifest plus independently merged batches.
+const COOKIE_MANIFESTS: [&str; 5] = [
+    include_str!("fixtures/cookie-layouts/cases.json"),
+    include_str!("fixtures/cookie-batches/batch1.json"),
+    include_str!("fixtures/cookie-batches/batch2.json"),
+    include_str!("fixtures/cookie-batches/batch3.json"),
+    include_str!("fixtures/cookie-batches/batch4.json"),
+];
 fn cases() -> Vec<Case> {
-    serde_json::from_str(include_str!("fixtures/cookie-layouts/cases.json")).unwrap()
+    COOKIE_MANIFESTS
+        .iter()
+        .flat_map(|m| serde_json::from_str::<Vec<Case>>(m).unwrap())
+        .collect()
 }
 fn root(c: &Case) -> cardigann::Node {
     let raw = builtin::SOURCES
@@ -63,6 +91,12 @@ fn page(c: &Case, free: bool) -> String {
                 &c.normal_markup
             },
         )
+}
+fn empty_for(c: &Case, page: &str) -> String {
+    match (&c.empty_body, c.json) {
+        (Some(body), true) => body.clone(),
+        _ => empty(page),
+    }
 }
 fn empty(page: &str) -> String {
     let (before, rest) = page.split_once("<!-- rows:start -->").unwrap();
@@ -129,7 +163,12 @@ fn check_layout(c: Case) {
             .unwrap_or_else(|e| panic!("{} free={free}: {e}", c.id));
         assert_eq!(rows.len(), 1, "{}", c.id);
         let r = &rows[0];
-        assert_eq!(r.title, "Fixture Release", "{}", c.id);
+        assert_eq!(
+            r.title,
+            c.expected_title.as_deref().unwrap_or("Fixture Release"),
+            "{}",
+            c.id
+        );
         assert_eq!(r.size, Some(1 << 30), "{}", c.id);
         assert_eq!((r.seeders, r.peers), (Some(11), Some(15)), "{}", c.id);
         assert!(r.categories.contains(&c.category), "{}", c.id);
@@ -165,35 +204,49 @@ fn check_layout(c: Case) {
             c.id
         );
         assert!(
-            p.extract(request, &empty(&body), &ctx).unwrap().is_empty(),
+            p.extract(request, &empty_for(&c, &body), &ctx)
+                .unwrap()
+                .is_empty(),
             "{}",
             c.id
         );
-        let no_title = p.extract(
-            request,
-            &body
-                .replace("Fixture Release", "")
-                .replace("Fixture%20Release", ""),
-            &ctx,
-        );
+        let mut untitled = body
+            .replace("Fixture Release", "")
+            .replace("Fixture%20Release", "");
+        if let Some(title) = &c.expected_title {
+            untitled = untitled.replace(title.as_str(), "");
+        }
+        let no_title = p.extract(request, &untitled, &ctx);
         if let Some(fallback) = &c.missing_title {
             assert_eq!(no_title.unwrap()[0].title, *fallback, "{}", c.id);
-        } else {
-            assert!(no_title.is_err(), "{}: empty title accepted", c.id);
+        } else if let Ok(rows) = no_title {
+            // A declared row filter (andmatch) may drop the untitled row instead.
+            assert!(rows.is_empty(), "{}: empty title accepted", c.id);
         }
     }
 }
 #[tokio::test]
 async fn every_layout_runs_through_cookie_engine_cache_download_edit_and_restart() {
     use futures_util::{stream, StreamExt};
-    stream::iter(cases())
-        .for_each_concurrent(8, |c| async move {
+    // Every case runs to completion; failures are collected so one run lists them all.
+    let failed: Vec<String> = stream::iter(cases())
+        .map(|c| async move {
             let name = c.id.clone();
-            tokio::time::timeout(std::time::Duration::from_secs(180), lifecycle(c))
-                .await
-                .unwrap_or_else(|_| panic!("{name}: lifecycle deadline"));
+            let run = tokio::spawn(tokio::time::timeout(
+                std::time::Duration::from_secs(180),
+                lifecycle(c),
+            ));
+            match run.await {
+                Ok(Ok(())) => None,
+                Ok(Err(_)) => Some(format!("{name} (lifecycle deadline)")),
+                Err(_) => Some(name),
+            }
         })
+        .buffer_unordered(8)
+        .filter_map(|r| async move { r })
+        .collect()
         .await;
+    assert!(failed.is_empty(), "Failed lifecycles: {failed:?}");
 }
 async fn lifecycle(c: Case) {
     use axum::{
@@ -214,9 +267,20 @@ async fn lifecycle(c: Case) {
     const SEED: &str = "session=fixture-cookie-seed";
     const RENEWED: &str = "session=fixture-cookie-renewed";
     const TORRENT: &[u8] = b"d4:infod4:name7:fixture6:lengthi42eee";
+    use rackett::cardigann_exec::request::Charset;
+    let charset = Plan::compile(&root(&c)).unwrap().charset();
+    if charset != Charset::Utf8 {
+        assert!(
+            c.expected_title.as_deref().is_some_and(|t| !t.is_ascii()),
+            "{}: a {} fixture needs a native non-ASCII expected_title",
+            c.id,
+            charset.label()
+        );
+    }
     struct Fixture {
         case: Case,
         body: String,
+        charset: Charset,
         mode: AtomicU8,
         agent_changed: AtomicU8,
         hits: Mutex<Vec<(String, String)>>,
@@ -224,6 +288,22 @@ async fn lifecycle(c: Case) {
     impl Fixture {
         fn take(&self) -> Vec<(String, String)> {
             std::mem::take(&mut *self.hits.lock().unwrap())
+        }
+        /// Serves HTML in the definition charset. Non-UTF-8 pages deliberately claim
+        /// UTF-8 in the header: the pinned WebResult uses the definition encoding.
+        fn html(&self, page: impl Into<String>) -> axum::response::Response {
+            let page = page.into();
+            if self.charset == Charset::Utf8 {
+                return Html(page).into_response();
+            }
+            let bytes = self.charset.encode(&page).unwrap_or_else(|| {
+                panic!(
+                    "{}: fixture text outside {}",
+                    self.case.id,
+                    self.charset.label()
+                )
+            });
+            ([("content-type", "text/html; charset=utf-8")], bytes).into_response()
         }
     }
     async fn respond(
@@ -254,20 +334,32 @@ async fn lifecycle(c: Case) {
         }
         let mode = f.mode.load(Ordering::SeqCst);
         if mode == 2 {
-            return Html("<form>Sign in fixture-private-error</form>").into_response();
+            return f.html("<form>Sign in fixture-private-error</form>");
         }
         if mode == 4 {
             return (StatusCode::SERVICE_UNAVAILABLE, "fixture-private-error").into_response();
         }
-        if uri.to_string() == f.case.download_path {
+        if let Some(detail) = &f.case.detail {
+            if uri.to_string() == f.case.download_path {
+                return f.html(detail.html.clone());
+            }
+            if uri.to_string() == detail.resolved {
+                return TORRENT.into_response();
+            }
+        } else if uri.to_string() == f.case.download_path {
             return TORRENT.into_response();
         }
         let body = if mode == 1 && !(f.case.id == "aidoruonline" && uri.path() == "/") {
-            empty(&f.body)
+            empty_for(&f.case, &f.body)
         } else {
             f.body.clone()
         };
-        let mut response = Html(body).into_response();
+        let search = uri.path() == f.case.search_path;
+        let mut response = if f.case.json && search && [0, 1].contains(&mode) {
+            ([("content-type", "application/json")], body).into_response()
+        } else {
+            f.html(body)
+        };
         if cookie == SEED {
             response.headers_mut().insert(
                 "set-cookie",
@@ -284,6 +376,7 @@ async fn lifecycle(c: Case) {
     let fixture = Arc::new(Fixture {
         case: c.clone(),
         body: page(&c, true),
+        charset,
         mode: AtomicU8::new(0),
         agent_changed: AtomicU8::new(0),
         hits: Default::default(),
@@ -297,6 +390,12 @@ async fn lifecycle(c: Case) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.json");
     let engine = Arc::new(Engine::new(path.clone()).await.unwrap());
+    // As in tests/form_layout_runtime.rs: pinned request delays and concurrent
+    // lifecycles exceed the 20 s default deadline, which is not under test here.
+    engine
+        .update_settings(json!({"request_timeout_seconds": 60}))
+        .await
+        .unwrap();
     let settings = if c.user_agent {
         json!({"cookie":SEED,"useragent":AGENT})
     } else {
@@ -352,7 +451,12 @@ async fn lifecycle(c: Case) {
     assert!(first.errors.is_empty(), "{}: {:?}", c.id, first.errors);
     assert_eq!(first.results.len(), 1, "{}", c.id);
     let r = &first.results[0];
-    assert_eq!(r.title, "Fixture Release", "{}", c.id);
+    assert_eq!(
+        r.title,
+        c.expected_title.as_deref().unwrap_or("Fixture Release"),
+        "{}",
+        c.id
+    );
     assert_eq!(r.size, Some(1 << 30), "{}", c.id);
     assert_eq!((r.seeders, r.peers), (Some(11), Some(15)), "{}", c.id);
     let hits = fixture.take();
@@ -406,16 +510,26 @@ async fn lifecycle(c: Case) {
         engine
             .download(&i.id, r.source_epoch, &r.link)
             .await
-            .unwrap(),
-        Download::Torrent {
-            bytes: TORRENT.to_vec(),
-            content_type: "application/x-bittorrent".into()
+            .unwrap_or_else(|e| panic!("{} download: {e}", c.id)),
+        match c.detail.as_ref().map(|d| d.resolved.as_str()) {
+            Some(magnet) if magnet.starts_with("magnet:") => Download::Magnet(magnet.into()),
+            _ => Download::Torrent {
+                bytes: TORRENT.to_vec(),
+                content_type: "application/x-bittorrent".into(),
+            },
         }
     );
     let hits = fixture.take();
-    assert_eq!(hits.len(), 2, "{}", c.id);
     assert!(hits.iter().all(|(_, cookie)| cookie == RENEWED));
-    assert_eq!(hits[1].0, c.download_path);
+    if let Some(detail) = &c.detail {
+        assert!(hits.iter().any(|(u, _)| *u == c.download_path), "{}", c.id);
+        if !detail.resolved.starts_with("magnet:") {
+            assert_eq!(hits.last().unwrap().0, detail.resolved, "{}", c.id);
+        }
+    } else {
+        assert_eq!(hits.len(), 2, "{}", c.id);
+        assert_eq!(hits[1].0, c.download_path);
+    }
     assert!(engine
         .download(&i.id, r.source_epoch, "https://other.invalid/file.torrent")
         .await

@@ -1,0 +1,55 @@
+[
+  {
+    "id": "mypornclub",
+    "sha256": "0007e39b45e50661225a21537f10938307f725c418774d19d51b6e90eb51cbcf",
+    "category": 6000,
+    "request_count": 1,
+    "search_path": "/ts",
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/t/42",
+    "details_path": "/t/42",
+    "seeders": 11,
+    "peers": 15,
+    "published": "2026-09-29T12:00:00Z",
+    "delay_ms": 0,
+    "title": "Fixture Release",
+    "json": false,
+    "container": "div.torrents_list",
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture\">download</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    },
+    "search_paths": [
+      "/s/Fixture",
+      "/ts"
+    ]
+  },
+  {
+    "id": "pctorrent",
+    "sha256": "32f90c5409b00907a2b6eb2ad175ca9056b41042cccb42392197ca3208d6aae7",
+    "category": 100001,
+    "request_count": 1,
+    "search_path": "/",
+    "query_pair": [
+      "story",
+      "Fixture"
+    ],
+    "download_path": "/story/42",
+    "details_path": "/story/42",
+    "seeders": 1,
+    "peers": 2,
+    "published": "2026-10-29T12:00:00Z",
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "title": "Fixture Тестовый Релиз",
+    "json": false,
+    "container": "div#dle-content",
+    "detail": {
+      "html": "<a href=\"/engine/download.php?id=42\">скачать</a>",
+      "resolved": "/engine/download.php?id=42"
+    }
+  }
+]

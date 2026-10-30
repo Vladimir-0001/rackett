@@ -2,7 +2,7 @@
 //! The transport uses the same scoped, durable cookie store as supplied-cookie sources.
 use crate::{
     cardigann::Node,
-    cardigann_exec::{css::Css, login_form},
+    cardigann_exec::{css::Css, login_form, request::Charset},
 };
 use anyhow::{anyhow, bail, Result};
 use serde_json::Value;
@@ -10,6 +10,7 @@ use std::collections::BTreeMap;
 
 pub struct FormPlan {
     pub(super) direct_post: bool,
+    pub(super) charset: Charset,
     pub(super) path: String,
     pub(super) test_path: String,
     pub(super) test_selector: String,
@@ -18,6 +19,18 @@ pub struct FormPlan {
     inputs: Vec<(String, Input)>,
     errors: Vec<String>,
     captcha: Option<String>,
+    /// `login.selectorinputs`: form fields copied from the landing page, set after
+    /// the declared inputs (`CardigannIndexer.cs:678-699`).
+    selector_inputs: Vec<(
+        String,
+        crate::cardigann_exec::selector::Selector,
+        Vec<crate::cardigann_exec::filters::Filter>,
+    )>,
+    /// `login.cookies`, joined: the cookie seed sent before fetching the login form
+    /// (`CardigannIndexer.cs:1026`).
+    pub(super) cookies: Option<String>,
+    /// Definition `certificates`, pinned for the session's origin host only.
+    pub(super) certificates: Option<crate::pinned_tls::Pins>,
 }
 enum Input {
     Literal(String),
@@ -80,22 +93,33 @@ fn selector_property(node: &Node, key: &str, fallback: Option<&str>) -> Result<S
 impl FormPlan {
     pub fn compile(root: &Node) -> Result<Self> {
         super::auth::unique_mappings(root)?;
-        if root
-            .string("encoding")
-            .is_some_and(|v| !v.eq_ignore_ascii_case("utf-8"))
-            || root.get("encoding").is_some_and(|v| v.text().is_none())
-            || ["followredirect", "certificates", "download"]
-                .iter()
-                .any(|k| root.get(k).is_some())
+        let charset = Charset::from_definition(root)
+            .map_err(|_| anyhow!("Unsupported form source transport"))?;
+        // A download block is admitted only in the general selector shape; its detail
+        // pages and files are then fetched through this session (see download.rs).
+        // Well-formed pins are installed on this session's client (pinned_tls.rs).
+        let certificates = crate::pinned_tls::Pins::compile(root)
+            .map_err(|_| anyhow!("Unsupported form source transport"))?;
+        if root.get("followredirect").is_some()
+            || (root.get("download").is_some()
+                && super::download::DownloadSelectors::compile(root).is_err())
         {
             bail!("Unsupported form source transport");
         }
         let search = root
             .get("search")
             .ok_or_else(|| anyhow!("Missing form source search"))?;
+        // Search responses may be HTML (default), JSON or XML; RequestPlan owns the
+        // rest of the response semantics.
+        let response_ok = |n: &Node| {
+            n.get("response").is_none_or(|r| {
+                r.string("type")
+                    .is_none_or(|t| ["html", "json", "xml"].contains(&t))
+            })
+        };
         if search.pairs().is_none()
             || search.get("headers").is_some()
-            || search.get("response").is_some()
+            || !response_ok(search)
             || search.get("followredirect").is_some()
         {
             bail!("Form sessions require plain HTML GET searches");
@@ -119,13 +143,16 @@ impl FormPlan {
         for path in paths {
             if path.pairs().is_none()
                 || path.get("headers").is_some()
-                || path.get("response").is_some()
+                || !response_ok(path)
                 || path.get("followredirect").is_some()
-                || path
-                    .get("method")
-                    .is_some_and(|m| !m.text().is_some_and(|m| m.eq_ignore_ascii_case("get")))
+                // HTML GET, or a form POST the request plan encodes upstream's way.
+                || path.get("method").is_some_and(|m| {
+                    !m.text().is_some_and(|m| {
+                        m.eq_ignore_ascii_case("get") || m.eq_ignore_ascii_case("post")
+                    })
+                })
             {
-                bail!("Form sessions require plain HTML GET searches");
+                bail!("Form sessions require plain HTML GET or form POST searches");
             }
         }
         let login = root
@@ -165,6 +192,8 @@ impl FormPlan {
                     "test",
                     "error",
                     "captcha",
+                    "selectorinputs",
+                    "cookies",
                 ],
             )?;
         }
@@ -265,11 +294,98 @@ impl FormPlan {
                 // Upstream raises on the matching selector regardless of the
                 // message source. Messages are neither evaluated nor exposed.
                 if let Some(message) = block.get("message") {
-                    keys(message, &["text", "selector", "attribute", "filters"])?;
+                    keys(
+                        message,
+                        &["text", "selector", "attribute", "filters", "remove"],
+                    )?;
                 }
                 errors.push(selector_property(block, "selector", None)?);
             }
         }
+        let mut selector_inputs = Vec::new();
+        if let Some(map) = login.get("selectorinputs") {
+            let map = map
+                .pairs()
+                .ok_or_else(|| anyhow!("Expected selector input mapping"))?;
+            if map.is_empty() || map.len() > 16 {
+                bail!("Unsupported selector input count");
+            }
+            for (name, node) in map {
+                // handleSelector fields: a required selector, then attribute or text, then
+                // filters. Templates, cases, removal and optional inputs stay unsupported.
+                keys(node, &["selector", "attribute", "filters"])?;
+                let name = name
+                    .text()
+                    .filter(|n| !n.is_empty() && n.len() <= 256 && !n.chars().any(char::is_control))
+                    .ok_or_else(|| anyhow!("Invalid selector input name"))?;
+                selector_property(node, "selector", None)?;
+                if node
+                    .string("attribute")
+                    .is_some_and(|a| a.is_empty() || a.contains("{{"))
+                {
+                    bail!("Invalid selector input attribute");
+                }
+                let selector = crate::cardigann_exec::selector::Selector::compile(node)
+                    .map_err(|e| anyhow!(e))?;
+                selector.validate_html().map_err(|e| anyhow!(e))?;
+                let mut filters = Vec::new();
+                for f in node
+                    .get("filters")
+                    .map(|f| f.items().ok_or_else(|| anyhow!("Filters must be a list")))
+                    .transpose()?
+                    .unwrap_or_default()
+                {
+                    keys(f, &["name", "args"])?;
+                    let args: Vec<String> = match f.get("args") {
+                        Some(n) => match n.items() {
+                            Some(v) => v
+                                .iter()
+                                .map(|v| v.text().unwrap_or_default().to_owned())
+                                .collect(),
+                            None => vec![n.text().unwrap_or_default().to_owned()],
+                        },
+                        None => Vec::new(),
+                    };
+                    if filters.len() >= 8 {
+                        bail!("Selector input filter limit exceeded");
+                    }
+                    filters.push(
+                        crate::cardigann_exec::filters::Filter::compile_for(
+                            f.string("name").unwrap_or_default(),
+                            &args,
+                            charset,
+                        )
+                        .map_err(|e| anyhow!(e))?,
+                    );
+                }
+                selector_inputs.push((name.to_owned(), selector, filters));
+            }
+        }
+        let cookies = if let Some(list) = login.get("cookies") {
+            let list = list
+                .items()
+                .filter(|l| (1..=8).contains(&l.len()))
+                .ok_or_else(|| anyhow!("Unsupported login cookie list"))?;
+            let mut pairs = Vec::new();
+            for item in list {
+                let pair = item
+                    .text()
+                    .filter(|p| {
+                        p.split_once('=').is_some_and(|(k, v)| {
+                            !k.is_empty()
+                                && k.bytes()
+                                    .all(|b| b.is_ascii_alphanumeric() || b"_-.".contains(&b))
+                                && v.bytes()
+                                    .all(|b| b.is_ascii_graphic() && !b";,\\\"".contains(&b))
+                        }) && !p.contains("{{")
+                    })
+                    .ok_or_else(|| anyhow!("Unsupported login cookie"))?;
+                pairs.push(pair.to_owned());
+            }
+            Some(pairs.join("; "))
+        } else {
+            None
+        };
         let captcha = if let Some(c) = login.get("captcha") {
             keys(c, &["type", "selector", "input"])?;
             if !matches!(c.string("type"), Some("image" | "text")) {
@@ -281,6 +397,7 @@ impl FormPlan {
             None
         };
         Ok(Self {
+            charset,
             direct_post,
             path: literal(login, "path", None)?,
             form: if direct_post {
@@ -297,6 +414,9 @@ impl FormPlan {
             inputs,
             errors,
             captcha,
+            selector_inputs,
+            cookies,
+            certificates,
         })
     }
     pub(super) fn configure(
@@ -361,6 +481,30 @@ impl ConfiguredForm {
             login_form::set(&mut fields, name, value)
                 .map_err(|_| anyhow!("Form credentials exceed budget"))?;
         }
+        // Required selector inputs: a missing element or attribute fails the login.
+        if !self.plan.selector_inputs.is_empty() {
+            let html = crate::cardigann_exec::css::parse_document(body);
+            crate::cardigann_exec::css::check_error_document(&html)
+                .map_err(|_| anyhow!("Login form token missing"))?;
+            let ctx = crate::cardigann_exec::template::Context {
+                values: Default::default(),
+                now: chrono::Utc::now(),
+            };
+            for (name, selector, filters) in &self.plan.selector_inputs {
+                let mut value = selector
+                    .extract_html(html.root_element(), &|s: &str| Ok(s.to_owned()))
+                    .ok()
+                    .flatten()
+                    .ok_or_else(|| anyhow!("Login form token missing"))?;
+                for filter in filters {
+                    value = filter
+                        .apply(&value, &ctx)
+                        .map_err(|_| anyhow!("Login form token missing"))?;
+                }
+                login_form::set(&mut fields, name, &value)
+                    .map_err(|_| anyhow!("Form credentials exceed budget"))?;
+            }
+        }
         let action = self.plan.submit_path.as_deref().unwrap_or(&controls.action);
         let target = landing
             .join(action)
@@ -377,5 +521,49 @@ impl ConfiguredForm {
     pub fn check_response(&self, body: &str) -> Result<()> {
         login_form::check_errors(body, &self.plan.errors)
             .map_err(|_| anyhow!("Source rejected form login or returned unsupported HTML"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{builtin, cardigann};
+    fn plan(id: &str) -> FormPlan {
+        let raw = builtin::SOURCES.iter().find(|(i, _)| *i == id).unwrap().1;
+        FormPlan::compile(&cardigann::parse(raw, cardigann::Limits::default()).unwrap()).unwrap()
+    }
+    fn credentials() -> BTreeMap<String, Value> {
+        BTreeMap::from([
+            ("username".into(), Value::String("u".into())),
+            ("password".into(), Value::String("p".into())),
+        ])
+    }
+    #[test]
+    fn selector_inputs_copy_attributes_and_filtered_text_after_declared_inputs() {
+        let landing = url::Url::parse("https://fixture.test/?p=home&pid=1").unwrap();
+        // BitTurk: text of a script, through the pinned regexp filter.
+        let form = plan("bitturk")
+            .configure(&credentials(), "https://fixture.test/")
+            .unwrap();
+        let page = "<form id=loginbox_form action=x><input name=a value=b></form>\
+                    <script>var c = {stKey: \"tok-123\", other: 1};</script>";
+        let fields = form.prepare(page, &landing).unwrap().fields;
+        assert!(fields.contains(&("securitytoken".into(), "tok-123".into())));
+        assert!(fields.contains(&("loginbox_membername".into(), "u".into())));
+        // A missing token fails the login before any credential is sent.
+        assert!(form
+            .prepare("<form id=loginbox_form action=x></form>", &landing)
+            .is_err());
+        // HDC: two hidden attributes.
+        let form = plan("hdc")
+            .configure(&credentials(), "https://fixture.test/")
+            .unwrap();
+        let form_selector = form.plan.form.clone();
+        assert!(!form_selector.is_empty());
+    }
+    #[test]
+    fn login_cookie_seeds_are_joined_and_restricted() {
+        assert_eq!(plan("coastalcrew").cookies.as_deref(), Some("JAVA=OK"));
+        assert_eq!(plan("chdbits").cookies, None);
     }
 }

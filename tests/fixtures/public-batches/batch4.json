@@ -1,0 +1,88 @@
+[
+  {
+    "id": "anibt",
+    "sha256": "cf895989215da0655b560b40c48ea9a8b101b40c16b36ebf73a37a70f48c00bf",
+    "category": 5070,
+    "request_count": 2,
+    "search_path": "/rss/magnets.xml",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "magnet",
+    "details_path": "/view/42",
+    "seeders": 1,
+    "peers": 2,
+    "published": "2026-10-01T00:00:00Z",
+    "delay_ms": 0,
+    "title": "Fixture Anime Release",
+    "json": false,
+    "container": "channel",
+    "expected_size": 1073741824,
+    "search_paths": [
+      "/rss/magnets.xml",
+      "/rss/other/raw.xml"
+    ],
+    "keywordless_request_count": 1
+  },
+  {
+    "id": "nekobt",
+    "sha256": "1a4b6e7cdc6a3ed82a7a450ed6903b95ac1280580e70817982d29b205a5aa20f",
+    "category": 5070,
+    "request_count": 1,
+    "search_path": "/api/torznab/api",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "magnet",
+    "details_path": "/comments/42",
+    "seeders": 11,
+    "peers": 26,
+    "published": "2026-01-03T01:27:58Z",
+    "delay_ms": 0,
+    "title": "Fixture Anime Release",
+    "json": false,
+    "container": "channel"
+  },
+  {
+    "id": "pandacd",
+    "sha256": "ccdbcf3453487cecda48f1dd7ae97ad5d4ce9f48b438ceb19f27ffcc8b452b26",
+    "category": 3010,
+    "request_count": 1,
+    "search_path": "/api/torznab",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/download/42.torrent",
+    "details_path": "/view/42",
+    "seeders": 11,
+    "peers": 26,
+    "published": "2026-04-15T02:01:34Z",
+    "delay_ms": 0,
+    "title": "Fixture Music Release",
+    "json": false,
+    "container": "channel"
+  },
+  {
+    "id": "pornotorrent",
+    "sha256": "9a25c2929d80321cf4ac3072fc9bca3d7f12d36f330dd70be2f6ce3845023524",
+    "category": 6080,
+    "request_count": 1,
+    "search_path": "/torznab/",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "magnet",
+    "details_path": "/view/42",
+    "seeders": 1,
+    "peers": 1,
+    "published": "2026-08-01T01:00:00Z",
+    "delay_ms": 0,
+    "title": "Fixture XXX Release",
+    "json": false,
+    "container": "channel"
+  }
+]

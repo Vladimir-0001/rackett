@@ -11,26 +11,152 @@ use unicode_normalization::UnicodeNormalization;
 pub struct Filter {
     name: String,
     args: Vec<String>,
-    regex: Option<Regex>,
+    regex: Option<DefinitionRegex>,
     replacement: Option<Template>,
     date_layout: Option<super::dates::Layout>,
 }
 const MAX_REGEX_SOURCE: usize = 4096;
 const MAX_TRANSLATED_REGEX: usize = 2 * MAX_REGEX_SOURCE;
+const REGEX_SIZE_LIMIT: usize = 1024 * 1024;
+/// Backtracking steps per search (one `captures` call, all start positions). fancy-regex
+/// fails the search with an error when it is exhausted; it never truncates the result.
+pub(crate) const BACKTRACK_LIMIT: usize = 100_000;
+/// Input cap for backtracking regexes. Look-around delegates rescan text from each attempted
+/// position, so a search is quadratic in the worst case even under the backtrack limit.
+pub(crate) const MAX_BACKTRACKING_INPUT: usize = 64 * 1024;
+
+/// A compiled definition regex. Patterns Rust's linear-time engine accepts run there; those
+/// needing look-around, atomic groups or backreferences run on fancy-regex with the same
+/// normalized syntax (docs/dotnet-regex-lookaround.md). Matching can fail only on the
+/// backtracking engine, so every match API returns a `Result`.
+#[derive(Clone, Debug)]
+pub(crate) enum DefinitionRegex {
+    Linear(Regex),
+    Backtracking(fancy_regex::Regex),
+}
+/// Capture spans of one match, as byte ranges into the searched text.
+pub(crate) struct Captures<'h> {
+    text: &'h str,
+    spans: Vec<Option<(usize, usize)>>,
+}
+impl<'h> Captures<'h> {
+    pub(crate) fn get(&self, i: usize) -> Option<&'h str> {
+        let (start, end) = (*self.spans.get(i)?)?;
+        Some(&self.text[start..end])
+    }
+    fn span(&self, i: usize) -> Option<(usize, usize)> {
+        self.spans.get(i).copied().flatten()
+    }
+}
+fn linear_captures<'h>(text: &'h str, caps: &regex::Captures<'h>) -> Captures<'h> {
+    let spans = caps.iter().map(|m| m.map(|m| (m.start(), m.end())));
+    Captures {
+        text,
+        spans: spans.collect(),
+    }
+}
+fn backtracking_captures<'h>(
+    text: &'h str,
+    caps: fancy_regex::Result<fancy_regex::Captures<'h, str>>,
+) -> Result<Captures<'h>, String> {
+    let caps = caps.map_err(runtime_error)?;
+    let spans = caps.iter().map(|m| m.map(|m| (m.start(), m.end())));
+    Ok(Captures {
+        text,
+        spans: spans.collect(),
+    })
+}
+fn runtime_error(e: fancy_regex::Error) -> String {
+    match e {
+        fancy_regex::Error::RuntimeError(fancy_regex::RuntimeError::BacktrackLimitExceeded) => {
+            "regex backtrack limit exceeded".into()
+        }
+        e => format!("regex runtime error: {e}"),
+    }
+}
+impl DefinitionRegex {
+    #[cfg(test)]
+    pub(crate) fn as_str(&self) -> &str {
+        match self {
+            Self::Linear(re) => re.as_str(),
+            Self::Backtracking(re) => re.as_str(),
+        }
+    }
+    pub(crate) fn is_backtracking(&self) -> bool {
+        matches!(self, Self::Backtracking(_))
+    }
+    pub(crate) fn captures_len(&self) -> usize {
+        match self {
+            Self::Linear(re) => re.captures_len(),
+            Self::Backtracking(re) => re.captures_len(),
+        }
+    }
+    fn capture_index(&self, name: &str) -> Option<usize> {
+        match self {
+            Self::Linear(re) => re.capture_names().position(|n| n == Some(name)),
+            Self::Backtracking(re) => re.capture_names().position(|n| n == Some(name)),
+        }
+    }
+    fn check_input(&self, text: &str) -> Result<(), String> {
+        if self.is_backtracking() && text.len() > MAX_BACKTRACKING_INPUT {
+            return Err("backtracking regex input limit exceeded".into());
+        }
+        Ok(())
+    }
+    /// The leftmost-first match, as `Regex.Match` finds it.
+    pub(crate) fn captures<'h>(&self, text: &'h str) -> Result<Option<Captures<'h>>, String> {
+        self.check_input(text)?;
+        match self {
+            Self::Linear(re) => Ok(re.captures(text).map(|c| linear_captures(text, &c))),
+            Self::Backtracking(re) => re
+                .captures(text)
+                .transpose()
+                .map(|c| backtracking_captures(text, c))
+                .transpose(),
+        }
+    }
+    /// Successive non-overlapping matches. Each backtracking search has its own budget;
+    /// callers bound the number of matches.
+    pub(crate) fn captures_iter<'h>(
+        &'h self,
+        text: &'h str,
+    ) -> Result<Box<dyn Iterator<Item = Result<Captures<'h>, String>> + 'h>, String> {
+        self.check_input(text)?;
+        Ok(match self {
+            Self::Linear(re) => Box::new(
+                re.captures_iter(text)
+                    .map(move |c| Ok(linear_captures(text, &c))),
+            ),
+            Self::Backtracking(re) => Box::new(
+                re.captures_iter(text)
+                    .map(move |c| backtracking_captures(text, c)),
+            ),
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn is_match(&self, text: &str) -> bool {
+        self.captures(text).unwrap().is_some()
+    }
+}
+
 /// Compile a definition-sourced (.NET) regex. Jackett constructs these with no options
 /// (CardigannIndexer.cs:345/1143/1151), so they are case-sensitive unless inline flags say
 /// otherwise; inline options are rejected next to block properties instead of modelling .NET
 /// culture case equivalences. Literal syntax is normalized by [`dotnet_regex::normalize`];
 /// non-BMP pattern characters are rejected and non-ASCII case folding parity is not claimed.
-pub(crate) fn definition_regex(pattern: &str) -> Result<Regex, String> {
+pub(crate) fn definition_regex(pattern: &str) -> Result<DefinitionRegex, String> {
     if pattern.len() > MAX_REGEX_SOURCE {
         return Err("regex source limit exceeded".into());
     }
-    let translated = dotnet_regex::normalize(pattern)?;
-    if translated.len() > MAX_TRANSLATED_REGEX {
+    let normalized = dotnet_regex::scan(pattern)?;
+    if normalized.text.len() > MAX_TRANSLATED_REGEX {
         return Err("regex translation limit exceeded".into());
     }
-    build_regex(&translated)
+    if normalized.backtracking {
+        build_backtracking_regex(&normalized.text).map(DefinitionRegex::Backtracking)
+    } else {
+        build_regex(&normalized.text).map(DefinitionRegex::Linear)
+    }
 }
 pub(crate) fn bounded_regex(pattern: &str) -> Result<Regex, String> {
     if pattern.len() > MAX_REGEX_SOURCE {
@@ -42,13 +168,29 @@ fn build_regex(pattern: &str) -> Result<Regex, String> {
     // Rust's linear-time engine intentionally rejects .NET backreferences,
     // look-around, balancing groups, and conditionals instead of approximating them.
     RegexBuilder::new(pattern)
-        .size_limit(1024 * 1024)
-        .dfa_size_limit(1024 * 1024)
+        .size_limit(REGEX_SIZE_LIMIT)
+        .dfa_size_limit(REGEX_SIZE_LIMIT)
         .nest_limit(64)
         .build()
         .map_err(|e| format!("unsupported/invalid .NET regex: {e}"))
 }
-pub(crate) fn replace_regex(re: &Regex, input: &str, replacement: &str) -> Result<String, String> {
+fn build_backtracking_regex(pattern: &str) -> Result<fancy_regex::Regex, String> {
+    // fancy-regex parses the whole pattern (group nesting is capped at 64) and delegates
+    // look-around-free pieces to `regex` with these limits. Its variable-length look-behind
+    // feature is disabled: that path stops collecting candidates at the backtrack limit
+    // instead of failing, so only constant-width look-behind compiles.
+    fancy_regex::RegexBuilder::new(pattern)
+        .backtrack_limit(BACKTRACK_LIMIT)
+        .delegate_size_limit(REGEX_SIZE_LIMIT)
+        .delegate_dfa_size_limit(REGEX_SIZE_LIMIT)
+        .build()
+        .map_err(|e| format!("unsupported/invalid .NET regex: {e}"))
+}
+pub(crate) fn replace_regex(
+    re: &DefinitionRegex,
+    input: &str,
+    replacement: &str,
+) -> Result<String, String> {
     if input.len() > MAX_OUTPUT || replacement.len() > MAX_OUTPUT {
         return Err("regex input limit exceeded".into());
     }
@@ -62,19 +204,20 @@ pub(crate) fn replace_regex(re: &Regex, input: &str, replacement: &str) -> Resul
     let mut out = String::new();
     let mut last = 0;
     let mut count = 0;
-    for caps in re.captures_iter(input) {
+    for caps in re.captures_iter(input)? {
+        let caps = caps?;
         count += 1;
         if count > 8192 {
             return Err("regex match limit exceeded".into());
         }
-        let m = caps.get(0).unwrap();
-        out.push_str(&input[last..m.start()]);
+        let (start, end) = caps.span(0).unwrap();
+        out.push_str(&input[last..start]);
         let expanded = expand_replacement(re, &caps, replacement)?;
         if out.len().saturating_add(expanded.len()) > MAX_OUTPUT {
             return Err("regex output limit exceeded".into());
         }
         out.push_str(&expanded);
-        last = m.end();
+        last = end;
     }
     if out.len().saturating_add(input.len() - last) > MAX_OUTPUT {
         return Err("regex output limit exceeded".into());
@@ -83,8 +226,8 @@ pub(crate) fn replace_regex(re: &Regex, input: &str, replacement: &str) -> Resul
     Ok(out)
 }
 fn expand_replacement(
-    re: &Regex,
-    caps: &regex::Captures<'_>,
+    re: &DefinitionRegex,
+    caps: &Captures<'_>,
     replacement: &str,
 ) -> Result<String, String> {
     let mut out = String::new();
@@ -98,7 +241,7 @@ fn expand_replacement(
             continue;
         }
         if rest.starts_with("$&") {
-            append_bounded(&mut out, caps.get(0).unwrap().as_str())?;
+            append_bounded(&mut out, caps.get(0).unwrap())?;
             rest = &rest[2..];
             continue;
         }
@@ -121,10 +264,10 @@ fn expand_replacement(
                 .parse::<usize>()
                 .ok()
                 .filter(|i| *i < re.captures_len());
-            let named = re.capture_names().flatten().any(|n| n == name);
-            if index.is_some() || named {
-                if let Some(value) = index.and_then(|i| caps.get(i)).or_else(|| caps.name(name)) {
-                    append_bounded(&mut out, value.as_str())?;
+            let named = re.capture_index(name);
+            if index.is_some() || named.is_some() {
+                if let Some(value) = index.or(named).and_then(|i| caps.get(i)) {
+                    append_bounded(&mut out, value)?;
                 }
             } else {
                 append_bounded(&mut out, &rest[..consumed])?;
@@ -183,8 +326,6 @@ impl Filter {
         }
         let regex = if name == "regexp" || name == "re_replace" {
             Some(definition_regex(&args[0])?)
-        } else if name == "diacritics" {
-            Some(bounded_regex(r"\p{Mn}")?)
         } else {
             None
         };
@@ -245,9 +386,9 @@ impl Filter {
                 .regex
                 .as_ref()
                 .unwrap()
-                .captures(input)
+                .captures(input)?
                 .and_then(|c| c.get(1))
-                .map(|m| m.as_str().into())
+                .map(String::from)
                 .unwrap_or_default(),
             "re_replace" => replace_regex(self.regex.as_ref().unwrap(), input, &replacement()?)?,
             "split" => {
@@ -338,13 +479,10 @@ impl Filter {
                 }
             }
             "diacritics" => {
+                static MARKS: std::sync::LazyLock<Regex> =
+                    std::sync::LazyLock::new(|| bounded_regex(r"\p{Mn}").expect("fixed regex"));
                 let decomposed = input.nfd().collect::<String>();
-                self.regex
-                    .as_ref()
-                    .unwrap()
-                    .replace_all(&decomposed, "")
-                    .nfc()
-                    .collect()
+                MARKS.replace_all(&decomposed, "").nfc().collect()
             }
             "jsonjoinarray" => {
                 let json: serde_json::Value =
@@ -901,7 +1039,7 @@ mod tests {
     }
     #[test]
     fn bounded_and_explicit() {
-        assert!(Filter::compile("regexp", &["(?<=a)b".into()]).is_err());
+        assert!(Filter::compile("regexp", &["(?(a)b)".into()]).is_err());
         assert!(Filter::compile("unknown", &[]).is_err());
         assert!(Filter::compile("split", &["".into(), "0".into()]).is_err());
         assert!(Filter::compile("re_replace", &["a".into(), "x".repeat(MAX_OUTPUT)]).is_err());
@@ -912,12 +1050,12 @@ mod tests {
     }
     #[test]
     fn regex_substitutions_stay_bounded() {
-        let re = bounded_regex("(.*)").unwrap();
+        let re = definition_regex("(.*)").unwrap();
         assert!(replace_regex(&re, &"a".repeat(MAX_OUTPUT), "$1$1").is_err());
-        assert!(replace_regex(&bounded_regex("a").unwrap(), &"a".repeat(8193), "b").is_err());
+        assert!(replace_regex(&definition_regex("a").unwrap(), &"a".repeat(8193), "b").is_err());
         assert_eq!(
             replace_regex(
-                &bounded_regex("(?<word>a)").unwrap(),
+                &definition_regex("(?<word>a)").unwrap(),
                 "a",
                 "$$:${word}:$&:$99"
             )

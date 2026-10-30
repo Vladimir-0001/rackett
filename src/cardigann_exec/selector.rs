@@ -1,4 +1,4 @@
-//! Bounded Cardigann HTML and JSON selectors with response-owned DOM mutation.
+//! Bounded Cardigann HTML/XML and JSON selectors with response-owned DOM mutation.
 use super::css::{Css, Scan};
 use crate::cardigann::Node;
 use scraper::{ElementRef, Html};
@@ -137,7 +137,7 @@ impl Selector {
             if count >= MAX_VISITS {
                 return Err("HTML selector visit limit exceeded".into());
             }
-            if let Some(t) = node.value().as_text() {
+            if let Some(t) = super::xml::text(node.value()) {
                 text.push_str(t);
                 if text.len() > MAX_OUTPUT {
                     return Err("selector output limit exceeded".into());

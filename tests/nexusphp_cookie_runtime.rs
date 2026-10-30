@@ -15,6 +15,28 @@ struct Case {
     published: String,
 }
 
+/// Public layout cases: the original manifest plus independently merged batches.
+const PUBLIC_MANIFESTS: [&str; 11] = [
+    include_str!("fixtures/public-layouts/cases.json"),
+    include_str!("fixtures/public-batches/batch1.json"),
+    include_str!("fixtures/public-batches/batch2.json"),
+    include_str!("fixtures/public-batches/batch3.json"),
+    include_str!("fixtures/public-batches/batch4.json"),
+    include_str!("fixtures/public-batches/batch5.json"),
+    include_str!("fixtures/public-batches/batch6.json"),
+    include_str!("fixtures/public-batches/batch7.json"),
+    include_str!("fixtures/public-batches/batch8.json"),
+    include_str!("fixtures/public-batches/batch9.json"),
+    include_str!("fixtures/public-batches/batch10.json"),
+];
+/// Cookie layout cases: the original manifest plus independently merged batches.
+const COOKIE_MANIFESTS: [&str; 5] = [
+    include_str!("fixtures/cookie-layouts/cases.json"),
+    include_str!("fixtures/cookie-batches/batch1.json"),
+    include_str!("fixtures/cookie-batches/batch2.json"),
+    include_str!("fixtures/cookie-batches/batch3.json"),
+    include_str!("fixtures/cookie-batches/batch4.json"),
+];
 #[tokio::test]
 async fn every_admitted_nexusphp_case_passes_engine_session_search_download_and_restart() {
     use futures_util::{stream, StreamExt};
@@ -118,6 +140,12 @@ async fn lifecycle(case: Case) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.json");
     let engine = Arc::new(Engine::new(path.clone()).await.unwrap());
+    // As in tests/form_layout_runtime.rs: pinned request delays and concurrent
+    // lifecycles exceed the 20 s default deadline, which is not under test here.
+    engine
+        .update_settings(json!({"request_timeout_seconds": 60}))
+        .await
+        .unwrap();
     let i = engine
         .put_indexer(
             Indexer {
@@ -300,8 +328,10 @@ fn catalog_admission_is_exactly_the_baseline_and_the_source_pinned_family() {
     assert_eq!(family.len(), 57);
     let mut cookie = family.clone();
     cookie.insert("musopia".into());
-    let layouts: Vec<serde_json::Value> =
-        serde_json::from_str(include_str!("fixtures/cookie-layouts/cases.json")).unwrap();
+    let layouts: Vec<serde_json::Value> = COOKIE_MANIFESTS
+        .iter()
+        .flat_map(|m| serde_json::from_str::<Vec<serde_json::Value>>(m).unwrap())
+        .collect();
     cookie.extend(layouts.iter().map(|v| v["id"].as_str().unwrap().to_owned()));
     assert_eq!(
         builtin::COOKIE_IDS
@@ -318,8 +348,35 @@ fn catalog_admission_is_exactly_the_baseline_and_the_source_pinned_family() {
     let posts: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("fixtures/post-layouts/cases.json")).unwrap();
     ready.extend(posts.iter().map(|v| v["id"].as_str().unwrap().to_owned()));
-    let public: Vec<serde_json::Value> =
-        serde_json::from_str(include_str!("fixtures/public-layouts/cases.json")).unwrap();
+    for batch in [
+        include_str!("fixtures/form-batches/batch1.json"),
+        include_str!("fixtures/form-batches/batch2.json"),
+        include_str!("fixtures/form-batches/batch3.json"),
+        include_str!("fixtures/form-batches/batch4.json"),
+        include_str!("fixtures/form-batches/batch5.json"),
+        include_str!("fixtures/form-batches/batch6.json"),
+        include_str!("fixtures/form-batches/batch7.json"),
+        include_str!("fixtures/form-batches/batch8.json"),
+        include_str!("fixtures/form-batches/batch9.json"),
+        include_str!("fixtures/form-batches/batch10.json"),
+        include_str!("fixtures/form-batches/batch11.json"),
+        include_str!("fixtures/form-batches/batch12.json"),
+        include_str!("fixtures/form-batches/batch13.json"),
+        include_str!("fixtures/form-batches/batch14.json"),
+        include_str!("fixtures/form-batches/batch15.json"),
+        include_str!("fixtures/form-batches/batch16.json"),
+        include_str!("fixtures/form-batches/batch17.json"),
+        include_str!("fixtures/form-batches/batch18.json"),
+        include_str!("fixtures/form-batches/batch19.json"),
+        include_str!("fixtures/form-batches/batch20.json"),
+    ] {
+        let batch: Vec<serde_json::Value> = serde_json::from_str(batch).unwrap();
+        ready.extend(batch.iter().map(|v| v["id"].as_str().unwrap().to_owned()));
+    }
+    let public: Vec<serde_json::Value> = PUBLIC_MANIFESTS
+        .iter()
+        .flat_map(|m| serde_json::from_str::<Vec<serde_json::Value>>(m).unwrap())
+        .collect();
     ready.extend(public.iter().map(|v| v["id"].as_str().unwrap().to_owned()));
     let api: Vec<serde_json::Value> =
         serde_json::from_str(include_str!("fixtures/unit3d-api/cases.json")).unwrap();

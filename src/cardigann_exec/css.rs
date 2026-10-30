@@ -1,8 +1,9 @@
 //! scraper's CSS selector dialect plus AngleSharp's text `:contains(...)`.
 //!
-//! Every built-in selector feature is delegated unchanged to scraper's own
-//! `selectors::Element` implementation; only the `:contains` pseudo-class is
-//! added. Source: AngleSharp v1.8.6 (9253950e551f9ed95294f775675de9aa249894a2),
+//! HTML built-in selector features delegate to scraper's `selectors::Element`;
+//! XML additionally overrides local-name matching and `:empty` (see `xml.rs`).
+//! The `:contains` pseudo-class is added. Source: AngleSharp v1.8.6
+//! (9253950e551f9ed95294f775675de9aa249894a2),
 //! `Css/Parser/CssSelectorConstructor.cs:25-43,376,958-1000` (case-insensitive
 //! function name, ident or string argument) and
 //! `Css/Dom/Internal/TextContainsMatcher.cs:28-94` (ordinal KMP over descendant
@@ -792,6 +793,7 @@ impl Css {
         let node = Node {
             element: *element,
             scan,
+            xml: super::xml::is_xml(element),
         };
         let matched = scan.failure.get().is_none()
             && self
@@ -806,18 +808,20 @@ impl Css {
     }
 }
 
-/// `ElementRef` carrying the pass's scan budget; everything except
-/// `:contains` delegates to scraper's implementation.
+/// `ElementRef` carrying the scan budget and XML matching mode. HTML features
+/// other than `:contains` delegate to scraper's implementation.
 #[derive(Clone, Debug)]
 struct Node<'a, 's> {
     element: ElementRef<'a>,
     scan: &'s Scan,
+    xml: bool,
 }
 impl<'a, 's> Node<'a, 's> {
     fn wrap(&self, element: Option<ElementRef<'a>>) -> Option<Self> {
         element.map(|element| Self {
             element,
             scan: self.scan,
+            xml: self.xml,
         })
     }
 }
@@ -848,10 +852,19 @@ impl selectors::Element for Node<'_, '_> {
         self.wrap(self.element.first_element_child())
     }
     fn is_html_element_in_html_document(&self) -> bool {
-        self.element.is_html_element_in_html_document()
+        !self.xml && self.element.is_html_element_in_html_document()
     }
     fn has_local_name(&self, name: &CssLocalName) -> bool {
-        self.element.has_local_name(name)
+        if self.xml {
+            self.element
+                .value()
+                .name
+                .local
+                .as_ref()
+                .eq_ignore_ascii_case(name.0.as_ref())
+        } else {
+            self.element.has_local_name(name)
+        }
     }
     fn has_namespace(&self, ns: &<Impl as SelectorImpl>::BorrowedNamespaceUrl) -> bool {
         self.element.has_namespace(ns)
@@ -906,7 +919,14 @@ impl selectors::Element for Node<'_, '_> {
         self.element.is_part(name)
     }
     fn is_empty(&self) -> bool {
-        self.element.is_empty()
+        if self.xml {
+            !self.element.children().any(|node| {
+                node.value().is_element()
+                    || super::xml::text(node.value()).is_some_and(|text| !text.is_empty())
+            })
+        } else {
+            self.element.is_empty()
+        }
     }
     fn is_root(&self) -> bool {
         self.element.is_root()

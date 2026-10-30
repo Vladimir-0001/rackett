@@ -260,6 +260,13 @@ impl Engine {
                 }
             }))
             .connect_timeout(Duration::from_secs(10));
+        // Definition `certificates` pin trust for this source's site host only.
+        let pins = if builtin.is_some() {
+            crate::builtin::certificates(i)?
+        } else {
+            None
+        };
+        let client = crate::pinned_tls::apply(client, pins.as_ref(), &i.url)?;
         // Clearance is tied to the solver's egress. Only explicitly admitted
         // solver-backed sources use the operator's optional address-family pin.
         let client = if crate::builtin::id(i)
@@ -1001,6 +1008,11 @@ impl Engine {
         if detail.is_some() {
             crate::builtin_runtime::detail_target(&base, target)?;
         }
+        // General `download.selectors` resolution, compiled from the pinned definition.
+        let selectors = match r.builtin {
+            Some(_) => crate::builtin::download_selectors(i)?.map(Arc::new),
+            None => None,
+        };
         let seconds = self.settings().await.request_timeout_seconds;
         let deadline = Instant::now() + Duration::from_secs(seconds);
         tokio::time::timeout(Duration::from_secs(seconds), async {
@@ -1041,6 +1053,32 @@ impl Engine {
                 *gate = Instant::now() + Duration::from_millis(delay_ms);
                 return magnet.map(Download::Magnet);
             }
+            if let (Some(selectors), Some(b)) = (selectors.clone(), r.builtin.as_ref()) {
+                let delay_ms = b.delay_ms;
+                let source = r
+                    .source
+                    .as_ref()
+                    .ok_or(crate::builtin_runtime::DetailFailure::Fetch)?;
+                let resolved = crate::builtin_runtime::resolve_download_selectors(
+                    selectors,
+                    b,
+                    &mut crate::builtin_runtime::Transport {
+                        client: &r.client,
+                        source,
+                        base: &base,
+                        gate: &mut gate,
+                        delay_ms,
+                        deadline,
+                    },
+                    &url,
+                )
+                .await;
+                *gate = Instant::now() + Duration::from_millis(delay_ms);
+                // `None`: a before-only block; the link itself is downloaded below.
+                if let Some(download) = resolved? {
+                    return Ok(download);
+                }
+            }
             if let Some(session) = r.source.as_ref().and_then(|s| s.cookie_session.as_ref()) {
                 return Ok(Download::Torrent {
                     bytes: session.fetch_download(target).await?,
@@ -1068,6 +1106,11 @@ impl Engine {
                         .unwrap_or(i.request_delay_ms),
                 );
             let mut request = r.client.get(url);
+            if let (Some(b), Some(source)) = (r.builtin.as_ref(), r.source.as_ref()) {
+                request = request.headers(crate::builtin_runtime::get_login_download_headers(
+                    b, source,
+                )?);
+            }
             if i.kind == "unit3d" && !i.api_key.is_empty() {
                 request = request.bearer_auth(&i.api_key);
             }

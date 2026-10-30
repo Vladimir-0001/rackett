@@ -26,7 +26,7 @@ enum Expr {
     Literal(String),
     Variable(String),
     Call(String, Vec<Expr>),
-    RegexReplace(Box<Expr>, regex::Regex, Box<Expr>),
+    RegexReplace(Box<Expr>, super::filters::DefinitionRegex, Box<Expr>),
 }
 fn tokens(s: &str) -> Result<Vec<String>, String> {
     let mut out = Vec::new();

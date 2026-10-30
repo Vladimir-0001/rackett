@@ -140,13 +140,16 @@ fn pipeline_expansion_and_regex_compatibility_fail_explicitly() {
         .unwrap_err()
         .message
         .contains("output limit"));
-    for name in ["regexp", "re_replace"] {
-        let args = if name == "regexp" {
-            vec!["(?<=secret)value".into()]
-        } else {
-            vec!["(?<=secret)value".into(), "x".into()]
-        };
-        assert!(Filter::compile(name, &args).is_err());
+    // .NET look-around runs through the fallback engine; balancing groups still fail.
+    for (pattern, ok) in [("(?<=secret)value", true), ("(?<o>a)(?<-o>b)", false)] {
+        for name in ["regexp", "re_replace"] {
+            let args = if name == "regexp" {
+                vec![pattern.into()]
+            } else {
+                vec![pattern.into(), "x".into()]
+            };
+            assert_eq!(Filter::compile(name, &args).is_ok(), ok, "{name} {pattern}");
+        }
     }
     let p = plan("  keywordsfilters: [{name: base64decode}]", "html");
     let ctx = p.context(&BTreeMap::new(), &query("_w"), now());
@@ -281,7 +284,7 @@ fn preprocessing_aggregate_work_and_filter_count_limits() {
                 .find(|(k, _)| k.text() == Some("keywordsfilters"))
                 .unwrap();
             if let cardigann::Value::Sequence(items) = &mut pipeline.value {
-                items.resize(33, items[0].clone());
+                items.resize(65, items[0].clone());
             }
         }
     }

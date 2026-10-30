@@ -1,6 +1,6 @@
 //! Bounded supplied-cookie authentication; catalog admission belongs to builtin.rs.
 //! Response cookies are bounded and source-scoped; only the declared User-Agent header is modeled.
-use crate::cardigann::Node;
+use crate::{cardigann::Node, cardigann_exec::request::Charset};
 use anyhow::{anyhow, bail, Result};
 use futures_util::StreamExt;
 use reqwest::header::{CONTENT_TYPE, COOKIE, LOCATION};
@@ -21,11 +21,25 @@ pub struct CookiePlan {
     // marker is a torrent link on the home page, absent on an empty search.
     aidoru_fragment: bool,
     user_agent: Option<String>,
+    /// Definition encoding for search, test and login pages; it wins over headers.
+    pub(super) charset: Charset,
+    /// Definition `certificates`, trusted only for the session's own origin host.
+    pub(super) certificates: Option<crate::pinned_tls::Pins>,
 }
 
 #[cfg(test)]
 #[path = "auth_sessions.rs"]
 mod session_tests;
+/// Whether the search block or any search path declares `followredirect`. Sessions
+/// treat a search redirect as login expiry, so these sources stay unsupported.
+pub(crate) fn search_follows_redirects(root: &crate::cardigann::Node) -> bool {
+    root.get("search").is_some_and(|s| {
+        s.get("followredirect").is_some()
+            || s.get("paths")
+                .and_then(crate::cardigann::Node::items)
+                .is_some_and(|paths| paths.iter().any(|p| p.get("followredirect").is_some()))
+    })
+}
 fn exact_keys(node: &Node, expected: &[&str]) -> Result<()> {
     let pairs = node
         .pairs()
@@ -88,18 +102,16 @@ impl CookiePlan {
             bail!("Unsupported cookie test path or selector");
         }
         if root.get("followredirect").is_some()
+            || search_follows_redirects(root)
             || root
                 .get("download")
                 .and_then(|s| s.get("headers"))
                 .is_some()
-            || root.get("encoding").is_some_and(|encoding| {
-                encoding
-                    .text()
-                    .is_none_or(|value| !value.eq_ignore_ascii_case("utf-8"))
-            })
         {
             bail!("Cookie auth transport semantics are not modeled");
         }
+        let charset = Charset::from_definition(root)
+            .map_err(|_| anyhow!("Cookie auth transport semantics are not modeled"))?;
         let settings = root
             .get("settings")
             .and_then(Node::items)
@@ -135,22 +147,26 @@ impl CookiePlan {
         } else {
             None
         };
-        if search.get("response").is_some()
-            || search
-                .string("method")
-                .is_some_and(|m| !m.eq_ignore_ascii_case("get"))
+        // HTML GET or plan-encoded form POST searches (`method: post`).
+        let method_ok = |m: &str| m.eq_ignore_ascii_case("get") || m.eq_ignore_ascii_case("post");
+        // Search responses may be HTML (default), JSON or XML; RequestPlan owns the rest
+        // of the response semantics.
+        let response_ok = |n: &Node| {
+            n.get("response").is_none_or(|r| {
+                r.string("type")
+                    .is_none_or(|t| ["html", "json", "xml"].contains(&t))
+            })
+        };
+        if !response_ok(search)
+            || search.string("method").is_some_and(|m| !method_ok(m))
             || search
                 .get("paths")
                 .and_then(Node::items)
                 .unwrap_or_default()
                 .iter()
-                .any(|p| {
-                    p.get("response").is_some()
-                        || p.string("method")
-                            .is_some_and(|m| !m.eq_ignore_ascii_case("get"))
-                })
+                .any(|p| !response_ok(p) || p.string("method").is_some_and(|m| !method_ok(m)))
         {
-            bail!("Cookie search requires plain HTML GET paths");
+            bail!("Cookie search requires plain HTML GET or form POST paths");
         }
         let aidoru_fragment = root.string("id") == Some("aidoruonline");
         if aidoru_fragment {
@@ -177,7 +193,10 @@ impl CookiePlan {
             path: path.into(),
             selector: selector.into(),
             aidoru_fragment,
+            charset,
             user_agent,
+            certificates: crate::pinned_tls::Pins::compile(root)
+                .map_err(|_| anyhow!("Cookie auth transport semantics are not modeled"))?,
         })
     }
     /// Only the source-declared single header can be configured. No value is echoed.
@@ -276,6 +295,8 @@ struct SessionRequest<'a> {
     redirects: usize,
     limit: usize,
     fields: Option<&'a [(String, String)]>,
+    /// A search POST body already encoded by the request plan (upstream encoding).
+    body: Option<&'a str>,
     referer: Option<&'a str>,
     probe: bool,
 }
@@ -319,6 +340,8 @@ impl CookieSession {
             selector: form.plan.test_selector.clone(),
             aidoru_fragment: false,
             user_agent: None,
+            charset: form.plan.charset,
+            certificates: form.plan.certificates.clone(),
         };
         let session = Self::create(plan, base, "", delay_ms, timeout_seconds, Some(form))?;
         session.target(&session.form.as_ref().unwrap().plan.path)?;
@@ -357,8 +380,21 @@ impl CookieSession {
                 identity.update(b"Rackett form credentials v1");
             }
             identity.update(serde_json::to_vec(&form.inputs)?);
+            // A declared login cookie seed starts the form session and is part of
+            // its identity, so a changed seed never reuses an older session.
+            // Seedless forms keep their existing identity (and stored sessions).
+            let seed = form.plan.cookies.as_deref().unwrap_or("");
+            if !seed.is_empty() {
+                identity.update(b"login cookies");
+                identity.update((seed.len() as u64).to_be_bytes());
+                identity.update(seed.as_bytes());
+            }
             (
-                super::cookies::Cookies::empty(&base),
+                if seed.is_empty() {
+                    super::cookies::Cookies::empty(&base)
+                } else {
+                    super::cookies::Cookies::new(&base, seed)?
+                },
                 identity.finalize().into(),
             )
         } else {
@@ -379,7 +415,8 @@ impl CookieSession {
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
             .connect_timeout(Duration::from_secs(10))
-            .user_agent(plan.user_agent.as_deref().unwrap_or("Rackett/0.1"))
+            .user_agent(plan.user_agent.as_deref().unwrap_or("Rackett/0.1"));
+        let client = crate::pinned_tls::apply(client, plan.certificates.as_ref(), base.as_str())?
             .build()
             .map_err(|_| anyhow!("Cookie client creation failed"))?;
         let session = Self {
@@ -507,6 +544,7 @@ impl CookieSession {
                     redirects,
                     limit,
                     fields: None,
+                    body: None,
                     referer: None,
                     probe: false,
                 },
@@ -523,11 +561,30 @@ impl CookieSession {
         let mut state = self.durable(state).await?;
         let mut target = self.target(request.path)?;
         let mut fields = request.fields;
+        let mut body = request.body;
         for n in 0..=request.redirects {
             tokio::time::sleep_until(state.gate.into()).await;
             state.gate = Instant::now() + self.delay;
             let mut outgoing = if let Some(fields) = fields {
-                self.client.post(target.clone()).form(fields)
+                if self.plan.charset == Charset::Utf8 {
+                    self.client.post(target.clone()).form(fields)
+                } else {
+                    // Pinned WebClient.FormUrlEncodedContentWithEncoding.
+                    let body = self
+                        .plan
+                        .charset
+                        .form_body(fields)
+                        .map_err(|e| anyhow!(e))?;
+                    self.client
+                        .post(target.clone())
+                        .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                        .body(body)
+                }
+            } else if let Some(body) = body {
+                self.client
+                    .post(target.clone())
+                    .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
+                    .body(body.to_owned())
             } else {
                 self.client.get(target.clone())
             };
@@ -608,6 +665,7 @@ impl CookieSession {
                 )?;
                 if [301, 302, 303].contains(&response.status().as_u16()) {
                     fields = None;
+                    body = None;
                 }
                 continue;
             }
@@ -655,7 +713,7 @@ impl CookieSession {
         }
         unreachable!()
     }
-    fn decode_html(bytes: Vec<u8>, content_type: &str) -> Result<String> {
+    fn decode_html(bytes: Vec<u8>, content_type: &str, charset: Charset) -> Result<String> {
         let mut parts = content_type.split(';');
         if !matches!(
             parts
@@ -665,14 +723,18 @@ impl CookieSession {
                 .to_ascii_lowercase()
                 .as_str(),
             "" | "text/html"
-        ) || parts.any(|p| {
-            let p = p.trim().to_ascii_lowercase();
-            p.starts_with("charset=")
-                && !["charset=utf-8", "charset=\"utf-8\""].contains(&p.as_str())
-        }) {
+        ) || (charset == Charset::Utf8
+            && parts.any(|p| {
+                let p = p.trim().to_ascii_lowercase();
+                p.starts_with("charset=")
+                    && !["charset=utf-8", "charset=\"utf-8\""].contains(&p.as_str())
+            }))
+        {
             bail!("Cookie validation requires UTF-8 HTML");
         }
-        let body = String::from_utf8(bytes)
+        // WebResult.Encoding: a non-UTF-8 definition encoding wins over the header charset.
+        let body = charset
+            .decode(bytes)
             .map_err(|_| anyhow!("Cookie validation requires UTF-8 HTML"))?;
         if super::flaresolverr::challenge_markers(body.as_bytes()) {
             bail!(
@@ -690,7 +752,7 @@ impl CookieSession {
             .await?)
     }
     async fn html(&self, bytes: Vec<u8>, content_type: &str, search: bool) -> Result<String> {
-        let body = Self::decode_html(bytes, content_type)?;
+        let body = Self::decode_html(bytes, content_type, self.plan.charset)?;
         let permit = Self::parser_permit().await?;
         let selector = if search && self.plan.aidoru_fragment {
             "table.ttable_headinner".into()
@@ -711,6 +773,25 @@ impl CookieSession {
         .map_err(|_| anyhow!("Cookie response parser failed"))?
     }
 
+    /// A search response. Pinned `CheckIfLoginIsNeeded` (`CardigannIndexer.cs:951-997`)
+    /// applies the login test selector only when Content-Type contains `text/html` or
+    /// is absent; JSON and XML search responses are otherwise returned as text.
+    /// `typed` is a definition-declared JSON or XML response; HTML searches keep the
+    /// strict HTML check and login selector.
+    async fn search_page(&self, bytes: Vec<u8>, content_type: &str, typed: bool) -> Result<String> {
+        if !typed || content_type.is_empty() || content_type.contains("text/html") {
+            return self.html(bytes, content_type, true).await;
+        }
+        if super::flaresolverr::challenge_markers(&bytes) {
+            bail!(
+                "Cookie source Cloudflare challenge detected; challenge solving is not supported"
+            );
+        }
+        self.plan
+            .charset
+            .decode(bytes)
+            .map_err(|_| anyhow!("Cookie search response is not valid text"))
+    }
     async fn validate(
         &self,
         state: OwnedMutexGuard<SessionState>,
@@ -750,6 +831,7 @@ impl CookieSession {
                         redirects: 1,
                         limit: 8 * 1024 * 1024,
                         fields: None,
+                        body: None,
                         referer: None,
                         probe: true,
                     },
@@ -788,13 +870,14 @@ impl CookieSession {
                         redirects: 0,
                         limit: 8 * 1024 * 1024,
                         fields: None,
+                        body: None,
                         referer: Some(self.base.as_str()),
                         probe: false,
                     },
                     state,
                 )
                 .await?;
-            let body = Self::decode_html(landing.bytes, &landing.content_type)?;
+            let body = Self::decode_html(landing.bytes, &landing.content_type, self.plan.charset)?;
             let landing_url = landing.url;
             let permit = Self::parser_permit().await?;
             let prepared_form = form.clone();
@@ -815,13 +898,14 @@ impl CookieSession {
                     redirects: 5,
                     limit: 8 * 1024 * 1024,
                     fields: Some(&submission.fields),
+                    body: None,
                     referer: Some(landing_url.as_str()),
                     probe: false,
                 },
                 state,
             )
             .await?;
-        let body = Self::decode_html(posted.bytes, &posted.content_type)?;
+        let body = Self::decode_html(posted.bytes, &posted.content_type, self.plan.charset)?;
         let permit = Self::parser_permit().await?;
         tokio::task::spawn_blocking(move || {
             let _permit = permit;
@@ -847,6 +931,16 @@ impl CookieSession {
     /// Supplied-cookie searches never retry. Form sessions may authenticate and
     /// retry once when the search loses its positive login marker or returns 401.
     pub async fn fetch_html(&self, path: &str) -> Result<String> {
+        self.fetch_search(path, None, false).await
+    }
+    /// A search page through the session; `body` is a plan-encoded POST search and
+    /// `typed` a definition-declared JSON or XML response.
+    pub async fn fetch_search(
+        &self,
+        path: &str,
+        body: Option<&str>,
+        typed: bool,
+    ) -> Result<String> {
         let target = self.target(path)?;
         if self.plan.aidoru_fragment && target.path() != self.target("get_ttable.php")?.path() {
             bail!("Unsupported AJAX cookie search target");
@@ -863,6 +957,7 @@ impl CookieSession {
                                 redirects: 0,
                                 limit: 8 * 1024 * 1024,
                                 fields: None,
+                                body,
                                 referer: None,
                                 probe: true,
                             },
@@ -872,7 +967,8 @@ impl CookieSession {
                     let result = if reply.unauthorized {
                         Err(anyhow!(MissingLogin))
                     } else {
-                        self.html(reply.bytes, &reply.content_type, true).await
+                        self.search_page(reply.bytes, &reply.content_type, typed)
+                            .await
                     };
                     match result {
                         Ok(body) => return Ok(body),
@@ -884,11 +980,54 @@ impl CookieSession {
                 }
                 unreachable!()
             }
-            let (bytes, ct, _gate) = self.receive(path, 0, 8 * 1024 * 1024, gate).await?;
-            self.html(bytes, &ct, true).await
+            let response = self
+                .receive_request(
+                    SessionRequest {
+                        path,
+                        redirects: 0,
+                        limit: 8 * 1024 * 1024,
+                        fields: None,
+                        body,
+                        referer: None,
+                        probe: false,
+                    },
+                    gate,
+                )
+                .await?;
+            self.search_page(response.bytes, &response.content_type, typed)
+                .await
         })
         .await
         .map_err(|_| anyhow!("Cookie search deadline exceeded"))?
+    }
+    /// A `download.before` request through the session, with the release link as
+    /// Referer. Upstream ignores its response; same-origin redirects are followed.
+    pub async fn send_before(
+        &self,
+        path: &str,
+        fields: Option<&[(String, String)]>,
+        referer: &str,
+    ) -> Result<()> {
+        self.target(path)?;
+        tokio::time::timeout(self.timeout, async {
+            let gate = self.validate(self.state.clone().lock_owned().await).await?;
+            self.receive_request(
+                SessionRequest {
+                    path,
+                    redirects: 5,
+                    limit: 8 * 1024 * 1024,
+                    fields,
+                    body: None,
+                    referer: Some(referer),
+                    probe: false,
+                },
+                gate,
+            )
+            .await?;
+            Ok(())
+        })
+        .await
+        .map_err(|_| anyhow!("Cookie download deadline exceeded"))?
     }
     /// Auth remains in the source session; callers expose only their opaque download ticket.
     /// Torrent validation belongs to the caller. No download resolver is implied.

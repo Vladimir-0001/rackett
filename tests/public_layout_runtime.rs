@@ -11,9 +11,18 @@ use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
 
 const HASH: &str = "0123456789abcdef0123456789abcdef01234567";
+/// A `download.selectors` source: its release link is a detail page whose selector
+/// leads to `resolved`, a same-origin torrent path or an expected magnet URI.
+#[derive(Clone, Deserialize)]
+struct Detail {
+    html: String,
+    resolved: String,
+}
 #[derive(Clone, Deserialize)]
 struct Case {
     id: String,
+    #[serde(default)]
+    detail: Option<Detail>,
     sha256: String,
     category: u32,
     request_count: usize,
@@ -27,14 +36,55 @@ struct Case {
     details_path: String,
     seeders: u64,
     peers: u64,
+    /// Expected `published`. A `date: now` definition yields the harness clock,
+    /// `2026-10-29T12:00:00Z`, in the offline extraction test.
     published: String,
+    /// Expected size in bytes when the definition fixes one (default 1 GiB).
+    #[serde(default)]
+    expected_size: Option<u64>,
+    /// The definition's size field is a literal (`text: 512 MB`), so page text cannot
+    /// make it malformed; the extraction must still yield `expected_size`.
+    #[serde(default)]
+    fixed_size: bool,
+    /// Requests built for a keywordless query when it differs from `request_count`
+    /// (e.g. category-expanded paths).
+    #[serde(default)]
+    keywordless_request_count: Option<usize>,
+    /// Source settings, e.g. an API key a `login: get` probe and searches send.
+    #[serde(default)]
+    settings: serde_json::Map<String, serde_json::Value>,
+    /// The exact `login: get` probe request (path and query). It is answered with an
+    /// empty capabilities document and not counted among search requests.
+    #[serde(default)]
+    probe: Option<String>,
+    /// Rendered search headers every request (probe, search, download) must carry,
+    /// e.g. `{"authorization": "Bearer fixture-source-key"}`. Names are lower case.
+    #[serde(default)]
+    expected_headers: BTreeMap<String, String>,
     delay_ms: u64,
     title: String,
     json: bool,
     container: Option<String>,
 }
+/// Public layout cases: the original manifest plus independently merged batches.
+const PUBLIC_MANIFESTS: [&str; 11] = [
+    include_str!("fixtures/public-layouts/cases.json"),
+    include_str!("fixtures/public-batches/batch1.json"),
+    include_str!("fixtures/public-batches/batch2.json"),
+    include_str!("fixtures/public-batches/batch3.json"),
+    include_str!("fixtures/public-batches/batch4.json"),
+    include_str!("fixtures/public-batches/batch5.json"),
+    include_str!("fixtures/public-batches/batch6.json"),
+    include_str!("fixtures/public-batches/batch7.json"),
+    include_str!("fixtures/public-batches/batch8.json"),
+    include_str!("fixtures/public-batches/batch9.json"),
+    include_str!("fixtures/public-batches/batch10.json"),
+];
 fn cases() -> Vec<Case> {
-    serde_json::from_str(include_str!("fixtures/public-layouts/cases.json")).unwrap()
+    PUBLIC_MANIFESTS
+        .iter()
+        .flat_map(|m| serde_json::from_str::<Vec<Case>>(m).unwrap())
+        .collect()
 }
 fn root(c: &Case) -> cardigann::Node {
     let raw = builtin::SOURCES
@@ -81,7 +131,7 @@ fn stock(c: &Case, base: &str) -> Indexer {
         name: c.id.clone(),
         url: base.into(),
         request_delay_ms: 0,
-        definition: Some(json!({"builtin_id":c.id,"settings":{}})),
+        definition: Some(json!({"builtin_id":c.id,"settings":c.settings})),
         ..Default::default()
     }
 }
@@ -116,9 +166,23 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
         let id = c.id.clone();
         if std::panic::catch_unwind(|| {
             let p = Plan::compile(&root(&c)).unwrap();
-            assert!(p.blockers().is_empty(), "{}", c.id);
+            // A download.selectors source keeps its plan-level download blocker; the
+            // runtime resolves it (docs/download-selectors.md).
+            assert!(
+                p.blockers().iter().all(|b| {
+                    c.detail.is_some() && b.path == "$.download"
+                        || c.probe.is_some() && b.path == "$.login"
+                }),
+                "{}",
+                c.id
+            );
+            let settings: BTreeMap<_, _> = c
+                .settings
+                .iter()
+                .map(|(k, v)| (k.clone(), v.clone()))
+                .collect();
             let ctx = p.context(
-                &BTreeMap::new(),
+                &settings,
                 &query(&c),
                 "2026-10-29T12:00:00Z".parse().unwrap(),
             );
@@ -133,7 +197,7 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
                 assert_eq!(rows.len(), 1, "{}", c.id);
                 let r = &rows[0];
                 assert_eq!(r.title, c.title, "{}", c.id);
-                assert_eq!(r.size, Some(1 << 30), "{}", c.id);
+                assert_eq!(r.size, Some(c.expected_size.unwrap_or(1 << 30)), "{}", c.id);
                 assert_eq!(r.seeders, Some(c.seeders), "{}", c.id);
                 assert_eq!(r.peers, Some(c.peers), "{}", c.id);
                 assert!(
@@ -178,7 +242,9 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
                     .replace("1 ГБ", "bad-size")
                     .replace("1073741824", "\"bad-size\"");
                 let malformed = p.extract(request, &broken, &ctx);
-                if c.optional_size {
+                if c.fixed_size {
+                    assert_eq!(malformed.unwrap()[0].size, c.expected_size, "{}", c.id);
+                } else if c.optional_size {
                     assert_eq!(malformed.unwrap()[0].size, None, "{}", c.id);
                 } else {
                     assert!(malformed.is_err(), "{}: malformed size accepted", c.id);
@@ -196,14 +262,25 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
 #[tokio::test]
 async fn every_public_layout_runs_engine_cache_download_restart_errors_and_recovery() {
     use futures_util::{stream, StreamExt};
-    stream::iter(cases().into_iter().filter(|c| c.id != "dmhy"))
-        .for_each_concurrent(9, |c| async move {
+    // Every case runs to completion; failures are collected so one run lists them all.
+    let failed: Vec<String> = stream::iter(cases().into_iter().filter(|c| c.id != "dmhy"))
+        .map(|c| async move {
             let name = c.id.clone();
-            tokio::time::timeout(std::time::Duration::from_secs(180), lifecycle(c))
-                .await
-                .unwrap_or_else(|_| panic!("{name}: lifecycle deadline"));
+            let run = tokio::spawn(tokio::time::timeout(
+                std::time::Duration::from_secs(180),
+                lifecycle(c),
+            ));
+            match run.await {
+                Ok(Ok(())) => None,
+                Ok(Err(_)) => Some(format!("{name} (lifecycle deadline)")),
+                Err(_) => Some(name),
+            }
         })
+        .buffer_unordered(9)
+        .filter_map(|r| async move { r })
+        .collect()
         .await;
+    assert!(failed.is_empty(), "Failed lifecycles: {failed:?}");
 }
 async fn lifecycle(c: Case) {
     use axum::{
@@ -220,9 +297,21 @@ async fn lifecycle(c: Case) {
     };
     use std::time::Instant;
     const TORRENT: &[u8] = b"d4:infod4:name7:fixture6:lengthi42eee";
+    use rackett::cardigann_exec::request::Charset;
+    // Non-UTF-8 definitions are served in their own code page, proving transcoding.
+    let charset = rackett::cardigann_exec::Plan::compile(&root(&c))
+        .unwrap()
+        .charset();
+    assert!(
+        charset == Charset::Utf8 || !c.title.is_ascii(),
+        "{}: a {} fixture needs a native non-ASCII title",
+        c.id,
+        charset.label()
+    );
     struct Fixture {
         case: Case,
         body: String,
+        charset: Charset,
         mode: AtomicU8,
         hits: Mutex<Vec<String>>,
     }
@@ -232,9 +321,36 @@ async fn lifecycle(c: Case) {
         }
     }
     async fn respond(State(f): State<Arc<Fixture>>, uri: Uri, h: HeaderMap) -> Response {
-        assert!(!h.contains_key("authorization") && !h.contains_key("cookie"));
+        assert!(!h.contains_key("cookie"), "{}: cookie", f.case.id);
+        assert!(
+            !h.contains_key("authorization")
+                || f.case.expected_headers.contains_key("authorization"),
+            "{}: unexpected authorization",
+            f.case.id
+        );
+        for (name, value) in &f.case.expected_headers {
+            assert_eq!(
+                h.get(name.as_str()).and_then(|v| v.to_str().ok()),
+                Some(value.as_str()),
+                "{}: header {name}",
+                f.case.id
+            );
+        }
+        if f.case.probe.as_deref() == Some(uri.to_string().as_str()) {
+            return ([("content-type", "application/xml")], "<caps></caps>").into_response();
+        }
         f.hits.lock().unwrap().push(uri.to_string());
-        if uri.to_string() == f.case.download_path {
+        if let Some(detail) = &f.case.detail {
+            if uri.to_string() == f.case.download_path {
+                let page = f.charset.encode(&detail.html).unwrap_or_else(|| {
+                    panic!("{}: detail text outside {}", f.case.id, f.charset.label())
+                });
+                return ([("content-type", "text/html")], page).into_response();
+            }
+            if uri.to_string() == detail.resolved {
+                return ([("content-type", "application/x-bittorrent")], TORRENT).into_response();
+            }
+        } else if uri.to_string() == f.case.download_path {
             return ([("content-type", "application/x-bittorrent")], TORRENT).into_response();
         }
         let mode = f.mode.load(Ordering::SeqCst);
@@ -298,7 +414,10 @@ async fn lifecycle(c: Case) {
                     "text/html"
                 },
             )],
-            body,
+            // The header deliberately omits the charset: the definition encoding wins.
+            f.charset.encode(&body).unwrap_or_else(|| {
+                panic!("{}: fixture text outside {}", f.case.id, f.charset.label())
+            }),
         )
             .into_response();
         if mode == 3 {
@@ -311,6 +430,7 @@ async fn lifecycle(c: Case) {
     let fixture = Arc::new(Fixture {
         case: c.clone(),
         body: page(&c),
+        charset,
         mode: AtomicU8::new(0),
         hits: Default::default(),
     });
@@ -337,7 +457,7 @@ async fn lifecycle(c: Case) {
     assert_eq!(first.results.len(), 1, "{}", c.id);
     let r = &first.results[0];
     assert_eq!(r.title, c.title, "{}", c.id);
-    assert_eq!(r.size, Some(1 << 30));
+    assert_eq!(r.size, Some(c.expected_size.unwrap_or(1 << 30)));
     assert_eq!(r.seeders, Some(c.seeders));
     assert_eq!(r.peers, Some(c.peers));
     let hits = fixture.take();
@@ -384,6 +504,14 @@ async fn lifecycle(c: Case) {
     }
     let mut presented = first.clone();
     rackett::protocol::present_results(&mut presented, "fixture-key", "http://127.0.0.1:9117");
+    // Configured secrets (an API key) never reach presented results or errors.
+    for secret in c.settings.values().filter_map(|v| v.as_str()) {
+        assert!(
+            !serde_json::to_string(&presented).unwrap().contains(secret),
+            "{}: secret in results",
+            c.id
+        );
+    }
     if c.download_path == "magnet" {
         assert!(
             r.link.starts_with("magnet:?") && r.link.contains(HASH),
@@ -400,15 +528,28 @@ async fn lifecycle(c: Case) {
             engine
                 .download(&i.id, r.source_epoch, &r.link)
                 .await
-                .unwrap(),
-            Download::Torrent {
-                bytes: TORRENT.to_vec(),
-                content_type: "application/x-bittorrent".into()
+                .unwrap_or_else(|e| panic!("{} download: {e}", c.id)),
+            match c.detail.as_ref().map(|d| d.resolved.as_str()) {
+                Some(magnet) if magnet.starts_with("magnet:") => Download::Magnet(magnet.into()),
+                _ => Download::Torrent {
+                    bytes: TORRENT.to_vec(),
+                    content_type: "application/x-bittorrent".into(),
+                },
             }
         );
         let hits = fixture.take();
-        assert_eq!(hits.len(), 1, "{}", c.id);
         assert_eq!(hits[0], c.download_path);
+        match &c.detail {
+            Some(d) if !d.resolved.starts_with("magnet:") => {
+                assert_eq!(
+                    hits,
+                    [c.download_path.clone(), d.resolved.clone()],
+                    "{}",
+                    c.id
+                )
+            }
+            _ => assert_eq!(hits.len(), 1, "{}", c.id),
+        }
     }
     assert!(engine
         .download(
@@ -526,9 +667,19 @@ fn pinned_public_settings_queries_and_optional_fields_are_preserved() {
     for c in cases() {
         let p = Plan::compile(&root(&c)).unwrap();
         let now = "2026-10-29T12:00:00Z".parse().unwrap();
-        let ctx = p.context(&BTreeMap::new(), &SearchQuery::default(), now);
+        let configured: BTreeMap<_, _> = c
+            .settings
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let ctx = p.context(&configured, &SearchQuery::default(), now);
         let requests = p.build_requests(&ctx).unwrap();
-        assert_eq!(requests.len(), c.request_count);
+        assert_eq!(
+            requests.len(),
+            c.keywordless_request_count.unwrap_or(c.request_count),
+            "{}",
+            c.id
+        );
         let url = url::Url::parse(&requests[0].url).unwrap();
         match c.id.as_str() {
             "sexypics" => assert_eq!(url.path(), "/browse/all/age/desc/"),

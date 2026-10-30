@@ -1,0 +1,37 @@
+[
+  {
+    "id": "bitturk",
+    "sha256": "0f73cde3ef7ccf5c33dbe5842e085a3b93e9210406016e345588718e57befa3f",
+    "search_fixture": "form:bitturk",
+    "form_path": "/?p=home&pid=1",
+    "submit_path": "/ajax/login.php",
+    "form_id": "loginbox_form",
+    "form_attributes": "id=\"loginbox_form\" action=\"/ajax/login.php\"",
+    "landing_html": "<script>var x = {stKey: \"fixture-token\", y: 1};</script>",
+    "expected_inputs": {
+      "action": "login",
+      "loginbox_membername": "{{ .Config.username }}",
+      "loginbox_password": "{{ .Config.password }}",
+      "loginbox_remember": "1",
+      "securitytoken": "fixture-token"
+    },
+    "error_html": "<div>-ERROR- fixture-private-error</div>",
+    "category": 2000,
+    "request_count": 1,
+    "login_path": "/?p=home&pid=1",
+    "search_path": "/",
+    "keyword": "keywords",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "cid[]",
+      "1"
+    ],
+    "download_path": "/?p=torrents&pid=10&action=download&tid=42",
+    "details_path": "/?p=torrents&pid=10&action=details&tid=42",
+    "published": "2026-10-28T10:30:00Z",
+    "free_markup": "<img src=\"/torrent_free.png\"><img src=\"/torrent_multiple_upload.png\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 2
+  }
+]

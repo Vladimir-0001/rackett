@@ -1,0 +1,76 @@
+[
+  {
+    "id": "lemonhd-net",
+    "sha256": "30622bc3733e053be99462ceab2f5d4642fcb9644d2f307dfdbd5e83e2fe2d9e",
+    "search_fixture": "form:lemonhd-net",
+    "form_path": "/login.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "loginform",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "logout": "",
+      "securelogin": "",
+      "ssl": "yes",
+      "trackerssl": "yes"
+    },
+    "error_html": "<table><tr><td class=\"embedded\"><h2>失败 fixture-private-error</h2></td></tr></table>",
+    "category": 2000,
+    "custom_category": 100401,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/torrents.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "cat401",
+      "1"
+    ],
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T10:30:00Z",
+    "free_markup": "<img class=\"pro_free2up\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 2,
+    "form_attributes": "action=\"takelogin.php\"",
+    "notes": "The search uses the declared keyword path; its date and counts use standard NexusPHP columns."
+  },
+  {
+    "id": "ptitzmx",
+    "sha256": "3fe003de8ef9ff5fc6bfca5f36ecd7f961e77532669e4df14eac57fc912eef7e",
+    "search_fixture": "form:ptitzmx",
+    "form_path": "/login.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "loginform",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "logout": "",
+      "securelogin": "",
+      "ssl": "yes",
+      "trackerssl": "yes"
+    },
+    "error_html": "<table><tr><td class=\"embedded\"><h2>失败 fixture-private-error</h2></td></tr></table>",
+    "category": 2000,
+    "custom_category": 100401,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/torrents.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "cat401",
+      "1"
+    ],
+    "download_path": "/download.php?id=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T10:30:00Z",
+    "free_markup": "<img class=\"pro_free2up\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 2,
+    "form_attributes": "action=\"takelogin.php\"",
+    "notes": "The search template appends the keyword and selects its category from the row link."
+  }
+]
