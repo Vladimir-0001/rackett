@@ -1,0 +1,19 @@
+{
+ "results": 1,
+ "torrents": [
+  {
+   "category": 4,
+   "name": "Fixture Release",
+   "details": "/details/42",
+   "dl": "/download.php?id=42",
+   "imdb": "tt1234567",
+   "numfiles": 3,
+   "size": 1073741824,
+   "added": "2026-10-24 07:29:31",
+   "seeders": 1,
+   "leechers": 2,
+   "times_completed": 5,
+   "freeleech": 1
+  }
+ ]
+}

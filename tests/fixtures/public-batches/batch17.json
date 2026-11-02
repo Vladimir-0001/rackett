@@ -1,0 +1,22 @@
+[
+  {
+    "id": "dasunerwartete-api",
+    "sha256": "ff35cbe9944173b94e60055f5cb856303d282a871a000075cc8f41689260e466",
+    "peers": 15,
+    "seeders": 11,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 100028,
+    "search_path": "/api.php",
+    "query_pair": ["q", "Fixture"],
+    "download_path": "/download.php?id=42&passkey=fixture",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel"
+  }
+]

@@ -9,9 +9,10 @@
 //! `infohash` (`:2112-2140`) instead selects a hash and a title on the page and returns
 //! `MagnetUtil.InfoHashToPublicMagnet(hash, title)`.
 //!
-//! Admitted subset: exactly one of `selectors` or `infohash`, no templates in selector
-//! text, and no search or download headers (upstream would send them with download
-//! requests). `before` and `method` blocks stay blocked.
+//! Admitted subset: an optional `before` and at most one of `selectors` or `infohash`.
+//! Selector text may hold templates (`MatchSelector`, `:2050`). Search headers are sent
+//! with every download request of a public source (`:2094`). `method` blocks,
+//! `pathselector` and per-selector `usebeforeresponse` stay blocked.
 use crate::{
     cardigann::Node,
     cardigann_exec::{
@@ -67,6 +68,12 @@ pub struct BeforeRequest {
 }
 pub struct DownloadSelectors {
     before: Option<Before>,
+    /// `infohash.usebeforeresponse` with a `before` block (`:2118`): the hash and title
+    /// are selected on the `before` response instead of the release link.
+    before_page: bool,
+    /// `ParseCustomHeaders(Download.Headers ?? Search.Headers, variables)` (`:2094`,
+    /// `:2192-2207`): the first value of each search header, as a template.
+    headers: Vec<(String, crate::cardigann_exec::template::Template)>,
     charset: Charset,
     selectors: Vec<Field>,
     /// `download.infohash` hash and title fields; exclusive with `selectors`.
@@ -99,7 +106,7 @@ fn compile_field(item: &Node, charset: Charset) -> Result<Field> {
     }
     let text = item
         .string("selector")
-        .filter(|s| !s.is_empty() && !s.contains("{{") && !s.starts_with(":root"))
+        .filter(|s| !s.is_empty() && s.len() <= 4096)
         .ok_or_else(|| anyhow!("Unsupported download selector text"))?;
     if item
         .string("attribute")
@@ -107,7 +114,13 @@ fn compile_field(item: &Node, charset: Charset) -> Result<Field> {
     {
         bail!("Unsupported download selector attribute");
     }
-    css::Css::parse(text).map_err(|e| anyhow!(e))?;
+    if text.contains("{{") {
+        // `MatchSelector` renders the selector with the download variables (`:2050`);
+        // the rendered text is parsed when a page is matched.
+        crate::cardigann_exec::template::Template::compile(text).map_err(|e| anyhow!(e))?;
+    } else if !text.starts_with(":root") {
+        css::Css::parse(text).map_err(|e| anyhow!(e))?;
+    }
     let selector = Selector::compile(item).map_err(|e| anyhow!(e))?;
     selector.validate_html().map_err(|e| anyhow!(e))?;
     let mut filters = Vec::new();
@@ -139,6 +152,43 @@ fn compile_field(item: &Node, charset: Charset) -> Result<Field> {
         );
     }
     Ok((selector, filters))
+}
+
+/// `ParseCustomHeaders` over `search.headers`, as the search plan compiles them.
+fn compile_headers(
+    root: &Node,
+) -> Result<Vec<(String, crate::cardigann_exec::template::Template)>> {
+    let mut headers = Vec::new();
+    let Some(node) = root.get("search").and_then(|s| s.get("headers")) else {
+        return Ok(headers);
+    };
+    for (k, v) in node
+        .pairs()
+        .ok_or_else(|| anyhow!("Search headers must be a mapping"))?
+    {
+        let name = k
+            .text()
+            .filter(|k| {
+                !k.is_empty()
+                    && k.bytes()
+                        .all(|c| c.is_ascii_alphanumeric() || b"!#$%&'*+-.^_`|~".contains(&c))
+            })
+            .ok_or_else(|| anyhow!("Invalid search header name"))?;
+        // Upstream sends only the first value of each header.
+        let value = v
+            .items()
+            .and_then(|v| v.first())
+            .and_then(Node::text)
+            .ok_or_else(|| anyhow!("Invalid search header value"))?;
+        if headers.len() >= 32 {
+            bail!("Search header limit exceeded");
+        }
+        headers.push((
+            name.to_owned(),
+            crate::cardigann_exec::template::Template::compile(value).map_err(|e| anyhow!(e))?,
+        ));
+    }
+    Ok(headers)
 }
 
 fn compile_before(node: &Node) -> Result<Before> {
@@ -222,6 +272,23 @@ impl DownloadSelectors {
     pub fn selects(&self) -> bool {
         self.infohash.is_some() || !self.selectors.is_empty()
     }
+    /// Whether the infohash is selected on the `before` response, not the release link.
+    pub fn selects_before_response(&self) -> bool {
+        self.before_page
+    }
+    /// The rendered search headers for every download request (`:2094`). Only public
+    /// definitions declare them here; login sessions never send custom headers.
+    pub fn headers(&self, ctx: &Context) -> Result<Vec<(String, String)>, String> {
+        let mut out = Vec::new();
+        for (name, template) in &self.headers {
+            let value = template.render(ctx)?;
+            if value.len() > 8192 || value.chars().any(char::is_control) {
+                return Err("Invalid download header value".into());
+            }
+            out.push((name.clone(), value));
+        }
+        Ok(out)
+    }
     /// The rendered `before` request for one release link, if declared. GET inputs join
     /// the path query (`GetQueryString(Encoding)`); POST inputs become form fields.
     pub fn before_request(&self, ctx: &Context) -> Result<Option<BeforeRequest>, String> {
@@ -267,21 +334,42 @@ impl DownloadSelectors {
         {
             bail!("Only download before, selectors or infohash are supported");
         }
-        if root
-            .get("search")
-            .is_some_and(|s| s.get("headers").is_some())
-        {
+        // Public sources send download requests through the plain transport, which carries
+        // headers and returns the `before` response. Login sessions do neither.
+        let public = root.get("login").is_none();
+        let headers = compile_headers(root)?;
+        if !headers.is_empty() && !public {
             bail!("Download requests would carry search headers");
         }
         let charset = Charset::from_definition(root).map_err(|e| anyhow!(e))?;
         let before = download.get("before").map(compile_before).transpose()?;
+        if public
+            && before
+                .as_ref()
+                .is_some_and(|b| b.post || !headers.is_empty())
+        {
+            bail!("Unsupported public download before request");
+        }
         let mut selectors = Vec::new();
         let mut infohash = None;
+        let mut before_page = false;
         if download.get("selectors").is_none() && download.get("infohash").is_none() {
             // `before` alone: upstream then downloads the release link itself.
         } else if let Some(block) = download.get("infohash") {
-            if keys(block)? != ["hash", "title"] && keys(block)? != ["title", "hash"] {
+            let mut names = keys(block)?;
+            names.sort_unstable();
+            if names != ["hash", "title"] && names != ["hash", "title", "usebeforeresponse"] {
                 bail!("Unsupported download infohash property");
+            }
+            let use_before = match block.get("usebeforeresponse").map(Node::text) {
+                None | Some(Some("false")) => false,
+                Some(Some("true")) => true,
+                _ => bail!("Unsupported usebeforeresponse value"),
+            };
+            // Without a `before` block upstream fetches the release link (`:2118`).
+            before_page = use_before && before.is_some();
+            if before_page && !public {
+                bail!("Download before response needs a public source");
             }
             infohash = Some([
                 compile_field(block.get("hash").unwrap(), charset)?,
@@ -307,6 +395,8 @@ impl DownloadSelectors {
         };
         Ok(Self {
             before,
+            before_page,
+            headers,
             charset,
             selectors,
             infohash,
@@ -314,8 +404,9 @@ impl DownloadSelectors {
         })
     }
     /// `MatchSelector` for every selector over one fetched page, in declaration order.
-    /// `None` is a selector that did not match (upstream continues with the next one).
-    /// Upstream refetches the page per selector; one fetch is shared here.
+    /// `None` is a selector that did not match or failed (upstream catches the exception
+    /// and continues with the next one, `:2175-2180`). Upstream refetches the page per
+    /// selector; one fetch is shared here. `ctx` holds the `.DownloadUri` variables.
     pub fn candidates(&self, page: &str, ctx: &Context) -> Result<Vec<Option<String>>, String> {
         if page.len() > MAX_PAGE {
             return Err("Download page exceeds byte budget".into());
@@ -323,7 +414,7 @@ impl DownloadSelectors {
         let html = css::parse_document(page);
         css::check_error_document(&html)?;
         let root = html.root_element();
-        let render = |s: &str| Ok(s.to_owned());
+        let render = |s: &str| crate::cardigann_exec::template::Template::compile(s)?.render(ctx);
         let eval = |(selector, filters): &Field| -> Result<Option<String>, String> {
             // An attribute the matched element lacks is an upstream exception, which
             // the selector loop also treats as "try the next selector".
@@ -343,7 +434,11 @@ impl DownloadSelectors {
                 _ => None,
             }]);
         }
-        self.selectors.iter().map(eval).collect()
+        Ok(self
+            .selectors
+            .iter()
+            .map(|field| eval(field).unwrap_or(None))
+            .collect())
     }
 }
 
@@ -384,21 +479,99 @@ mod tests {
                 .unwrap()
                 .test_link
         );
-        for id in ["0magnet", "torrentcore", "torrenttip", "torrentsome"] {
+        for id in [
+            "0magnet",
+            "torrentcore",
+            "torrenttip",
+            "torrentsome",
+            // Templated selectors, public search headers, public before response.
+            "limetorrents",
+            "torrentdownloads",
+            "catorrent",
+            "damagnet",
+            "skidrowrepack",
+            "magnetdownload",
+        ] {
             assert!(DownloadSelectors::compile(&root(id)).is_ok(), "{id}");
         }
-        // pathselector/method blocks, templated selectors and search headers.
-        for id in [
-            "ildragonero",
-            "magnetdownload",
-            "hdsky",
-            "limetorrents",
-            "catorrent",
-            "1337x",
-            "acgrip",
-        ] {
+        // pathselector and method blocks; search headers on a login source.
+        for id in ["ildragonero", "hdsky", "acgrip"] {
             assert!(DownloadSelectors::compile(&root(id)).is_err(), "{id}");
         }
+    }
+    #[test]
+    fn templated_selectors_render_settings_and_failures_try_the_next() {
+        let s = DownloadSelectors::compile(&root("limetorrents")).unwrap();
+        let page = "<a class=csprite_dltorrent href='http://itorrents.org/torrent/X.torrent'>t</a>\
+                    <a class=csprite_dltorrent href='magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567'>m</a>";
+        // Defaults: primary `magnet:`, fallback `//itorrents.` (rewritten by the filter).
+        assert_eq!(
+            s.candidates(page, &ctx("limetorrents")).unwrap(),
+            [
+                Some("magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567".into()),
+                Some("https://itorrents.net/torrent/X.torrent".into()),
+            ]
+        );
+        let mut c = ctx("limetorrents");
+        c.values.insert(
+            ".Config.primarydownloadlink".into(),
+            serde_json::Value::String("\"]".into()),
+        );
+        // An unparsable rendered selector is an upstream exception: next selector.
+        assert_eq!(
+            s.candidates(page, &c).unwrap(),
+            [None, Some("https://itorrents.net/torrent/X.torrent".into())]
+        );
+    }
+    #[test]
+    fn public_search_headers_render_for_download_requests() {
+        let s = DownloadSelectors::compile(&root("catorrent")).unwrap();
+        let mut c = ctx("catorrent");
+        c.values.insert(
+            ".Config.sitelink".into(),
+            serde_json::Value::String("https://site.test/".into()),
+        );
+        assert_eq!(
+            s.headers(&c).unwrap(),
+            [("Referer".to_owned(), "https://site.test/".to_owned())]
+        );
+        assert!(DownloadSelectors::compile(&root("0magnet"))
+            .unwrap()
+            .headers(&c)
+            .unwrap()
+            .is_empty());
+        // A login source would need its session to send them: still blocked.
+        let src = builtin::SOURCES
+            .iter()
+            .find(|(i, _)| *i == "catorrent")
+            .unwrap()
+            .1
+            .replace("\nsearch:\n", "\nlogin:\n  method: cookie\n\nsearch:\n");
+        let r = cardigann::parse(&src, cardigann::Limits::default()).unwrap();
+        assert!(DownloadSelectors::compile(&r).is_err());
+    }
+    #[test]
+    fn infohash_reads_the_public_before_response() {
+        let s = DownloadSelectors::compile(&root("magnetdownload")).unwrap();
+        assert!(s.selects_before_response());
+        let mut c = ctx("magnetdownload");
+        add_download_uri(
+            &mut c,
+            &url::Url::parse("https://site.test/info/14152933").unwrap(),
+        );
+        let before = s.before_request(&c).unwrap().unwrap();
+        assert_eq!(before.path, "api/json_info?hashes=14152933");
+        assert!(before.fields.is_none());
+        // The JSON reply parsed as HTML; `:root` text is the whole body.
+        let json = r#"{"0123456789ABCDEF0123456789abcdef01234567": {"name": "Fixture Release", "size": 1}}"#;
+        let magnet = s.candidates(json, &c).unwrap()[0].clone().unwrap();
+        assert!(magnet.starts_with(
+            "magnet:?xt=urn:btih:0123456789ABCDEF0123456789abcdef01234567&dn=Fixture+Release&tr="
+        ));
+        // Without a before block the release link is fetched instead (`:2118`).
+        assert!(!DownloadSelectors::compile(&root("damagnet"))
+            .unwrap()
+            .selects_before_response());
     }
     #[test]
     fn first_match_in_document_order_per_selector() {

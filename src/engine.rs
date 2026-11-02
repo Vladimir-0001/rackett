@@ -16,6 +16,26 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::sync::{Mutex, RwLock, Semaphore};
+/// Loopback TLS endpoints standing in for a definition's fixed API host in fixture
+/// tests (docs/api-origins.md). Upstream renders the host into an `https://` path and
+/// URL-encodes a `:port`, so a fixture cannot use another port. Nothing in
+/// configuration, environment or requests can add one; only test code calls
+/// [`register_fixture_api_host`].
+type FixtureHost = (String, std::net::SocketAddr, Vec<u8>);
+static FIXTURE_API_HOSTS: std::sync::Mutex<Vec<FixtureHost>> = std::sync::Mutex::new(Vec::new());
+/// Test support only: resolve `host` to the loopback `addr` and trust its self-signed
+/// DER certificate in every engine client created afterwards in this process.
+#[doc(hidden)]
+pub fn register_fixture_api_host(host: &str, addr: std::net::SocketAddr, certificate_der: &[u8]) {
+    assert!(
+        addr.ip().is_loopback(),
+        "Fixture API hosts must be loopback"
+    );
+    FIXTURE_API_HOSTS
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .push((host.to_owned(), addr, certificate_der.to_vec()));
+}
 #[derive(Clone, Default, Serialize)]
 pub struct Status {
     pub status: String,
@@ -260,6 +280,17 @@ impl Engine {
                 }
             }))
             .connect_timeout(Duration::from_secs(10));
+        let client = FIXTURE_API_HOSTS
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .try_fold(client, |client, (host, addr, der)| {
+                Ok::<_, anyhow::Error>(
+                    client
+                        .resolve(host, *addr)
+                        .add_root_certificate(reqwest::Certificate::from_der(der)?),
+                )
+            })?;
         // Definition `certificates` pin trust for this source's site host only.
         let pins = if builtin.is_some() {
             crate::builtin::certificates(i)?

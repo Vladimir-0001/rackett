@@ -456,7 +456,7 @@ fn contains_markers_and_budgets_still_apply_after_rewriting() {
         .unwrap_err();
     assert!(css::is_execution_failure(&err), "{err}");
     // An invalid :contains is still reported as such, ahead of the selector.
-    let err = Css::parse(":is([a!=v]:contains(a b), p)").unwrap_err();
+    let err = Css::parse(":is([a!=v]:contains(1), p)").unwrap_err();
     assert!(err.contains("invalid :contains argument"), "{err}");
 }
 

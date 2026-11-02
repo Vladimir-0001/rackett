@@ -114,13 +114,11 @@ fn unchanged_1337x_compiles_with_only_the_admitted_download_blocker() {
     let clone = pinned("torrentgalaxyclone");
     assert_eq!(clone.blockers().len(), 1);
     assert_eq!(clone.blockers()[0].path, "$.download");
-    // The Pirate Bay substitutes into a JSON path, outside this HTML-only subset.
-    let e = compile(&source("thepiratebay")).err().unwrap();
-    assert_eq!(e.path, "$.search.rows.selector");
-    assert_eq!(
-        e.message,
-        "Row selector values are only supported for HTML responses"
-    );
+    // The Pirate Bay's JSON row selector value now renders (docs/api-origins.md); only
+    // its `$[0].id` count can still block it, until `$`-rooted JSON paths parse.
+    if let Err(e) = compile(&source("thepiratebay")) {
+        assert_eq!(e.path, "$.search.rows.count", "{}", e.message);
+    }
 }
 
 #[test]
@@ -439,17 +437,73 @@ fn template_shape_and_branch_rules_are_enforced() {
             "Row selector values must come from text settings"
         );
     }
-    let e = compile(&definition(
+    // JSON responses render the value as literal `:contains` text instead.
+    assert!(compile(&definition(
         "tr{{ if .Config.u }}:contains({{ .Config.u }}){{ else }}{{ end }}",
         TEXT_U,
         ", response: {type: json}",
     ))
-    .err()
+    .is_ok());
+}
+
+/// The Pirate Bay's uploader filter shape over JSON rows (`JsonParseRowsSelector`,
+/// `CardigannIndexer.cs:2491-2562`): the value is plain, case-sensitive `:contains` text.
+#[test]
+fn json_row_values_filter_rows_like_upstream() {
+    let plan = compile(
+        r#"id: fixture
+name: Fixture
+description: Synthetic
+language: en-US
+type: public
+encoding: UTF-8
+links: [https://example.test/]
+caps:
+  categories: {Other: Other}
+  modes: {search: [q]}
+settings:
+  - {name: uploader, type: text}
+search:
+  paths: [{path: search, response: {type: json}}]
+  rows:
+    selector: "${{ if .Config.uploader }}:has(username:contains({{ .Config.uploader }})){{ else }}{{ end }}"
+  fields:
+    category: {text: Other}
+    size: {text: 0}
+    seeders: {text: 0}
+    leechers: {text: 0}
+    date: {text: 2024-02-29}
+    download: {text: /download}
+    title: {selector: name}
+"#,
+    )
     .unwrap();
-    assert_eq!(
-        e.message,
-        "Row selector values are only supported for HTML responses"
-    );
+    let body = json!([
+        {"name": "Alpha", "username": "Alice"},
+        {"name": "Beta", "username": "Bob Smith"},
+        {"name": "Gamma", "username": "alice"},
+        {"name": "Delta", "username": "a:b c"},
+        {"name": "Epsilon"}
+    ])
+    .to_string();
+    let get = |value: Value| run(&plan, &uploader(value), &body);
+    let all = ["Alpha", "Beta", "Gamma", "Delta", "Epsilon"];
+    for blank in [Value::Null, json!(""), json!("  ")] {
+        assert_eq!(titles(&get(blank).unwrap()), all);
+    }
+    assert_eq!(titles(&get(json!("Alice")).unwrap()), ["Alpha"]);
+    assert_eq!(titles(&get(json!("li")).unwrap()), ["Alpha", "Gamma"]);
+    assert_eq!(titles(&get(json!("Bob Smith")).unwrap()), ["Beta"]);
+    assert_eq!(titles(&get(json!("a:b")).unwrap()), ["Delta"]);
+    assert!(get(json!("nobody")).unwrap().is_empty());
+    // Parentheses could split differently upstream; controls never match there.
+    for bad in ["ok)", "(x", "a\nb", "a\u{7}"] {
+        let e = get(json!(bad)).unwrap_err();
+        assert_eq!(e.path, "$.search.rows.selector", "{bad}");
+        assert!(!e.message.contains(bad), "{bad}");
+    }
+    let e = get(json!(true)).unwrap_err();
+    assert_eq!(e.path, "$.search.rows.selector");
 }
 
 #[test]
@@ -554,6 +608,7 @@ fn runtime(plan: Plan, value: Value) -> Runtime {
         modes: BTreeMap::from([("search".into(), vec!["q".into()])]),
         empty_html_container: None,
         download: None,
+        api_origin: None,
     }
 }
 fn indexer(url: &str, settings: Value) -> Indexer {

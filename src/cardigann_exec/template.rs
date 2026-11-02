@@ -194,6 +194,8 @@ const VALUE_TYPE: &str = "row selector configuration value must be text";
 const VALUE_POSITION: &str =
     "row selector configuration value must be the whole argument of :contains(...)";
 const VALUE_SELECTOR: &str = "row selector with configuration value is not a supported selector";
+const VALUE_JSON: &str =
+    "JSON row selector configuration value must not contain parentheses or controls";
 /// One enumerated row selector branch: literal text and value slots.
 #[derive(Clone)]
 enum Piece {
@@ -344,6 +346,19 @@ impl Template {
     /// `:contains` argument in the actual rendered selector, which must stay
     /// within the CSS bounds and parse. Errors never repeat the value.
     pub(super) fn render_selector(&self, ctx: &Context) -> Result<String, String> {
+        self.render_row_selector(ctx, false)
+    }
+    /// [`Template::render_selector`] for a JSON rows selector. Upstream renders it
+    /// with the configuration variables and splits it into a token path and
+    /// `:has`/`:not`/`:contains` filters (`JsonParseRowsSelector`,
+    /// `CardigannIndexer.cs:2491-2562`, regex at `:73`). A value is literal
+    /// `:contains` text there, so it is not CSS-checked; parentheses, which would
+    /// let the upstream regex and Rackett's parser split it differently, and
+    /// controls are rejected. The result must parse as a JSON selector.
+    pub(super) fn render_json_selector(&self, ctx: &Context) -> Result<String, String> {
+        self.render_row_selector(ctx, true)
+    }
+    fn render_row_selector(&self, ctx: &Context, json: bool) -> Result<String, String> {
         if self.selector_values().is_empty() {
             return self.render(ctx);
         }
@@ -372,7 +387,16 @@ impl Template {
                     if text.trim().is_empty() {
                         no
                     } else {
-                        super::css::contains_value(text)?;
+                        if json {
+                            if text
+                                .chars()
+                                .any(|c| c.is_control() || matches!(c, '(' | ')'))
+                            {
+                                return Err(VALUE_JSON.into());
+                            }
+                        } else {
+                            super::css::contains_value(text)?;
+                        }
                         yes
                     }
                 }
@@ -399,6 +423,10 @@ impl Template {
             return Ok(out);
         }
         super::selector::check_css_bounds(&out)?;
+        if json {
+            super::selector::json_select(&Value::Null, &out).map_err(|_| VALUE_SELECTOR)?;
+            return Ok(out);
+        }
         if !super::css::contains_arguments(&out, &ranges) {
             return Err(VALUE_POSITION.into());
         }

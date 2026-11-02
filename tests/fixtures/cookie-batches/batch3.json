@@ -1,1 +1,53 @@
-[]
+[
+ {
+  "id": "rousi-pro",
+  "sha256": "03027e1800688b9c959e5ec057e2ee891dd4d3b3dd8525aa6798a39a11484b04",
+  "json": true,
+  "no_test": true,
+  "custom_category": null,
+  "missing_title": null,
+  "expected_title": null,
+  "request_count": 1,
+  "login_path": "/fixture-no-login-test",
+  "search_path": "/api/v1/torrents",
+  "published": "2026-10-28T10:30:00Z",
+  "free_upload": 1,
+  "empty_body": "{\"items\":[],\"total\":0}",
+  "category": 2000,
+  "keyword": "query",
+  "keyword_value": "Fixture",
+  "category_input": null,
+  "download_path": "/api/v1/torrents/42/download",
+  "details_path": "/torrents/42",
+  "free_markup": "free",
+  "normal_markup": "none",
+  "free_download": 0
+ },
+ {
+  "id": "superbits",
+  "sha256": "f0ed484fb4e3ae7348263f136035c7ba0eaba29f4d84388ffd62890144214b65",
+  "json": true,
+  "no_test": true,
+  "custom_category": null,
+  "missing_title": null,
+  "expected_title": null,
+  "request_count": 1,
+  "login_path": "/fixture-no-login-test",
+  "search_path": "/api/v1/torrents",
+  "published": "2026-10-28T10:30:00Z",
+  "free_upload": 1,
+  "empty_body": "[]",
+  "category": 2040,
+  "keyword": "searchText",
+  "keyword_value": "Fixture",
+  "category_input": [
+   "categories[]",
+   "4"
+  ],
+  "download_path": "/api/v1/torrents/download/42",
+  "details_path": "/torrent/42/",
+  "free_markup": "1",
+  "normal_markup": "0",
+  "free_download": 0
+ }
+]

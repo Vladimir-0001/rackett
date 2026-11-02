@@ -1,0 +1,52 @@
+[
+  {
+    "id": "yts",
+    "sha256": "3caab39c43f5390b2f558a0e8ee3d500a835930b63dbc2f217c2ac20302f6693",
+    "category": 2040,
+    "request_count": 1,
+    "search_path": "/api/v2/list_movies.json",
+    "query_pair": [
+      "query_term",
+      "Fixture"
+    ],
+    "download_path": "/torrent/download/0123456789abcdef0123456789abcdef01234567",
+    "details_path": "/movies/fixture-movie-2024",
+    "seeders": 11,
+    "peers": 15,
+    "published": "2026-09-21T14:13:20Z",
+    "delay_ms": 2500,
+    "title": "Fixture Movie (2024) 1080p WEBRip x264 -YTS",
+    "json": true,
+    "container": null,
+    "settings": {
+      "apiurl": "yts.api.fixture.test"
+    },
+    "api_setting": "apiurl",
+    "empty_body": "{\"status\":\"ok\",\"status_message\":\"Query was successful\",\"data\":{\"movie_count\":0,\"limit\":50,\"page_number\":1}}",
+    "error_body": "<html><body>fixture-private-error</body></html>"
+  },
+  {
+    "id": "animetosho-xyz",
+    "sha256": "0e34dedaca3a25ee82d8d4e36aa2349315c0bc21a246bf593d2615a7c9cea638",
+    "category": 5070,
+    "request_count": 1,
+    "search_path": "/api/torznab",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/download/42/torrent",
+    "details_path": "/view/fixture-release-01.42",
+    "seeders": 11,
+    "peers": 15,
+    "published": "2026-09-21T14:13:20Z",
+    "delay_ms": 0,
+    "title": "[Fixture] Fixture Release - 01 [1080p]",
+    "json": false,
+    "container": "channel",
+    "settings": {
+      "api-url": "feed.animetosho.fixture.test"
+    },
+    "api_setting": "api-url"
+  }
+]

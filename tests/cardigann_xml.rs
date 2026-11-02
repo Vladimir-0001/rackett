@@ -74,8 +74,8 @@ fn pinned_xml_compilation_delta() {
         compiled.join(", ")
     );
     eprintln!("Remaining blockers: {blocked:#?}");
-    assert_eq!(compiled.len(), 17, "{blocked:#?}");
-    assert_eq!(blocked, ["dasunerwartete-api: $.search.fields._onlyup: unsupported CSS selector \"free_button:contains(Only Upload)\": invalid :contains argument: argument must be exactly one token"]);
+    assert_eq!(compiled.len(), 18, "{blocked:#?}");
+    assert!(blocked.is_empty(), "{blocked:#?}");
 }
 
 #[test]

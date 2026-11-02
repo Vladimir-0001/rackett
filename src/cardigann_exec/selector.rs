@@ -236,6 +236,12 @@ impl Selector {
         )?;
         reader.extract_html(selected, render)
     }
+    /// Whether a JSON field reads its parent row (`..name`, CardigannIndexer.cs:1734-1736).
+    pub fn json_parent(&self) -> bool {
+        self.selector
+            .as_deref()
+            .is_some_and(|s| s.starts_with(".."))
+    }
     pub fn extract_json<F>(&self, value: &Value, render: &F) -> Result<Option<String>, String>
     where
         F: Fn(&str) -> Result<String, String>,
@@ -268,6 +274,31 @@ fn charge(visits: &mut usize, count: usize) -> Result<(), String> {
         .checked_sub(count)
         .ok_or("HTML aggregate visit budget exceeded")?;
     Ok(())
+}
+/// The next element upstream's `Rows.Dateheaders` walk visits after `slot`
+/// (CardigannIndexer.cs:1913-1940): its previous element sibling or, when it has none, the
+/// previous element sibling of its parent element. The walk only moves backwards or
+/// upwards, so it ends.
+pub fn previous_header_slot(
+    document: &Html,
+    slot: usize,
+    visits: &mut usize,
+) -> Result<Option<usize>, String> {
+    charge(visits, slot.saturating_add(1))?;
+    let node = document.tree.nodes().nth(slot).ok_or("HTML row missing")?;
+    let next = node
+        .prev_siblings()
+        .find(|s| s.value().is_element())
+        .or_else(|| {
+            node.parent()
+                .filter(|p| p.value().is_element())
+                .and_then(|p| p.prev_siblings().find(|s| s.value().is_element()))
+        });
+    let Some(next) = next else {
+        return Ok(None);
+    };
+    charge(visits, document.tree.nodes().count())?;
+    Ok(document.tree.nodes().position(|n| n.id() == next.id()))
 }
 /// Snapshot all row slots before mutation, including nested rows later detached.
 pub fn html_row_slots(document: &Html, selector: &str, max: usize) -> Result<Vec<usize>, String> {
@@ -363,7 +394,7 @@ pub fn merge_after_rows(
     Ok(heads)
 }
 fn normalize(s: &str) -> String {
-    s.split_whitespace().collect::<Vec<_>>().join(" ")
+    s.trim().to_owned()
 }
 fn bounded(s: String) -> Result<String, String> {
     if s.len() > MAX_OUTPUT {
@@ -402,8 +433,10 @@ fn html_select<'a>(
 ) -> Result<Vec<ElementRef<'a>>, String> {
     // One :contains scan budget covers this whole selection pass.
     let scan = Scan::default();
+    // `:scope` is the element the selection starts from (AngleSharp QuerySelector).
+    let scope = Some(selectors::Element::opaque(&element));
     // handleSelector checks Matches before the special ancestor-root helper.
-    if include_self && parse_css(s)?.matches(&element, &scan)? {
+    if include_self && parse_css(s)?.matches_in(&element, scope, &scan)? {
         return Ok(vec![element]);
     }
     let rooted = s.starts_with(":root");
@@ -420,7 +453,13 @@ fn html_select<'a>(
     }
     let selector = parse_css(s)?;
     let mut out = vec![];
-    if include_self && !rooted && selector.matches(&element, &scan)? {
+    // A `:root`-rooted selection starts from the document root, which is then the scope.
+    let scope = if rooted {
+        Some(selectors::Element::opaque(&element))
+    } else {
+        scope
+    };
+    if include_self && !rooted && selector.matches_in(&element, scope, &scan)? {
         return Ok(vec![element]);
     }
     for (count, e) in element
@@ -431,7 +470,7 @@ fn html_select<'a>(
         if count >= MAX_VISITS {
             return Err("HTML selector visit limit exceeded".into());
         }
-        if e.id() != element.id() && selector.matches(&e, &scan)? {
+        if e.id() != element.id() && selector.matches_in(&e, scope, &scan)? {
             out.push(e);
         }
     }
@@ -599,11 +638,19 @@ impl JsonSelector {
     }
 }
 fn parse_path(s: &str) -> Result<Vec<String>, String> {
-    // Newtonsoft SelectToken's root is the token passed to the helper, including
-    // a row when used for fields. Rooted compound paths remain outside this subset.
+    // Newtonsoft SelectToken's root `$` is the token passed to the helper, including
+    // a row when used for fields, so `$.a` and `$[0]` equal `a` and `[0]` (torrentleech's
+    // `$.numFound` count). `$..a` is recursive descent, which this subset lacks.
     if s == "$" {
         return Ok(vec![]);
     }
+    let s = match s.strip_prefix('$') {
+        Some(rest) if rest.starts_with("..") => {
+            return Err("unsupported JSONPath recursive descent".into())
+        }
+        Some(rest) if rest.starts_with(['.', '[']) => rest,
+        _ => s,
+    };
     let s = s.trim_start_matches('.');
     if s.is_empty() {
         return Ok(vec![]);
@@ -661,6 +708,27 @@ pub fn json_rows<'a>(
     attribute: Option<&str>,
     max: usize,
 ) -> Result<Vec<&'a Value>, String> {
+    let rows = json_row_pairs(value, selector, attribute, JsonRowShape::default(), max)?;
+    Ok(rows.into_iter().map(|(_, row)| row).collect())
+}
+/// Upstream `Rows.Multiple` and `Rows.MissingAttributeEqualsNoResults`, used only by the
+/// JSON branch (CardigannIndexer.cs:1681-1713).
+#[derive(Clone, Copy, Default)]
+pub struct JsonRowShape {
+    pub multiple: bool,
+    pub missing_is_empty: bool,
+}
+/// JSON rows as (parent row, release object) pairs. Without `multiple` both are the row,
+/// or the parent and its `attribute` value. With `multiple` every object in the
+/// attribute's array is its own release under the same parent. Fields whose selector
+/// starts with `..` read the parent (`handleJsonSelector` trims the dots).
+pub fn json_row_pairs<'a>(
+    value: &'a Value,
+    selector: &str,
+    attribute: Option<&str>,
+    shape: JsonRowShape,
+    max: usize,
+) -> Result<Vec<(&'a Value, &'a Value)>, String> {
     if selector.is_empty() {
         return Err("empty JSON row selector".into());
     }
@@ -669,8 +737,11 @@ pub fn json_rows<'a>(
         path: parsed.path,
         filters: vec![],
     };
-    let Some(Value::Array(rows)) = base.select(value)? else {
-        return Err("JSON rows selector does not resolve to array".into());
+    let rows = match base.select(value)? {
+        Some(Value::Array(rows)) => rows,
+        // JsonParseRowsSelector returns null for a missing or non-array token.
+        _ if shape.missing_is_empty => return Ok(vec![]),
+        _ => return Err("JSON rows selector does not resolve to array".into()),
     };
     if rows.len() > MAX_VISITS {
         return Err("JSON row visit limit exceeded".into());
@@ -681,13 +752,33 @@ pub fn json_rows<'a>(
     };
     let mut out = vec![];
     for row in rows {
-        if filter.select(row)?.is_some() {
-            let row = if let Some(a) = attribute {
-                json_select(row, a)?.ok_or("JSON row attribute missing")?
-            } else {
-                row
+        if filter.select(row)?.is_none() {
+            continue;
+        }
+        let selected = match attribute {
+            Some(a) => match json_select(row, a)? {
+                Some(selected) => selected,
+                None if shape.missing_is_empty => continue,
+                None => return Err("JSON row attribute missing".into()),
+            },
+            None => row,
+        };
+        if shape.multiple {
+            // `selObj.Values<JObject>()`: every element must be an object.
+            let Value::Array(items) = selected else {
+                return Err("JSON multiple rows require an array".into());
             };
-            out.push(row);
+            for item in items {
+                if !item.is_object() {
+                    return Err("JSON multiple rows must be objects".into());
+                }
+                out.push((row, item));
+                if out.len() > max {
+                    return Err("JSON row limit exceeded".into());
+                }
+            }
+        } else {
+            out.push((row, selected));
             if out.len() > max {
                 return Err("JSON row limit exceeded".into());
             }
@@ -754,6 +845,28 @@ mod tests {
         assert!(json_select(rows[0], "name:contains(DTS)")
             .unwrap()
             .is_some());
+    }
+    #[test]
+    fn scope_is_the_selection_start_element() {
+        // torrentproject2: `:scope > span > a` reads the row's own spans, not nested ones.
+        let html = Html::parse_fragment(
+            r#"<div id="row"><span><a>own</a></span><p><span><a>nested</a></span></p></div>"#,
+        );
+        let row = html
+            .root_element()
+            .descendants()
+            .filter_map(ElementRef::wrap)
+            .find(|e| e.value().attr("id") == Some("row"))
+            .unwrap();
+        let found = html_select(row, ":scope > span > a", false).unwrap();
+        let text: Vec<String> = found.iter().map(|e| e.text().collect()).collect();
+        assert_eq!(text, ["own"]);
+        assert!(
+            html_select(row, ":scope > p > span > a", false)
+                .unwrap()
+                .len()
+                == 1
+        );
     }
     #[test]
     fn unknown_and_limits() {
@@ -836,6 +949,28 @@ mod tests {
             json_select(&serde_json::json!({"a":{"b":[4]}}), "a['b'][0]").unwrap(),
             Some(&serde_json::json!(4))
         );
+    }
+    #[test]
+    fn rooted_json_paths_select_from_the_queried_token() {
+        let doc = serde_json::json!({"numFound": 0, "a": {"b": 1}});
+        for (rooted, plain) in [
+            ("$.numFound", "numFound"),
+            ("$.a.b", "a.b"),
+            ("$['a']", "a"),
+        ] {
+            assert_eq!(
+                json_select(&doc, rooted).unwrap(),
+                json_select(&doc, plain).unwrap()
+            );
+        }
+        let rows = serde_json::json!([{"id": "0", "name": "No results returned"}]);
+        assert_eq!(
+            json_select(&rows, "$[0].id").unwrap(),
+            Some(&serde_json::json!("0"))
+        );
+        assert_eq!(json_select(&doc, "$.missing").unwrap(), None);
+        assert!(json_select(&doc, "$..numFound").is_err());
+        assert!(json_select(&doc, "$numFound").is_err());
     }
     #[test]
     fn removal_aggregate_budget_uses_rendered_root_and_no_rollback() {

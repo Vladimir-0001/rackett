@@ -1,0 +1,42 @@
+{
+ "response": {
+  "results": [
+   {
+    "group": {
+     "groupId": 7,
+     "categoryId": 101,
+     "releaseType": "Film",
+     "tags": "action",
+     "cover": "/c.jpg",
+     "tmdb": "42",
+     "groupYear": "2026",
+     "groupName": "Fixture Release"
+    },
+    "torrentId": 42,
+    "fileCount": 3,
+    "seeders": 1,
+    "leechers": 2,
+    "snatches": 5,
+    "size": 1073741824,
+    "time": "2026-10-24 07:29:31",
+    "season": 0,
+    "episode": 0,
+    "format": "x264",
+    "encoding": "1080p",
+    "team": "GRP",
+    "media": "WEB",
+    "vff": false,
+    "vfq": false,
+    "vf2": false,
+    "vfi": false,
+    "vf": false,
+    "vof": false,
+    "hdr": false,
+    "hdr10plus": false,
+    "dovi": false,
+    "fileName": "f.mkv",
+    "isFreeleech": true
+   }
+  ]
+ }
+}

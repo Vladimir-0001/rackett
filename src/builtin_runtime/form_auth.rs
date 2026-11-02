@@ -12,8 +12,8 @@ pub struct FormPlan {
     pub(super) direct_post: bool,
     pub(super) charset: Charset,
     pub(super) path: String,
-    pub(super) test_path: String,
-    pub(super) test_selector: String,
+    /// `login.test`; absent or selector-less tests are pinned semantics, not defaults.
+    pub(super) test: Option<super::auth::LoginTest>,
     form: String,
     submit_path: Option<String>,
     inputs: Vec<(String, Input)>,
@@ -31,6 +31,9 @@ pub struct FormPlan {
     pub(super) cookies: Option<String>,
     /// Definition `certificates`, pinned for the session's origin host only.
     pub(super) certificates: Option<crate::pinned_tls::Pins>,
+    /// `search.headers`, also sent with the login requests (`Login.Headers ??
+    /// Search.Headers`, docs/session-search-headers.md).
+    pub(super) headers: Vec<super::auth::DeclaredHeader>,
 }
 enum Input {
     Literal(String),
@@ -117,8 +120,13 @@ impl FormPlan {
                     .is_none_or(|t| ["html", "json", "xml"].contains(&t))
             })
         };
+        // Form sessions bind no User-Agent setting; other declared headers are sent.
+        let (agent, headers) = super::auth::compile_search_headers(root)
+            .map_err(|_| anyhow!("Unsupported form session headers"))?;
+        if agent {
+            bail!("Unsupported form session headers");
+        }
         if search.pairs().is_none()
-            || search.get("headers").is_some()
             || !response_ok(search)
             || search.get("followredirect").is_some()
         {
@@ -197,10 +205,12 @@ impl FormPlan {
                 ],
             )?;
         }
-        let test = login
-            .get("test")
-            .ok_or_else(|| anyhow!("Form login needs a positive test"))?;
-        keys(test, &["path", "selector"])?;
+        // Pinned TestLogin and CheckIfLoginIsNeeded skip validation without a test and
+        // marker checks without a selector (`CardigannIndexer.cs:896-899`, `:935`, `:977`).
+        let test = login.get("test");
+        if let Some(test) = test {
+            keys(test, &["path", "selector"])?;
+        }
         let declared: BTreeMap<_, _> = root
             .get("settings")
             .and_then(Node::items)
@@ -397,6 +407,7 @@ impl FormPlan {
             None
         };
         Ok(Self {
+            headers,
             charset,
             direct_post,
             path: literal(login, "path", None)?,
@@ -409,8 +420,17 @@ impl FormPlan {
                 .get("submitpath")
                 .map(|_| literal(login, "submitpath", None))
                 .transpose()?,
-            test_path: literal(test, "path", None)?,
-            test_selector: selector_property(test, "selector", None)?,
+            test: test
+                .map(|test| {
+                    Ok::<_, anyhow::Error>(super::auth::LoginTest {
+                        path: literal(test, "path", None)?,
+                        selector: test
+                            .get("selector")
+                            .map(|_| selector_property(test, "selector", None))
+                            .transpose()?,
+                    })
+                })
+                .transpose()?,
             inputs,
             errors,
             captcha,
@@ -560,6 +580,36 @@ mod tests {
             .unwrap();
         let form_selector = form.plan.form.clone();
         assert!(!form_selector.is_empty());
+    }
+    #[test]
+    fn absent_or_selector_less_login_tests_are_explicit_not_defaulted() {
+        for id in ["comicat", "immortuos", "miobt", "zappateers"] {
+            assert!(plan(id).test.is_none(), "{id}");
+        }
+        let test = plan("4thd").test.unwrap();
+        assert!(!test.path.is_empty() && test.selector.is_some());
+        let raw = builtin::SOURCES
+            .iter()
+            .find(|(i, _)| *i == "miobt")
+            .unwrap()
+            .1;
+        let with = |test: &str| {
+            let yaml = raw.replace(
+                "  inputs:\n    visitor_test: human\n",
+                &format!("  inputs:\n    visitor_test: human\n  test:\n{test}"),
+            );
+            assert_ne!(yaml, raw);
+            FormPlan::compile(&cardigann::parse(&yaml, cardigann::Limits::default()).unwrap())
+        };
+        let test = with("    path: index.php\n").unwrap().test.unwrap();
+        assert_eq!((test.path.as_str(), test.selector), ("index.php", None));
+        for bad in [
+            "    selector: a\n",
+            "    path: index.php\n    selector: ''\n",
+            "    path: index.php\n    other: x\n",
+        ] {
+            assert!(with(bad).is_err(), "{bad}");
+        }
     }
     #[test]
     fn login_cookie_seeds_are_joined_and_restricted() {

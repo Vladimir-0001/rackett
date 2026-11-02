@@ -111,21 +111,22 @@ impl Charset {
     /// value is HttpUtility.UrlEncode(text, encoding), which is WebUtility's safe set with
     /// lowercase hex. Unrepresentable text is an error, never a '?' or best-fit guess.
     pub(crate) fn form_body(self, fields: &[(String, String)]) -> Result<String, String> {
-        let encode = |text: &str| {
-            self.encode_single_byte(text)
-                .map(|bytes| super::filters::url_encode_bytes(&bytes).replace_hex_lowercase())
-                .ok_or_else(|| format!("form field not representable in {}", self.label()))
-        };
         let mut out = String::new();
         for (key, value) in fields {
             if !out.is_empty() {
                 out.push('&');
             }
-            out.push_str(&encode(key)?);
+            out.push_str(&self.form_field(key)?);
             out.push('=');
-            out.push_str(&encode(value)?);
+            out.push_str(&self.form_field(value)?);
         }
         Ok(out)
+    }
+    /// One HttpUtility.UrlEncode(text, encoding) key or value of a non-UTF-8 form body.
+    fn form_field(self, text: &str) -> Result<String, String> {
+        self.encode_single_byte(text)
+            .map(|bytes| super::filters::url_encode_bytes(&bytes).replace_hex_lowercase())
+            .ok_or_else(|| format!("form field not representable in {}", self.label()))
     }
     /// Encoding.GetString for a response: every Latin-1 byte maps to the same code point,
     /// with no BOM or meta sniffing. Output may be twice the input length in UTF-8.
@@ -432,16 +433,17 @@ impl RequestPlan {
             if fields.len() > MAX_INPUTS {
                 return Err(format!("{prefix}.inputs: too many inherited inputs"));
             }
-            let method = node.string("method").unwrap_or("get").to_ascii_uppercase();
-            if !matches!(method.as_str(), "GET" | "POST") {
-                return Err(format!("{prefix}.method: unsupported {method}"));
+            // CardigannIndexer.cs:1545-1550 compares the literal SearchPath.Method with
+            // "post" (ordinal, case-insensitive) and sends GET otherwise. The value is never
+            // template-rendered, so `{{ if .Keywords }}post{{ else }}get{{ end }}` is GET.
+            let method = match node.get("method") {
+                None => "GET",
+                Some(n) => match scalar(n, &format!("{prefix}.method"))? {
+                    m if m.eq_ignore_ascii_case("post") => "POST",
+                    _ => "GET",
+                },
             }
-            // Upstream non-UTF-8 FormUrlEncodedContent semantics differ and are not modeled.
-            if method == "POST" && charset != Charset::Utf8 {
-                return Err(format!(
-                    "{prefix}.method: unsupported POST with non-UTF-8 encoding"
-                ));
-            }
+            .to_owned();
             let response_type = node
                 .get("response")
                 .and_then(|n| n.string("type"))
@@ -613,17 +615,21 @@ impl RequestPlan {
                 // Raw substitutions were already UTF-8 encoded by applyGoTemplateText.
                 // The final GetQueryString(Encoding) intentionally encodes their percent
                 // signs again; literal values use the definition encoding.
-                let value = if path.method == "POST" {
-                    form_encode(&value)
-                } else {
-                    self.charset
-                        .url_encode(&value)
-                        .map_err(|e| format!("$.search.inputs: {e}"))?
-                };
-                let key = if path.method == "POST" {
-                    form_encode(&key)
-                } else {
-                    key
+                // POST bodies are HttpWebClient2.cs:163-166 FormUrlEncodedContentWithEncoding:
+                // FormUrlEncodedContent for UTF-8, otherwise HttpUtility.UrlEncode(text,
+                // encoding) for every key and value (WebClient.cs:242-263).
+                let (key, value) = match (path.method == "POST", self.charset) {
+                    (true, Charset::Utf8) => (form_encode(&key), form_encode(&value)),
+                    (true, charset) => charset
+                        .form_field(&key)
+                        .and_then(|key| Ok((key, charset.form_field(&value)?)))
+                        .map_err(|e| format!("$.search.inputs: {e}"))?,
+                    (false, charset) => (
+                        key,
+                        charset
+                            .url_encode(&value)
+                            .map_err(|e| format!("$.search.inputs: {e}"))?,
+                    ),
                 };
                 if encoded
                     .len()
@@ -902,20 +908,77 @@ mod tests {
         assert!(raw.build(&context()).unwrap_err().contains("ISO-8859-1"));
     }
     #[test]
-    fn latin1_post_is_a_compile_error() {
+    fn non_utf8_post_bodies_match_form_url_encoded_content_with_encoding() {
+        // noname-club's shape: $raw categories, repeated keys, native and %-literal values.
+        let p = encoded_plan(
+            "windows-1251",
+            "  paths:\n    - {path: tracker.php, method: post}\n  inputs:\n    $raw: '{{ range .Categories }}f[]={{.}}&{{end}}'\n    nm: '{{ .Keywords }}'\n    cat: a\n    cat: b\n    submit: Поиск\n    pct: '%A0%A0'\n    $raw: 'q={{ .Keywords }}'\n",
+        )
+        .unwrap();
+        let built = p.build(&keywords("Тест a~b!*()")).unwrap();
+        assert_eq!(built[0].method, "POST");
+        assert_eq!(built[0].url, "https://example.test/tracker.php");
+        // HttpUtility.UrlEncode(text, windows-1251): code-page bytes, lowercase hex, '+'
+        // for space, '~' escaped and "!*()" literal; keys are encoded too. $raw text was
+        // already UTF-8 WebUtility-encoded, so its '%' and '+' are encoded again.
         assert_eq!(
-            encoded_plan("iso-8859-1", "  path: search\n  method: post\n").unwrap_err(),
-            "$.search.method: unsupported POST with non-UTF-8 encoding"
+            built[0].body.as_deref().unwrap(),
+            "f%5b%5d=1&f%5b%5d=2&nm=%d2%e5%f1%f2+a%7eb!*()&cat=a&cat=b\
+             &submit=%cf%ee%e8%f1%ea&pct=%25A0%25A0\
+             &q=%25D0%25A2%25D0%25B5%25D1%2581%25D1%2582%2ba%257Eb!*()"
         );
+        // Unrepresentable text is an error, as for credential bodies, never '?'.
+        assert!(p
+            .build(&keywords("łódź"))
+            .unwrap_err()
+            .contains("not representable in windows-1251"));
+        // Latin-1 encodes the same way; UTF-8 keeps FormUrlEncodedContent.
+        let latin = encoded_plan(
+            "iso-8859-1",
+            "  path: search\n  method: POST\n  inputs: {q: '{{ .Keywords }}', k: '/é~'}\n",
+        )
+        .unwrap();
         assert_eq!(
-            encoded_plan(
-                "ISO-8859-1",
-                "  paths:\n    - {path: a}\n    - {path: b, method: POST}\n"
-            )
-            .unwrap_err(),
-            "$.search.paths[1].method: unsupported POST with non-UTF-8 encoding"
+            latin.build(&keywords("Íslensk Útgáfa")).unwrap()[0]
+                .body
+                .as_deref(),
+            Some("q=%cdslensk+%datg%e1fa&k=%2f%e9%7e")
         );
-        assert!(encoded_plan("utf-8", "  path: search\n  method: post\n").is_ok());
+        let utf8 = encoded_plan(
+            "utf-8",
+            "  path: search\n  method: post\n  inputs: {q: '{{ .Keywords }}'}\n",
+        )
+        .unwrap();
+        assert_eq!(
+            utf8.build(&keywords("é ~!")).unwrap()[0].body.as_deref(),
+            Some("q=%C3%A9+~%21")
+        );
+    }
+    #[test]
+    fn search_method_is_a_literal_post_comparison() {
+        // CardigannIndexer.cs:1545-1550: only a literal case-insensitive "post" is POST.
+        // The method is never rendered, so bangumi-moe's templated method is always GET.
+        for (method, expected) in [
+            ("post", "POST"),
+            ("Post", "POST"),
+            ("get", "GET"),
+            ("put", "GET"),
+            ("'{{ if .Keywords }}post{{ else }}get{{ end }}'", "GET"),
+        ] {
+            let p = plan(&format!(
+                "  paths:\n    - path: '{{{{ if .Keywords }}}}a{{{{ else }}}}b{{{{ end }}}}'\n      method: {method}\n  inputs: {{query: '{{{{ .Keywords }}}}'}}\n"
+            ))
+            .unwrap();
+            let built = p.build(&keywords("x y")).unwrap();
+            assert_eq!(built[0].method, expected, "{method}");
+            if expected == "GET" {
+                assert_eq!(built[0].url, "https://example.test/a?query=x+y");
+                assert_eq!(built[0].body, None);
+            } else {
+                assert_eq!(built[0].body.as_deref(), Some("query=x+y"));
+            }
+        }
+        assert!(plan("  path: x\n  method: [post]\n").is_err());
     }
     #[test]
     fn repeated_inputs_inheritance_headers_and_post() {

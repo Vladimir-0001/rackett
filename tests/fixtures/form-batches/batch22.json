@@ -1,0 +1,313 @@
+[
+  {
+    "id": "thebrothers",
+    "sha256": "7716b081ff40096bbe2d8242f7f7642d9a4f540288033f4104ad24d36a9dd88f",
+    "search_fixture": "form:thebrothers",
+    "landing_cookie": "JAVA=OK",
+    "detail": {
+      "html": "<html><body><a href=\"download_ssl.php?torrent=42\">Download torrent</a><a href=\"logout.php\">Logout</a></body></html>",
+      "resolved": "/download_ssl.php?torrent=42"
+    },
+    "form_path": "/login.php",
+    "submit_path": "/login.php",
+    "form_id": "loginform",
+    "form_attributes": "action=\"/login.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "error_html": "<div id=\"login_error\">fixture-private-error</div>",
+    "category": 2040,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/selection.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c32",
+      "1"
+    ],
+    "download_path": "/torrent.php?id=42",
+    "details_path": "/torrent.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<div class=\"onlyup\">Freeleech</div>",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1
+  },
+  {
+    "id": "thecrazyones",
+    "sha256": "ec2c203b2f6160542ca4880b1137bdd97db5e8d4a8fe973575789f6bc1b07849",
+    "search_fixture": "form:thecrazyones",
+    "landing_cookie": "JAVA=OK",
+    "detail": {
+      "html": "<html><body><a href=\"download_ssl.php?torrent=42\">Download torrent</a><a href=\"logout.php\">Logout</a></body></html>",
+      "resolved": "/download_ssl.php?torrent=42"
+    },
+    "form_path": "/login.php",
+    "submit_path": "/login.php",
+    "form_id": "loginform",
+    "form_attributes": "action=\"/login.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "error_html": "<div id=\"login_error\">fixture-private-error</div>",
+    "category": 2040,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/selection.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c32",
+      "1"
+    ],
+    "download_path": "/torrent.php?id=42",
+    "details_path": "/torrent.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<div class=\"onlyup\">Freeleech</div>",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1
+  },
+  {
+    "id": "coastalcrew",
+    "sha256": "b3d21704009c036ce92dac613dd75dc3aa6d47f0f7a0a95488bc7cf89df9168c",
+    "search_fixture": "form:coastalcrew",
+    "landing_cookie": "JAVA=OK",
+    "form_path": "/login.php",
+    "submit_path": "/login.php",
+    "form_id": "loginform",
+    "form_attributes": "action=\"/login.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "configured_settings": {},
+    "error_html": "<div id=\"login_error\">fixture-private-error</div>",
+    "category": 8010,
+    "custom_category": 100071,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/selection.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c71",
+      "1"
+    ],
+    "download_path": "/download_ssl.php?torrent=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<div onmouseover=\"return overlib('OnlyUp: Ja');\"></div><div onmouseover=\"return overlib('Freeleech: Ja');\"></div>",
+    "normal_markup": "",
+    "free_download": 1,
+    "free_upload": 1,
+    "expected_title": "Fixture Release",
+    "expected_seeders": 11,
+    "expected_peers": 15
+  },
+  {
+    "id": "newretro",
+    "sha256": "0f9f231b5a1730bb0fdb88928050b415494a5d7a4c0a487988209b6eb0a566a1",
+    "search_fixture": "form:newretro",
+    "landing_cookie": "JAVA=OK",
+    "form_path": "/login.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "loginform",
+    "form_attributes": "action=\"takelogin.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "secure_pin": "{{ .Config.pin }}",
+      "returnto": "/"
+    },
+    "configured_settings": {
+      "pin": "FixturePin"
+    },
+    "error_html": "<table class=\"tableinborder\"><tbody><tr><td class=\"tablea\">Anmeldung Gescheitert! fixture-private-error</td></tr></tbody></table>",
+    "category": 8000,
+    "custom_category": 100129,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c129",
+      "1"
+    ],
+    "download_path": "/download.php?torrent=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<img src=\"pic/oupic.gif\"><img src=\"pic/freeleech.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 0,
+    "expected_title": "Fixture Release",
+    "expected_seeders": 11,
+    "expected_peers": 15
+  },
+  {
+    "id": "thefallingangels",
+    "sha256": "a284ab2e584563c97de92c81c774a4a691be6f0919c0bf287512247893b85518",
+    "search_fixture": "form:thefallingangels",
+    "landing_cookie": "JAVA=OK",
+    "form_path": "/login.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "loginform",
+    "form_attributes": "method=\"post\" action=\"/takelogin.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "pin": "{{ .Config.pin }}"
+    },
+    "configured_settings": {
+      "pin": ""
+    },
+    "error_html": "<div id=\"login_error\">fixture-private-error</div>",
+    "category": 2000,
+    "custom_category": 100100,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/selection.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c100",
+      "1"
+    ],
+    "download_path": "/download.php?torrent=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<div onmouseover=\"return overlib('OnlyUp: Ja');\"></div><div onmouseover=\"return overlib('Freeleech: Ja');\"></div>",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 0,
+    "expected_title": "Fixture Release",
+    "expected_seeders": 7,
+    "expected_peers": 11
+  },
+  {
+    "id": "thewordmusic",
+    "sha256": "bf4ad2ea16d027f0fc73bd5a9f943ba3f1a06df65e71c32d1774ece0c983baf7",
+    "search_fixture": "form:thewordmusic",
+    "landing_cookie": "JAVA=OK",
+    "form_path": "/login.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "loginform",
+    "form_attributes": "action=\"takelogin.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "secure_pin": "{{ .Config.pin }}",
+      "returnto": "/"
+    },
+    "configured_settings": {
+      "pin": "FixturePin"
+    },
+    "error_html": "<table class=\"tableinborder\"><tbody><tr><td class=\"tablea\">Anmeldung Gescheitert! fixture-private-error</td></tr></tbody></table>",
+    "category": 3000,
+    "custom_category": 100129,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c129",
+      "1"
+    ],
+    "download_path": "/download.php?torrent=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<span class=\"ou-badge\"></span><span class=\"fl-badge\"></span>",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 0,
+    "expected_title": "Fixture Release",
+    "expected_seeders": 11,
+    "expected_peers": 15
+  },
+  {
+    "id": "torrenttrader",
+    "sha256": "0ea844a92253d23e0c1b42664ae948ee8341f104b717a1769c31116e67c7f26f",
+    "search_fixture": "form:torrenttrader",
+    "landing_cookie": "JAVA=OK",
+    "form_path": "/login.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "loginform",
+    "form_attributes": "action=\"takelogin.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "secure_pin": "{{ .Config.pin }}",
+      "returnto": "/"
+    },
+    "configured_settings": {
+      "pin": "FixturePin"
+    },
+    "error_html": "<table class=\"tableinborder\"><tbody><tr><td class=\"tablea\">Anmeldung Gescheitert! fixture-private-error</td></tr></tbody></table>",
+    "category": 8000,
+    "custom_category": 100129,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c129",
+      "1"
+    ],
+    "download_path": "/download.php?torrent=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<img src=\"pic/oupic.gif\"><img src=\"pic/freeleech.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 0,
+    "expected_title": "Fixture Release",
+    "expected_seeders": 11,
+    "expected_peers": 15
+  },
+  {
+    "id": "unbreakable",
+    "sha256": "4f8dda46750c8e7560360efebae3f7fdff93c5ea7fd06c5828e83b147a2a9674",
+    "search_fixture": "form:unbreakable",
+    "landing_cookie": "JAVA=OK",
+    "form_path": "/login.php",
+    "submit_path": "/takelogin.php",
+    "form_id": "loginform",
+    "form_attributes": "action=\"takelogin.php\"",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}",
+      "secure_pin": "{{ .Config.pin }}",
+      "returnto": "/"
+    },
+    "configured_settings": {
+      "pin": "FixturePin"
+    },
+    "error_html": "<table class=\"tableinborder\"><tbody><tr><td class=\"tablea\">Anmeldung Gescheitert! fixture-private-error</td></tr></tbody></table>",
+    "category": 3010,
+    "custom_category": 100129,
+    "request_count": 1,
+    "login_path": "/index.php",
+    "search_path": "/browse.php",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "c129",
+      "1"
+    ],
+    "download_path": "/download.php?torrent=42",
+    "details_path": "/details.php?id=42",
+    "published": "2026-10-28T09:30:00Z",
+    "free_markup": "<img src=\"pic/oupic.gif\"><img src=\"pic/freeleech.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 0,
+    "expected_title": "Fixture Release"
+  }
+]

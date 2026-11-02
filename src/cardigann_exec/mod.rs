@@ -63,6 +63,13 @@ struct Field {
     optional: bool,
     default: Option<Template>,
 }
+/// Upstream `Rows.Dateheaders` (CardigannIndexer.cs:1910-1946): a selector block read
+/// from the rows before an undated row.
+struct DateHeaders {
+    selector: selector::Selector,
+    filters: Vec<filters::Filter>,
+    optional: bool,
+}
 struct Category {
     id: String,
     desc: Option<String>,
@@ -83,6 +90,10 @@ pub struct Plan {
     row_values: Vec<String>,
     /// Upstream `Rows.After` (`IndexerDefinition.cs:156`); zero when absent or non-positive.
     after: usize,
+    date_headers: Option<DateHeaders>,
+    /// JSON `multiple` and `missingAttributeEqualsNoResults`; HTML ignores both, as
+    /// upstream does.
+    json_shape: selector::JsonRowShape,
     row_filters: rowfilters::RowFilters,
     count: Option<selector::Selector>,
     attribute: Option<String>,
@@ -162,10 +173,27 @@ impl Plan {
             .ok_or_else(|| error("$.search.rows", "Missing rows"))?;
         allowed(
             rows,
-            &["selector", "attribute", "count", "filters", "after"],
+            &[
+                "selector",
+                "attribute",
+                "count",
+                "filters",
+                "after",
+                "dateheaders",
+                "multiple",
+                "missingAttributeEqualsNoResults",
+            ],
             "$.search.rows",
         )?;
         let after = compile_after(rows.get("after"))?;
+        let json_shape = selector::JsonRowShape {
+            multiple: flag(rows, "multiple")?,
+            missing_is_empty: flag(rows, "missingAttributeEqualsNoResults")?,
+        };
+        let date_headers = rows
+            .get("dateheaders")
+            .map(|node| compile_date_headers(node, charset))
+            .transpose()?;
         let row_filters = rowfilters::RowFilters::compile(root, rows)?;
         if rows
             .get("count")
@@ -231,9 +259,6 @@ impl Plan {
             }
             if base.is_empty() {
                 return Err(error(&path, "Empty field"));
-            }
-            if node.string("selector").is_some_and(|s| s.starts_with("..")) {
-                return Err(error(&path, "Parent-row JSON selectors unsupported"));
             }
             allowed(
                 node,
@@ -435,12 +460,8 @@ impl Plan {
             }
         }
         let requests = request::RequestPlan::compile(root).map_err(|e| error("$.search", e))?;
-        if !row_values.is_empty() && requests.response_types().any(|format| format == "json") {
-            return Err(error(
-                "$.search.rows.selector",
-                "Row selector values are only supported for HTML responses",
-            ));
-        }
+        // A JSON rows selector with values renders through `render_json_selector`; the
+        // variants below are still probed as JSON selectors (docs/api-origins.md).
         // Upstream evaluates error blocks only on the HTML branch (CardigannIndexer.cs:1819).
         if !errors.is_empty() && requests.response_types().any(|format| format != "html") {
             return Err(error(
@@ -506,6 +527,8 @@ impl Plan {
             rows: row_template,
             row_values,
             after,
+            date_headers,
+            json_shape,
             row_filters,
             count,
             attribute: rows.string("attribute").map(str::to_owned),
@@ -755,14 +778,34 @@ impl Plan {
     ) -> Result<Vec<request::BuiltRequest>, ExecutionError> {
         let ctx = self.prepare_context(ctx)?;
         // Configured row selector values are rejected before any request exists.
-        self.row_selector(&ctx)?;
+        self.check_row_selector(&ctx)?;
         self.requests.build(&ctx).map_err(|e| error("$.search", e))
     }
     /// Check resolved settings once, as a source is configured, so invalid row selector
     /// values never wait for a search. Requests and extraction check them again.
     pub fn check_settings(&self, settings: &BTreeMap<String, Value>) -> Result<(), ExecutionError> {
         let ctx = self.context(settings, &SearchQuery::default(), Utc::now());
-        self.row_selector(&ctx).map(drop)
+        self.check_row_selector(&ctx)
+    }
+    /// Render the row selector as every response type of this plan will.
+    fn check_row_selector(&self, ctx: &Context) -> Result<(), ExecutionError> {
+        if self
+            .requests
+            .response_types()
+            .any(|format| format == "json")
+        {
+            self.rows
+                .render_json_selector(ctx)
+                .map_err(|e| error("$.search.rows.selector", e))?;
+        }
+        if self
+            .requests
+            .response_types()
+            .any(|format| format != "json")
+        {
+            self.row_selector(ctx)?;
+        }
+        Ok(())
     }
     fn row_selector(&self, ctx: &Context) -> Result<String, ExecutionError> {
         self.rows
@@ -877,12 +920,22 @@ impl Plan {
                     }
                 }
             }
-            let rows = self.row_selector(ctx)?;
-            for row in selector::json_rows(&json, &rows, self.attribute.as_deref(), 1000)
-                .map_err(|e| error("$.search.rows", e))?
+            let rows = self
+                .rows
+                .render_json_selector(ctx)
+                .map_err(|e| error("$.search.rows.selector", e))?;
+            for (parent, row) in selector::json_row_pairs(
+                &json,
+                &rows,
+                self.attribute.as_deref(),
+                self.json_shape,
+                1000,
+            )
+            .map_err(|e| error("$.search.rows", e))?
             {
                 releases.push(self.release(ctx, &request.url, &mut budget, |s, c| {
-                    s.extract_json(row, &|v| Template::compile(v)?.render(c))
+                    let target = if s.json_parent() { parent } else { row };
+                    s.extract_json(target, &|v| Template::compile(v)?.render(c))
                 })?);
             }
         } else if matches!(request.response_type.as_str(), "html" | "xml") {
@@ -935,13 +988,30 @@ impl Plan {
                     })?;
             }
             for row in slots {
-                match self.release(ctx, &request.url, &mut budget, |s, c| {
-                    s.extract_html_mut(&mut html, row, &mut visits, &|v| {
-                        Template::compile(v)?.render(c)
+                let release = self
+                    .release(ctx, &request.url, &mut budget, |s, c| {
+                        s.extract_html_mut(&mut html, row, &mut visits, &|v| {
+                            Template::compile(v)?.render(c)
+                        })
                     })
-                }) {
+                    .and_then(|mut release| {
+                        self.date_header(
+                            &mut release,
+                            &mut html,
+                            row,
+                            &mut visits,
+                            ctx,
+                            &request.url,
+                            &mut budget,
+                        )?;
+                        Ok(release)
+                    });
+                match release {
                     Ok(release) => releases.push(release),
-                    Err(e) if skip_invalid_rows && e.path.starts_with("$.search.fields.") => {}
+                    Err(e)
+                        if skip_invalid_rows
+                            && (e.path.starts_with("$.search.fields.")
+                                || e.path.starts_with(DATE_HEADERS_PATH)) => {}
                     Err(e) => return Err(e),
                 }
             }
@@ -958,6 +1028,81 @@ impl Plan {
             releases = matched;
         }
         Ok(releases)
+    }
+    /// Upstream `Rows.Dateheaders` (CardigannIndexer.cs:1910-1946). A row without a
+    /// publish date takes it from the nearest earlier element whose descendants match the
+    /// block: previous siblings first, then the previous sibling of the row's parent, and so
+    /// on. A selector miss or filter failure moves to the next element. Without a match a
+    /// required block fails the row; the header value is parsed like a `date` field.
+    #[allow(clippy::too_many_arguments)]
+    fn date_header(
+        &self,
+        release: &mut Release,
+        html: &mut scraper::Html,
+        row: usize,
+        visits: &mut usize,
+        ctx: &Context,
+        url: &str,
+        budget: &mut Budget,
+    ) -> Result<(), ExecutionError> {
+        let Some(headers) = &self.date_headers else {
+            return Ok(());
+        };
+        if release.published.is_some() {
+            return Ok(());
+        }
+        let response_failure = |e: String| {
+            if e.contains("aggregate visit budget") || css::is_execution_failure(&e) {
+                Some(error("$.response", e))
+            } else {
+                None
+            }
+        };
+        let mut candidate = selector::previous_header_slot(html, row, visits)
+            .map_err(|e| error("$.response", e))?;
+        let mut value = None;
+        while let Some(slot) = candidate {
+            budget.operation()?;
+            let selected = match headers
+                .selector
+                .extract_html_mut(html, slot, visits, &|v| Template::compile(v)?.render(ctx))
+            {
+                Ok(selected) => selected,
+                Err(e) => match response_failure(e) {
+                    Some(e) => return Err(e),
+                    None => None,
+                },
+            };
+            if let Some(mut v) = selected {
+                budget.consume(v.len())?;
+                let mut filtered = true;
+                for filter in &headers.filters {
+                    budget.operation()?;
+                    budget.consume(v.len())?;
+                    match filter.apply(&v, ctx) {
+                        Ok(next) => v = next,
+                        Err(_) => {
+                            filtered = false;
+                            break;
+                        }
+                    }
+                }
+                if filtered {
+                    value = Some(v);
+                    break;
+                }
+            }
+            candidate = selector::previous_header_slot(html, slot, visits)
+                .map_err(|e| error("$.response", e))?;
+        }
+        match value {
+            Some(v) => self
+                .normalize(release, "date", "date", &v, url, ctx)
+                .map(|_| ())
+                .map_err(|e| error(DATE_HEADERS_PATH, e)),
+            None if headers.optional => Ok(()),
+            None => Err(error(DATE_HEADERS_PATH, "No date header row found")),
+        }
     }
     /// First matching error block fails the response. Neither the page, the selector nor
     /// the definition's message is reported: only the block's source path. Documents
@@ -1473,6 +1618,39 @@ fn compile_errors(node: Option<&Node>) -> Result<Vec<css::Css>, ExecutionError> 
     Ok(compiled)
 }
 const AFTER_PATH: &str = "$.search.rows.after";
+const DATE_HEADERS_PATH: &str = "$.search.rows.dateheaders";
+/// A boolean row property; YAML `true`/`false` only.
+fn flag(rows: &Node, key: &str) -> Result<bool, ExecutionError> {
+    match rows.get(key).map(|n| n.text()) {
+        None => Ok(false),
+        Some(Some("true")) => Ok(true),
+        Some(Some("false")) => Ok(false),
+        Some(_) => Err(error(
+            format!("$.search.rows.{key}"),
+            "Expected true or false",
+        )),
+    }
+}
+fn compile_date_headers(
+    node: &Node,
+    charset: request::Charset,
+) -> Result<DateHeaders, ExecutionError> {
+    allowed(
+        node,
+        &["selector", "attribute", "filters", "optional"],
+        DATE_HEADERS_PATH,
+    )?;
+    validate_templates(node, DATE_HEADERS_PATH)?;
+    Ok(DateHeaders {
+        selector: selector::Selector::compile(node).map_err(|e| error(DATE_HEADERS_PATH, e))?,
+        filters: compile_pipeline(
+            node.get("filters"),
+            &format!("{DATE_HEADERS_PATH}.filters"),
+            charset,
+        )?,
+        optional: node.string("optional") == Some("true"),
+    })
+}
 /// `rowsBlock.After` is a YamlDotNet `int`. Only the unambiguous plain decimal subset is
 /// accepted; quoted, signed-plus, leading-zero, fractional and overflowing forms are
 /// rejected rather than guessed. Non-positive values disable merging, as upstream.

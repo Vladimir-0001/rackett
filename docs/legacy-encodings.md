@@ -31,12 +31,38 @@ rejected; no pinned definition uses them.
   `HttpUtility.UrlEncode(text, encoding)` for each key and value, which produces
   lower-case hex, and sends `application/x-www-form-urlencoded`. UTF-8 definitions
   keep the existing `FormUrlEncodedContent` path.
-- **Unrepresentable text** in a query or credential, such as Cyrillic sent to a
-  windows-1250 site, is an error. .NET would substitute a best-fit or `?` byte;
+- **Search POST bodies** use the same encoder (see below).
+- **Unrepresentable text** in a query, credential or search body, such as Cyrillic
+  sent to a windows-1250 site, is an error. .NET would substitute a best-fit or `?` byte;
   Rackett refuses to guess.
 - **FlareSolverr** returns already-decoded browser text, so challenge solving stays
   limited to UTF-8 definitions. The `urlencode` and `urldecode` filters remain
   rejected for non-UTF-8 definitions.
+
+## Search POST bodies
+
+`method: post` search paths of non-UTF-8 definitions are supported since 2026-11-01.
+Upstream builds every search through `RequestWithCookiesAsync(..., data:
+queryCollection)` (`CardigannIndexer.cs:1605-1606`), which sets the request encoding
+to the definition encoding (`BaseIndexer.cs:598-612`). `HttpWebClient2` turns POST
+data into `FormUrlEncodedContentWithEncoding(PostData, Encoding)`
+(`HttpWebClient2.cs:163-166`), the same encoder as credential bodies
+(`WebClient.cs:242-263`). The request plan therefore:
+
+- encodes every key and value with `HttpUtility.UrlEncode(text, encoding)`:
+  code-page bytes, lower-case hex, `+` for a space, `-_.!*()` literal and `~`
+  escaped. Keys are encoded too (`f[]` becomes `f%5b%5d`), and repeated keys keep
+  their order;
+- re-encodes `$raw` values, which `applyGoTemplateText` has already UTF-8 encoded with
+  `WebUtility.UrlEncode` (`:1565`), so their `%` and `+` are encoded again, as in
+  UTF-8 POST bodies and GET queries;
+- encodes literal values such as file-tracker's `submit: "%A0%A0Search%A0%A0"` as text
+  (`%25A0%25A0Search%25A0%25A0`);
+- rejects unrepresentable text with an error instead of a `?` byte.
+
+UTF-8 definitions keep `FormUrlEncodedContent`. Unit tests in
+`src/cardigann_exec/request.rs` check the bodies byte for byte
+(`non_utf8_post_bodies_match_form_url_encoded_content_with_encoding`).
 
 Authenticated sessions hand the search loop text they have already decoded.
 `Fetched::decoded` marks such bodies so they are never decoded a second time; the
@@ -62,14 +88,16 @@ charset. For a non-UTF-8 definition they:
 - require a native, non-ASCII expected title;
 - for form and credential-POST logins, use a username native to the code page,
   check that the posted body uses lower-case `HttpUtility` escapes, and decode it
-  with the definition charset before comparing fields.
+  with the definition charset before comparing fields;
+- for `search_post` cases (all three harnesses), apply the same check and decoding
+  to the search body before matching keyword and category pairs.
 
 ## Admitted non-UTF-8 runtimes
 
 | Code page | IDs |
 | --- | --- |
 | ISO-8859-1 | deildu, tribalmixes |
-| windows-1251 | kinorun, peersfm, traht, bigfangroup (public), megapeer (public) |
+| windows-1251 | kinorun, peersfm, traht, file-tracker (POST search), bigfangroup (public), megapeer (public), noname-club (public, POST search) |
 | ISO-8859-2 | bestcore, libranet, party-tracker, redstartorrent, whiteangel |
 | windows-1252 | xwtorrents |
 | windows-1250 | trezzor, trezzorcookie (cookie) |
@@ -79,6 +107,12 @@ the full lifecycle.
 
 ## Remaining candidates
 
+- **noname-clubl** (cookie, windows-1251 POST search): its search passes the offline
+  cookie layout test, but the cookie session parses `login.test.selector` with
+  `scraper`, which has no `:contains`, and its test is
+  `table.menutable a.mainmenu:contains("Выход")`. Parked in
+  `tests/fixtures/pending/noname-clubl-retry.json`.
+
 - **Cookie retries:** bithumen (leechers field parse), newheaven (four paginated
   requests with a 2 s delay), xwtorrents2fa (category expectation).
 - **Retries:** karagarga (needed `normal_upload` 1.1, now supported) and 0daykiev
@@ -86,4 +120,4 @@ the full lifecycle.
   windows-1251 text).
 
 The remaining non-UTF-8 definitions have other blockers: .NET regex features,
-`followredirect`, `urldecode`, POST search, CAPTCHA or download resolution.
+`followredirect`, `urldecode`, CAPTCHA or download resolution.

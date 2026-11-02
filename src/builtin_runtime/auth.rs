@@ -1,5 +1,6 @@
 //! Bounded supplied-cookie authentication; catalog admission belongs to builtin.rs.
-//! Response cookies are bounded and source-scoped; only the declared User-Agent header is modeled.
+//! Response cookies are bounded and source-scoped. Declared `search.headers` are rendered
+//! once per session and sent as pinned Cardigann does (docs/session-search-headers.md).
 use crate::{cardigann::Node, cardigann_exec::request::Charset};
 use anyhow::{anyhow, bail, Result};
 use futures_util::StreamExt;
@@ -13,14 +14,26 @@ use std::{
 };
 use tokio::sync::{Mutex, OwnedMutexGuard, OwnedSemaphorePermit, Semaphore};
 
+/// `login.test`. Pinned `TestLogin` (`CardigannIndexer.cs:892-949`) skips validation
+/// when the block is absent and checks the page only when a selector is declared.
+#[derive(Clone)]
+pub(super) struct LoginTest {
+    pub path: String,
+    pub selector: Option<String>,
+}
 /// Complete, deliberately narrow login schema; never serializes credentials.
 pub struct CookiePlan {
-    path: String,
-    selector: String,
+    test: Option<LoginTest>,
     // Aidoru's pinned search endpoint returns only the result table. Its login
     // marker is a torrent link on the home page, absent on an empty search.
     aidoru_fragment: bool,
     user_agent: Option<String>,
+    /// `search.headers` other than the bound User-Agent, until `create` renders them.
+    declared: Vec<DeclaredHeader>,
+    /// Values of the settings `declared` references (`with_settings`).
+    header_settings: std::collections::BTreeMap<String, String>,
+    /// The rendered `declared` headers, in definition order.
+    headers: Vec<(String, String)>,
     /// Definition encoding for search, test and login pages; it wins over headers.
     pub(super) charset: Charset,
     /// Definition `certificates`, trusted only for the session's own origin host.
@@ -74,7 +87,11 @@ impl CookiePlan {
         let login = root
             .get("login")
             .ok_or_else(|| anyhow!("Missing cookie login"))?;
-        exact_keys(login, &["method", "inputs", "test"])?;
+        if login.get("test").is_some() {
+            exact_keys(login, &["method", "inputs", "test"])?;
+        } else {
+            exact_keys(login, &["method", "inputs"])?;
+        }
         if login.string("method") != Some("cookie") {
             bail!("Only explicit cookie login is modeled");
         }
@@ -83,24 +100,41 @@ impl CookiePlan {
         if inputs.string("cookie") != Some("{{ .Config.cookie }}") {
             bail!("Unsupported cookie input template");
         }
-        let test = login.get("test").unwrap();
-        exact_keys(test, &["path", "selector"])?;
-        let path = test
-            .string("path")
-            .ok_or_else(|| anyhow!("Invalid cookie test path"))?;
-        let selector = test
-            .string("selector")
-            .ok_or_else(|| anyhow!("Invalid cookie test selector"))?;
-        if path.is_empty()
-            || path.len() > 2048
-            || path.contains(['{', '}', '\\'])
-            || path.chars().any(char::is_control)
-            || selector.is_empty()
-            || selector.len() > 1024
-            || scraper::Selector::parse(selector).is_err()
-        {
-            bail!("Unsupported cookie test path or selector");
-        }
+        let test = if let Some(test) = login.get("test") {
+            if test.get("selector").is_some() {
+                exact_keys(test, &["path", "selector"])?;
+            } else {
+                exact_keys(test, &["path"])?;
+            }
+            let path = test
+                .string("path")
+                .ok_or_else(|| anyhow!("Invalid cookie test path"))?;
+            let selector = test
+                .get("selector")
+                .map(|s| {
+                    s.text()
+                        .ok_or_else(|| anyhow!("Invalid cookie test selector"))
+                })
+                .transpose()?;
+            if path.is_empty()
+                || path.len() > 2048
+                || path.contains(['{', '}', '\\'])
+                || path.chars().any(char::is_control)
+                || selector.is_some_and(|selector| {
+                    selector.is_empty()
+                        || selector.len() > 1024
+                        || scraper::Selector::parse(selector).is_err()
+                })
+            {
+                bail!("Unsupported cookie test path or selector");
+            }
+            Some(LoginTest {
+                path: path.into(),
+                selector: selector.map(Into::into),
+            })
+        } else {
+            None
+        };
         if root.get("followredirect").is_some()
             || search_follows_redirects(root)
             || root
@@ -128,25 +162,8 @@ impl CookiePlan {
         let search = root
             .get("search")
             .ok_or_else(|| anyhow!("Missing cookie search"))?;
-        let user_agent = if let Some(headers) = search.get("headers") {
-            exact_keys(headers, &["User-Agent"])?;
-            let values = headers.get("User-Agent").and_then(Node::items);
-            if values.is_none_or(|v| v.len() != 1 || v[0].text() != Some("{{ .Config.useragent }}"))
-                || settings
-                    .iter()
-                    .filter(|s| s.string("name") == Some("useragent"))
-                    .count()
-                    != 1
-                || !settings.iter().any(|s| {
-                    s.string("name") == Some("useragent") && s.string("type") == Some("text")
-                })
-            {
-                bail!("Unsupported cookie User-Agent declaration");
-            }
-            Some(String::new())
-        } else {
-            None
-        };
+        let (agent, declared) = compile_search_headers(root)?;
+        let user_agent = agent.then(String::new);
         // HTML GET or plan-encoded form POST searches (`method: post`).
         let method_ok = |m: &str| m.eq_ignore_ascii_case("get") || m.eq_ignore_ascii_case("post");
         // Search responses may be HTML (default), JSON or XML; RequestPlan owns the rest
@@ -182,19 +199,23 @@ impl CookiePlan {
                 || paths[0].string("path") != Some("get_ttable.php")
                 || rows.string("selector")
                     != Some("table.ttable_headinner tr.t-row:has(a[href^=\"download.php?id=\"])")
-                || path != "/"
-                || selector != "a[href^=\"torrents-details.php?id=\"]"
+                || test.as_ref().is_none_or(|t| {
+                    t.path != "/"
+                        || t.selector.as_deref() != Some("a[href^=\"torrents-details.php?id=\"]")
+                })
             {
                 bail!("Unsupported AJAX cookie search schema");
             }
             exact_keys(&paths[0], &["path"])?;
         }
         Ok(Self {
-            path: path.into(),
-            selector: selector.into(),
+            test,
             aidoru_fragment,
             charset,
             user_agent,
+            declared,
+            header_settings: Default::default(),
+            headers: Vec::new(),
             certificates: crate::pinned_tls::Pins::compile(root)
                 .map_err(|_| anyhow!("Cookie auth transport semantics are not modeled"))?,
         })
@@ -214,6 +235,208 @@ impl CookiePlan {
         }
         Ok(self)
     }
+    /// Values for the text settings that declared search headers render. Only the
+    /// referenced settings are kept; none is ever echoed in an error.
+    pub fn with_settings(
+        mut self,
+        settings: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Self> {
+        for name in referenced_settings(&self.declared) {
+            if let Some(value) = settings.get(&name).and_then(serde_json::Value::as_str) {
+                self.header_settings.insert(name, value.to_owned());
+            }
+        }
+        Ok(self)
+    }
+}
+
+/// A part of a declared header value: literal text or `{{ .Config.<name> }}`.
+#[derive(Clone, PartialEq, Debug)]
+enum Part {
+    Text(String),
+    Setting(String),
+}
+/// One `search.headers` entry other than the bound User-Agent.
+#[derive(Clone, Debug)]
+pub(super) struct DeclaredHeader {
+    name: String,
+    parts: Vec<Part>,
+}
+/// Headers no definition may set on a session request: framing, hop-by-hop and
+/// proxy headers, and `Content-Type`, which pinned HttpWebClient2 drops from custom
+/// headers unless it sends a raw body (`HttpWebClient2.cs:126-135`).
+const FORBIDDEN_HEADERS: &[&str] = &[
+    "host",
+    "connection",
+    "content-length",
+    "content-type",
+    "expect",
+    "keep-alive",
+    "proxy-authenticate",
+    "proxy-authorization",
+    "proxy-connection",
+    "te",
+    "trailer",
+    "transfer-encoding",
+    "upgrade",
+];
+fn visible_ascii(value: &str) -> bool {
+    value.len() <= 4096 && value.bytes().all(|b| (0x20..=0x7e).contains(&b))
+}
+/// Literal text and `{{ .Config.<name> }}` references; any other template is rejected.
+fn template_parts(text: &str) -> Result<Vec<Part>> {
+    let unsupported = || anyhow!("Unsupported session header template");
+    let mut parts = Vec::new();
+    let mut rest = text;
+    while !rest.is_empty() {
+        let (literal, tail) = rest.split_once("{{").unwrap_or((rest, ""));
+        if literal.contains("}}") || !visible_ascii(literal) {
+            return Err(unsupported());
+        }
+        if !literal.is_empty() {
+            parts.push(Part::Text(literal.to_owned()));
+        }
+        if literal.len() == rest.len() {
+            break;
+        }
+        let (name, tail) = tail
+            .strip_prefix(" .Config.")
+            .and_then(|t| t.split_once(" }}"))
+            .ok_or_else(unsupported)?;
+        if name.is_empty()
+            || !name
+                .bytes()
+                .all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'-')
+        {
+            return Err(unsupported());
+        }
+        parts.push(Part::Setting(name.to_owned()));
+        rest = tail;
+    }
+    Ok(parts)
+}
+fn referenced_settings(declared: &[DeclaredHeader]) -> BTreeSet<String> {
+    declared
+        .iter()
+        .flat_map(|h| &h.parts)
+        .filter_map(|p| match p {
+            Part::Setting(name) if name != "sitelink" => Some(name.clone()),
+            _ => None,
+        })
+        .collect()
+}
+/// `search.headers`, which pinned Cardigann also sends with login, test and download
+/// requests (`Login.Headers ?? Search.Headers`, `Download.Headers ?? Search.Headers`).
+/// Returns whether `User-Agent: {{ .Config.useragent }}` is declared, and the rest.
+///
+/// Admitted values: literal text, `{{ .Config.sitelink }}`, and declared text settings
+/// other than `cookie` and `useragent`. `Cookie` must be literal cookie-pairs and
+/// `Referer` must start with the configured site link.
+pub(super) fn compile_search_headers(root: &Node) -> Result<(bool, Vec<DeclaredHeader>)> {
+    let Some(headers) = root.get("search").and_then(|s| s.get("headers")) else {
+        return Ok((false, Vec::new()));
+    };
+    let unsupported = || anyhow!("Unsupported session header declaration");
+    let settings = root
+        .get("settings")
+        .and_then(Node::items)
+        .unwrap_or_default();
+    let declared_text = |name: &str| {
+        let matching: Vec<_> = settings
+            .iter()
+            .filter(|s| s.string("name") == Some(name))
+            .collect();
+        matching.len() == 1 && matching[0].string("type") == Some("text")
+    };
+    let pairs = headers.pairs().ok_or_else(unsupported)?;
+    if pairs.len() > 16 {
+        return Err(unsupported());
+    }
+    let mut names = BTreeSet::new();
+    let mut agent = false;
+    let mut declared = Vec::new();
+    for (key, value) in pairs {
+        let name = key.text().ok_or_else(unsupported)?;
+        let lower = name.to_ascii_lowercase();
+        let values = value.items().ok_or_else(unsupported)?;
+        // Pinned ParseCustomHeaders sends only the first value (`CardigannIndexer.cs:2202-2205`);
+        // extra values are rejected rather than silently dropped.
+        let text = match values {
+            [only] => only.text().ok_or_else(unsupported)?,
+            _ => return Err(unsupported()),
+        };
+        if !names.insert(lower.clone())
+            || reqwest::header::HeaderName::from_bytes(name.as_bytes()).is_err()
+            || FORBIDDEN_HEADERS.contains(&lower.as_str())
+        {
+            return Err(unsupported());
+        }
+        if lower == "user-agent" {
+            if text != "{{ .Config.useragent }}" || !declared_text("useragent") {
+                bail!("Unsupported cookie User-Agent declaration");
+            }
+            agent = true;
+            continue;
+        }
+        let parts = template_parts(text)?;
+        let valid = match lower.as_str() {
+            "cookie" => match parts.as_slice() {
+                [Part::Text(text)] => cookie_pairs(text).is_ok(),
+                _ => false,
+            },
+            "referer" => {
+                parts.first() == Some(&Part::Setting("sitelink".into()))
+                    && parts[1..].iter().all(|p| matches!(p, Part::Text(_)))
+            }
+            _ => !parts.is_empty(),
+        } && parts.iter().all(|p| match p {
+            Part::Text(_) => true,
+            Part::Setting(n) if n == "sitelink" => true,
+            Part::Setting(n) => n != "cookie" && n != "useragent" && declared_text(n),
+        });
+        if !valid {
+            return Err(unsupported());
+        }
+        declared.push(DeclaredHeader {
+            name: name.to_owned(),
+            parts,
+        });
+    }
+    Ok((agent, declared))
+}
+/// Render declared headers with the configured site link (upstream `SiteLink`, the
+/// origin with its trailing slash) and setting values. A referenced setting must be
+/// non-empty visible ASCII; values never appear in errors.
+pub(super) fn render_headers(
+    declared: &[DeclaredHeader],
+    sitelink: &str,
+    settings: &std::collections::BTreeMap<String, String>,
+) -> Result<Vec<(String, String)>> {
+    declared
+        .iter()
+        .map(|header| {
+            let mut value = String::new();
+            for part in &header.parts {
+                match part {
+                    Part::Text(text) => value.push_str(text),
+                    Part::Setting(name) if name == "sitelink" => value.push_str(sitelink),
+                    Part::Setting(name) => {
+                        let setting = settings
+                            .get(name)
+                            .filter(|v| !v.trim().is_empty() && visible_ascii(v))
+                            .ok_or_else(|| {
+                                anyhow!("This preset requires a valid {name} setting")
+                            })?;
+                        value.push_str(setting);
+                    }
+                }
+            }
+            if value.len() > 8192 || !value.bytes().all(|b| (0x20..=0x7e).contains(&b)) {
+                bail!("Invalid session header value");
+            }
+            Ok((header.name.clone(), value))
+        })
+        .collect()
 }
 
 /// One RFC6265 cookie-pair name and value, without attributes.
@@ -260,6 +483,10 @@ struct SessionState {
     file: Option<super::session_store::CookieFile>,
     loaded: bool,
     dirty: bool,
+    /// The cookies passed a full validation (login and TestLogin, or the stored or
+    /// supplied session's test) and no later search has failed. In memory only, so
+    /// a restart or a changed identity validates once more (docs/session-validation.md).
+    validated: bool,
 }
 /// A config store's session namespace. Unchanged source identities share their
 /// writer across runtime replacements; changed credentials or origins never do.
@@ -298,6 +525,9 @@ struct SessionRequest<'a> {
     /// A search POST body already encoded by the request plan (upstream encoding).
     body: Option<&'a str>,
     referer: Option<&'a str>,
+    /// Pinned `BaseIndexer.Download` sends the link itself as Referer on its first
+    /// request (`BaseIndexer.cs:537-548`); it wins over a declared Referer.
+    self_referer: bool,
     probe: bool,
 }
 struct Received {
@@ -305,6 +535,8 @@ struct Received {
     content_type: String,
     url: url::Url,
     unauthorized: bool,
+    /// The probe ended on a redirect rather than HTTP 401.
+    redirected: bool,
     state: OwnedMutexGuard<SessionState>,
 }
 #[derive(Debug)]
@@ -336,10 +568,18 @@ impl CookieSession {
     ) -> Result<Self> {
         let form = Arc::new(plan.configure(settings, base)?);
         let plan = CookiePlan {
-            path: form.plan.test_path.clone(),
-            selector: form.plan.test_selector.clone(),
+            test: form.plan.test.clone(),
             aidoru_fragment: false,
             user_agent: None,
+            declared: form.plan.headers.clone(),
+            header_settings: referenced_settings(&form.plan.headers)
+                .into_iter()
+                .filter_map(|name| {
+                    let value = settings.get(&name)?.as_str()?.to_owned();
+                    Some((name, value))
+                })
+                .collect(),
+            headers: Vec::new(),
             charset: form.plan.charset,
             certificates: form.plan.certificates.clone(),
         };
@@ -348,7 +588,7 @@ impl CookieSession {
         Ok(session)
     }
     fn create(
-        plan: CookiePlan,
+        mut plan: CookiePlan,
         base: &str,
         cookie: &str,
         delay_ms: u64,
@@ -370,6 +610,8 @@ impl CookieSession {
         if plan.user_agent.as_ref().is_some_and(|s| s.is_empty()) {
             bail!("This preset requires a User-Agent setting");
         }
+        plan.headers = render_headers(&plan.declared, base.as_str(), &plan.header_settings)?;
+        plan.header_settings.clear();
         let (cookies, mut seed_identity) = if let Some(form) = &form {
             let mut identity = Sha256::new();
             if form.plan.direct_post {
@@ -411,6 +653,22 @@ impl CookieSession {
             digest.update(user_agent.as_bytes());
             seed_identity = digest.finalize().into();
         }
+        if !plan.headers.is_empty() {
+            // Header-bound values (a CSRF token, a site-link Referer) are part of the
+            // session identity, like the User-Agent: a changed value starts again from
+            // the seed, as pinned ApplyConfiguration does. Sources without declared
+            // headers keep their existing identity and stored sessions.
+            let mut digest = Sha256::new();
+            digest.update(b"Rackett session headers v1");
+            digest.update(seed_identity);
+            for (name, value) in &plan.headers {
+                for part in [name.to_ascii_lowercase(), value.clone()] {
+                    digest.update((part.len() as u64).to_be_bytes());
+                    digest.update(part.as_bytes());
+                }
+            }
+            seed_identity = digest.finalize().into();
+        }
         let client = reqwest::Client::builder()
             .redirect(reqwest::redirect::Policy::none())
             .retry(reqwest::retry::never())
@@ -429,28 +687,65 @@ impl CookieSession {
                 file: None,
                 loaded: false,
                 dirty: false,
+                validated: false,
             })),
             seed_identity,
             delay: Duration::from_millis(delay_ms),
             timeout: Duration::from_secs(timeout_seconds),
             form,
         };
-        session.target(&session.plan.path)?;
+        if let Some(test) = &session.plan.test {
+            session.target(&test.path)?;
+        }
         Ok(session)
     }
+    /// The request plan's rendered search headers must be exactly the session's own
+    /// set (the bound User-Agent and the rendered declared headers); the session then
+    /// sends its set. A mismatch is rejected without naming any value.
     pub(crate) fn check_search_headers(&self, headers: &[(String, String)]) -> Result<()> {
-        let valid = match &self.plan.user_agent {
-            Some(agent) => {
-                headers.len() == 1
-                    && headers[0].0.eq_ignore_ascii_case("user-agent")
-                    && headers[0].1 == *agent
-            }
-            None => headers.is_empty(),
+        let normalize = |pairs: &mut dyn Iterator<Item = (&String, &String)>| {
+            let mut pairs: Vec<_> = pairs
+                .map(|(k, v)| (k.to_ascii_lowercase(), v.clone()))
+                .collect();
+            pairs.sort();
+            pairs
         };
-        if !valid {
+        let agent = self
+            .plan
+            .user_agent
+            .as_ref()
+            .map(|agent| ("user-agent".to_owned(), agent.clone()));
+        let expected = normalize(
+            &mut agent
+                .iter()
+                .map(|(k, v)| (k, v))
+                .chain(self.plan.headers.iter().map(|(k, v)| (k, v))),
+        );
+        if normalize(&mut headers.iter().map(|(k, v)| (k, v))) != expected {
             bail!("Unsupported authenticated search headers");
         }
         Ok(())
+    }
+    /// The `Cookie` request header: pinned HttpWebClient2 puts the stored session in
+    /// its CookieContainer and the definition's `Cookie` among the request headers
+    /// (`HttpWebClient2.cs:113-135`). .NET 9 SocketsHttpHandler then writes the custom
+    /// value first and appends the container's cookies after `"; "`, or sends the
+    /// container's alone (`HttpConnection.cs:363-378`, `:443-448`, `:465-470`).
+    fn cookie_header(&self, declared: bool, jar: Option<String>) -> Option<String> {
+        let literal = declared
+            .then(|| {
+                self.plan
+                    .headers
+                    .iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case("cookie"))
+                    .map(|(_, v)| v.as_str())
+            })
+            .flatten();
+        match (literal, jar) {
+            (Some(literal), Some(jar)) => Some(format!("{literal}; {jar}")),
+            (Some(literal), None) => Some(literal.to_owned()),
+            (None, jar) => jar,
+        }
     }
     pub(crate) fn bind(
         &mut self,
@@ -535,6 +830,7 @@ impl CookieSession {
         path: &str,
         redirects: usize,
         limit: usize,
+        self_referer: bool,
         state: OwnedMutexGuard<SessionState>,
     ) -> Result<(Vec<u8>, String, OwnedMutexGuard<SessionState>)> {
         let response = self
@@ -546,6 +842,7 @@ impl CookieSession {
                     fields: None,
                     body: None,
                     referer: None,
+                    self_referer,
                     probe: false,
                 },
                 state,
@@ -588,13 +885,35 @@ impl CookieSession {
             } else {
                 self.client.get(target.clone())
             };
-            if let Some(referer) = request.referer {
+            // Declared headers go with the first request only: pinned FollowIfRedirect
+            // builds each hop without custom headers (`BaseIndexer.cs:745-770`).
+            let declared = n == 0;
+            let referer = if declared && request.self_referer {
+                Some(target.as_str().to_owned())
+            } else {
+                request.referer.map(str::to_owned)
+            };
+            if declared {
+                for (name, value) in &self.plan.headers {
+                    let name = name.to_ascii_lowercase();
+                    // A request Referer replaces a declared one: pinned HttpWebClient2
+                    // sets `Headers.Referrer` after the custom headers (`HttpWebClient2.cs:146-147`).
+                    if name == "cookie" || (name == "referer" && referer.is_some()) {
+                        continue;
+                    }
+                    outgoing = outgoing.header(name, value.as_str());
+                }
+            }
+            if let Some(referer) = referer {
                 outgoing = outgoing.header(reqwest::header::REFERER, referer);
             }
-            if let Some(cookie) = state
+            let jar = state
                 .cookies
                 .header(&target, chrono::Utc::now().timestamp())?
-            {
+                .map(|h| h.to_str().map(str::to_owned))
+                .transpose()
+                .map_err(|_| anyhow!("Invalid session cookie header"))?;
+            if let Some(cookie) = self.cookie_header(declared, jar) {
                 outgoing = outgoing.header(COOKIE, cookie);
             }
             let response = outgoing
@@ -644,6 +963,7 @@ impl CookieSession {
                         content_type: String::new(),
                         url: target,
                         unauthorized: true,
+                        redirected: true,
                         state,
                     });
                 }
@@ -675,6 +995,7 @@ impl CookieSession {
                     content_type: String::new(),
                     url: target,
                     unauthorized: true,
+                    redirected: false,
                     state,
                 });
             }
@@ -708,6 +1029,7 @@ impl CookieSession {
                 content_type,
                 url: target,
                 unauthorized: false,
+                redirected: false,
                 state,
             });
         }
@@ -751,13 +1073,21 @@ impl CookieSession {
             .acquire_owned()
             .await?)
     }
+    /// The declared positive login marker, if any.
+    fn marker(&self) -> Option<&str> {
+        self.plan.test.as_ref().and_then(|t| t.selector.as_deref())
+    }
     async fn html(&self, bytes: Vec<u8>, content_type: &str, search: bool) -> Result<String> {
         let body = Self::decode_html(bytes, content_type, self.plan.charset)?;
         let permit = Self::parser_permit().await?;
         let selector = if search && self.plan.aidoru_fragment {
             "table.ttable_headinner".into()
+        } else if let Some(selector) = self.marker() {
+            selector.to_owned()
         } else {
-            self.plan.selector.clone()
+            // Pinned TestLogin and CheckIfLoginIsNeeded inspect no page without a
+            // test selector (`CardigannIndexer.cs:935`, `:977-984`).
+            return Ok(body);
         };
         tokio::task::spawn_blocking(move || {
             // Retain the permit even if the caller's deadline cancels the join.
@@ -792,17 +1122,27 @@ impl CookieSession {
             .decode(bytes)
             .map_err(|_| anyhow!("Cookie search response is not valid text"))
     }
+    /// Always checks the session; only success marks it validated. A failure or a
+    /// cancelled deadline drops the guard with the flag cleared.
     async fn validate(
         &self,
-        state: OwnedMutexGuard<SessionState>,
+        mut state: OwnedMutexGuard<SessionState>,
     ) -> Result<OwnedMutexGuard<SessionState>> {
-        if self.form.is_some() {
-            return self.validate_form(state, false).await;
-        }
-        let (bytes, ct, state) = self
-            .receive(&self.plan.path, 1, 8 * 1024 * 1024, state)
-            .await?;
-        self.html(bytes, &ct, false).await?;
+        state.validated = false;
+        let mut state = if self.form.is_some() {
+            self.validate_form(state, false).await?
+        } else if let Some(test) = &self.plan.test {
+            let (bytes, ct, state) = self
+                .receive(&test.path, 1, 8 * 1024 * 1024, false, state)
+                .await?;
+            self.html(bytes, &ct, false).await?;
+            state
+        } else {
+            // Without `login.test`, pinned TestLogin returns before any request
+            // (`CardigannIndexer.cs:896-899`).
+            state
+        };
+        state.validated = true;
         Ok(state)
     }
     async fn validate_form(
@@ -815,24 +1155,37 @@ impl CookieSession {
             .clone()
             .ok_or_else(|| anyhow!("Missing form plan"))?;
         let mut state = self.durable(state).await?;
-        if !force_login
-            && state
-                .cookies
-                .header(
-                    &self.target(&self.plan.path)?,
-                    chrono::Utc::now().timestamp(),
-                )?
-                .is_some()
-        {
+        let test = self.plan.test.as_ref();
+        let target = self.target(test.map_or("", |t| &t.path))?;
+        let now = chrono::Utc::now().timestamp();
+        let stored = state.cookies.header(&target, now)?;
+        // A jar holding only the declared `login.cookies` seed is not a session: pinned
+        // DoLogin sets the seed as the cookie header and logs in straight away
+        // (`CardigannIndexer.cs:590-591`, `:1026-1027`), with no login test first.
+        let seed_only = match form.plan.cookies.as_deref().filter(|s| !s.is_empty()) {
+            Some(seed) => {
+                stored.is_some()
+                    && stored
+                        == super::cookies::Cookies::new(&self.base, seed)?.header(&target, now)?
+            }
+            None => false,
+        };
+        if !force_login && stored.is_some() && !seed_only {
+            // Without a test, a stored session is trusted until a search redirect
+            // (pinned CheckIfLoginIsNeeded, `CardigannIndexer.cs:953-980`).
+            let Some(test) = test else {
+                return Ok(state);
+            };
             let reply = self
                 .receive_request(
                     SessionRequest {
-                        path: &self.plan.path,
+                        path: &test.path,
                         redirects: 1,
                         limit: 8 * 1024 * 1024,
                         fields: None,
                         body: None,
                         referer: None,
+                        self_referer: false,
                         probe: true,
                     },
                     state,
@@ -872,6 +1225,7 @@ impl CookieSession {
                         fields: None,
                         body: None,
                         referer: Some(self.base.as_str()),
+                        self_referer: false,
                         probe: false,
                     },
                     state,
@@ -900,6 +1254,7 @@ impl CookieSession {
                     fields: Some(&submission.fields),
                     body: None,
                     referer: Some(landing_url.as_str()),
+                    self_referer: false,
                     probe: false,
                 },
                 state,
@@ -913,8 +1268,13 @@ impl CookieSession {
         })
         .await
         .map_err(|_| anyhow!("Login response parser failed"))??;
+        // Pinned ApplyConfiguration and Relogin run TestLogin, which sends nothing
+        // without a test (`CardigannIndexer.cs:885`, `:896-899`, `:1107`).
+        let Some(test) = test else {
+            return Ok(posted.state);
+        };
         let (bytes, ct, state) = self
-            .receive(&self.plan.path, 1, 8 * 1024 * 1024, posted.state)
+            .receive(&test.path, 1, 8 * 1024 * 1024, false, posted.state)
             .await?;
         self.html(bytes, &ct, false).await?;
         Ok(state)
@@ -929,12 +1289,19 @@ impl CookieSession {
         .map_err(|_| anyhow!("Cookie authentication deadline exceeded"))?
     }
     /// Supplied-cookie searches never retry. Form sessions may authenticate and
-    /// retry once when the search loses its positive login marker or returns 401.
+    /// retry once when the search redirects, or loses its positive login marker or
+    /// returns 401 when the definition declares one.
     pub async fn fetch_html(&self, path: &str) -> Result<String> {
         self.fetch_search(path, None, false).await
     }
     /// A search page through the session; `body` is a plan-encoded POST search and
     /// `typed` a definition-declared JSON or XML response.
+    ///
+    /// Pinned PerformQuery sends no test request; each search response itself is
+    /// checked and a failed check relogs once (`CardigannIndexer.cs:1616-1632`,
+    /// `:1798-1813`). Only an unvalidated session (first use, or after a failed
+    /// search) is tested first. Each search consumes the trust and only an accepted
+    /// page restores it, so errors and cancelled deadlines leave it cleared.
     pub async fn fetch_search(
         &self,
         path: &str,
@@ -946,10 +1313,15 @@ impl CookieSession {
             bail!("Unsupported AJAX cookie search target");
         }
         tokio::time::timeout(self.timeout, async {
-            let gate = self.validate(self.state.clone().lock_owned().await).await?;
+            let gate = self.state.clone().lock_owned().await;
+            let mut gate = if gate.validated {
+                gate
+            } else {
+                self.validate(gate).await?
+            };
             if self.form.is_some() {
-                let mut gate = gate;
                 for attempt in 0..=1 {
+                    gate.validated = false;
                     let reply = self
                         .receive_request(
                             SessionRequest {
@@ -959,19 +1331,29 @@ impl CookieSession {
                                 fields: None,
                                 body,
                                 referer: None,
+                                self_referer: false,
                                 probe: true,
                             },
                             gate,
                         )
                         .await?;
-                    let result = if reply.unauthorized {
-                        Err(anyhow!(MissingLogin))
-                    } else {
-                        self.search_page(reply.bytes, &reply.content_type, typed)
-                            .await
-                    };
+                    // Pinned CheckIfLoginIsNeeded: a redirect always means relogin; without
+                    // a test selector nothing else does (`CardigannIndexer.cs:953-984`).
+                    let result =
+                        if reply.unauthorized && (reply.redirected || self.marker().is_some()) {
+                            Err(anyhow!(MissingLogin))
+                        } else if reply.unauthorized {
+                            Err(anyhow!("Cookie source returned HTTP error"))
+                        } else {
+                            self.search_page(reply.bytes, &reply.content_type, typed)
+                                .await
+                        };
                     match result {
-                        Ok(body) => return Ok(body),
+                        Ok(body) => {
+                            let mut state = reply.state;
+                            state.validated = true;
+                            return Ok(body);
+                        }
                         Err(error) if attempt == 0 && error.is::<MissingLogin>() => {
                             gate = self.validate_form(reply.state, true).await?;
                         }
@@ -980,6 +1362,9 @@ impl CookieSession {
                 }
                 unreachable!()
             }
+            // Supplied cookies cannot reauthenticate: an expired session fails this
+            // search, and the next one tests the session again.
+            gate.validated = false;
             let response = self
                 .receive_request(
                     SessionRequest {
@@ -989,13 +1374,18 @@ impl CookieSession {
                         fields: None,
                         body,
                         referer: None,
+                        self_referer: false,
                         probe: false,
                     },
                     gate,
                 )
                 .await?;
-            self.search_page(response.bytes, &response.content_type, typed)
-                .await
+            let page = self
+                .search_page(response.bytes, &response.content_type, typed)
+                .await?;
+            let mut state = response.state;
+            state.validated = true;
+            Ok(page)
         })
         .await
         .map_err(|_| anyhow!("Cookie search deadline exceeded"))?
@@ -1019,6 +1409,7 @@ impl CookieSession {
                     fields,
                     body: None,
                     referer: Some(referer),
+                    self_referer: false,
                     probe: false,
                 },
                 gate,
@@ -1035,7 +1426,7 @@ impl CookieSession {
         self.target(path)?;
         tokio::time::timeout(self.timeout, async {
             let gate = self.validate(self.state.clone().lock_owned().await).await?;
-            let (bytes, _, _gate) = self.receive(path, 5, 32 * 1024 * 1024, gate).await?;
+            let (bytes, _, _gate) = self.receive(path, 5, 32 * 1024 * 1024, true, gate).await?;
             Ok(bytes)
         })
         .await

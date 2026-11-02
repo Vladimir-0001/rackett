@@ -1,1 +1,170 @@
-[]
+[
+  {
+    "id": "binarybay",
+    "sha256": "7771e4775a603b14e252a14bf35b2022d0c3c00dcb448d5d9c22a979cbe34c97",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 5000,
+    "search_path": "/torznab/api",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/details/42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/torznab/api?t=caps&apikey=fixture-source-key"
+  },
+  {
+    "id": "bluetorrents",
+    "sha256": "b45f3e28444d34871e008f3b5cfbe59cf46fe1e29f14e3f45a51a5c0ed6495a9",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 2000,
+    "search_path": "/api/external",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/details/42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/api/external?t=search&apikey=fixture-source-key&limit=1"
+  },
+  {
+    "id": "fileiplay",
+    "sha256": "bf94796f2c0839b3eb9f40e6495bfa03c6dc28a6cf3fb1c33fd0c9edf6d46bf4",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 2000,
+    "search_path": "/torznab/api",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/details/42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/torznab/api?apikey=fixture-source-key&t=caps"
+  },
+  {
+    "id": "periodical",
+    "sha256": "1ec0fe54f28ea67c820bf44360306a66b305b7b1dd5011401105a7186229fd01",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "passkey": "fixture-source-key"
+    },
+    "category": 7000,
+    "search_path": "/api/torznab",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/details/42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/api/torznab?t=search&apikey=fixture-source-key&limit=1"
+  },
+  {
+    "id": "retrotoon",
+    "sha256": "c8090219c734ff7bf5b36a59f795729eb2c0f1a17feea472dc99410a987b74a2",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 2000,
+    "search_path": "/torznab.php",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/details/42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/torznab.php?apikey=fixture-source-key&t=search&limit=1"
+  },
+  {
+    "id": "shadowbit",
+    "sha256": "bc3407da81e5194dfb5863e464934a4e067e1e40c1a3f0fbe2baf48a85f43a4f",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 2000,
+    "search_path": "/api/torznab",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/api/torznab?apikey=fixture-source-key&t=caps"
+  },
+  {
+    "id": "world-of-tomorrow-api",
+    "sha256": "e49050342aac966b190e7d432759c32f7ff8da29a07738e96656381af188c25c",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 2000,
+    "search_path": "/api/torznab.php",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/details/42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/api/torznab.php?apikey=fixture-source-key&t=caps"
+  }
+]

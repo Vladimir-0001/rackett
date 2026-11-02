@@ -1,0 +1,386 @@
+[
+  {
+    "id": "showrss",
+    "sha256": "d59b301505e8bd2fc8356f2b289a12811a44550f810256d8cc1772e64b35e4cc",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 536870912,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "magnet",
+    "details_path": "/",
+    "category": 5030,
+    "search_path": "/other/all.rss",
+    "published": "2026-10-01T08:00:00Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "fixed_size": true
+  },
+  {
+    "id": "sosulki",
+    "sha256": "5cbc65a1f0a6abfd5d556a3130d930b67fb49c5f19b31117fcae93dab403e838",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "story",
+      "Fixture"
+    ],
+    "download_path": "/42-fixture-release.html",
+    "details_path": "/42-fixture-release.html",
+    "category": 6000,
+    "search_path": "/lastnews/",
+    "search_paths": [
+      "/"
+    ],
+    "published": "2026-10-28T09:00:00Z",
+    "title": "Fixture Release",
+    "container": "table",
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture\">get</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    }
+  },
+  {
+    "id": "torrentkitty",
+    "sha256": "a3091fc61ab28563240ac5d10015796509c8edd1a0cbb48241e2eaf06414dab7",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "magnet",
+    "details_path": "/information/0123456789abcdef0123456789abcdef01234567",
+    "category": 8000,
+    "search_path": "/search/2026/",
+    "search_paths": [
+      "/search/Fixture/"
+    ],
+    "published": "2026-10-28T07:00:00Z",
+    "title": "Fixture Release",
+    "container": "table#archiveResult"
+  },
+  {
+    "id": "torrentdownload",
+    "sha256": "c48371c80cc22bfeeef58b7c6380727ee8a049aaaef9ed59d9da2b2f43a4b0b7",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/42/fixture-release",
+    "details_path": "/42/fixture-release",
+    "category": 2000,
+    "search_path": "/",
+    "search_paths": [
+      "/searchd"
+    ],
+    "published": "2026-10-27T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "table.table2",
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture\">get</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    }
+  },
+  {
+    "id": "torrentgalaxyclone",
+    "sha256": "f58e1c37dd191eb5282e8b654deb6215d6c3c7f33667422f0b7be563f41c5af5",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/post-detail/42/fixture-release/",
+    "details_path": "/post-detail/42/fixture-release/",
+    "category": 2000,
+    "search_path": "/get-posts/",
+    "search_paths": [
+      "/get-posts/keywords:Fixture:category:Movies"
+    ],
+    "published": "2026-10-27T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "div.tgxtable",
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture\">get</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    }
+  },
+  {
+    "id": "torrent9",
+    "sha256": "afbe343afa9276c0c22d320390ae4317617632d9c66b21a1c0ad0e52fe970d40",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/torrent/fixture-release",
+    "details_path": "/torrent/fixture-release",
+    "category": 2000,
+    "search_path": "/home/",
+    "search_paths": [
+      "/search_torrent/Fixture.html"
+    ],
+    "published": "2026-10-28T00:00:00Z",
+    "title": "Fixture Release",
+    "container": "table.table-striped",
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture\">get</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    }
+  },
+  {
+    "id": "torrenttip",
+    "sha256": "0a3b7e39cb5697d267780c8574cbaf51bbcda0a12b153d0b7a6b5e2af7e4ae8a",
+    "request_count": 3,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 536870912,
+    "delay_ms": 2000,
+    "json": false,
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/42.html",
+    "details_path": "/42.html",
+    "category": 2000,
+    "search_path": "/search",
+    "published": "2026-10-28T00:00:00Z",
+    "title": "Fixture Release",
+    "container": "ul.page-list",
+    "fixed_size": true,
+    "detail": {
+      "html": "<h1> FixtureMagnet </h1><div class=\"p-2\"><i class=\"fa fa-magnet\"></i> 0123456789abcdef0123456789abcdef01234567</div>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=FixtureMagnet&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce"
+    }
+  },
+  {
+    "id": "vsthouse",
+    "sha256": "89257ead17a838abfa26fe7ef4b29aaff011cfb47050dfdfe013b39d88153d71",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 536870912,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/load/42-fixture-release",
+    "details_path": "/load/42-fixture-release",
+    "category": 4000,
+    "search_path": "/search",
+    "published": "2026-10-28T09:00:00Z",
+    "title": "Fixture Release",
+    "container": "div#content",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a title=\"Скачать: Fixture\" href=\"/load/42.torrent\">get</a>",
+      "resolved": "/load/42.torrent"
+    }
+  },
+  {
+    "id": "vstorrent",
+    "sha256": "febde4fde114fdf74150a8b67594f5148b840bae257b5652c5fcef3c92707dbd",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 536870912,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "s",
+      "Fixture"
+    ],
+    "download_path": "/fixture-release/",
+    "details_path": "/fixture-release/",
+    "category": 4000,
+    "search_path": "/",
+    "published": "2026-10-28T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "main",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture\">get</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    }
+  },
+  {
+    "id": "vsttorrents",
+    "sha256": "6b241e8cb5ce0e136367a503d68a1e59b6a9600162f3779cdaf799a5ef1bac26",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 536870912,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "s",
+      "Fixture"
+    ],
+    "download_path": "/fixture-release/",
+    "details_path": "/fixture-release/",
+    "category": 4000,
+    "search_path": "/",
+    "published": "2026-10-28T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "main",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a class=\"wp-block-button__link\" href=\"/get?file=/files/42.torrent\">get</a>",
+      "resolved": "/files/42.torrent"
+    }
+  },
+  {
+    "id": "xxxclub",
+    "sha256": "b4b46362f21d81fb7636d82abc24f8cbab6520394b11e52c88fdb56499f1841f",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 3000,
+    "json": false,
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/torrents/details/42",
+    "details_path": "/torrents/details/42",
+    "category": 6040,
+    "search_path": "/torrents/browse/all/",
+    "search_paths": [
+      "/torrents/search/all/Fixture"
+    ],
+    "published": "2026-10-28T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "div.browsetableinside",
+    "detail": {
+      "html": "<a href=\"/torrents/download/42\">get</a>",
+      "resolved": "/torrents/download/42"
+    }
+  },
+  {
+    "id": "rintornet",
+    "sha256": "88ed7bc3f470b9af6836d418ee9e3617f836196408665615cd707221f037f5ec",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "story",
+      "Fixture"
+    ],
+    "download_path": "/42-fixture-release.html",
+    "details_path": "/42-fixture-release.html",
+    "category": 6000,
+    "search_path": "/index.php",
+    "published": "2026-10-28T09:00:00Z",
+    "title": "Fixture Release",
+    "container": "div#dle",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture\">get</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    }
+  },
+  {
+    "id": "bitmagnet",
+    "sha256": "8de844678936d3a0c6998586c2f84eb92e22a9934735a38a9fac9a9233dfd7ec",
+    "category": 2000,
+    "request_count": 1,
+    "search_path": "/torznab/api",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "magnet",
+    "details_path": "/",
+    "seeders": 11,
+    "peers": 26,
+    "published": "2026-10-01T00:00:00Z",
+    "delay_ms": 0,
+    "title": "Fixture Movie Release",
+    "json": false,
+    "container": "channel"
+  },
+  {
+    "id": "filemood",
+    "sha256": "2c1c8e805c1c4ea0a71de15621d921c576a30931c686e4a0ab103bc65d21332d",
+    "category": 8000,
+    "request_count": 1,
+    "search_path": "/result",
+    "query_pair": [
+      "q",
+      "fixture in:title"
+    ],
+    "download_path": "magnet",
+    "details_path": "/file/0123456789abcdef0123456789abcdef01234567",
+    "seeders": 0,
+    "peers": 0,
+    "published": "2026-10-29T12:00:00Z",
+    "delay_ms": 2000,
+    "title": "Fixture File Release",
+    "json": false,
+    "container": "table"
+  },
+  {
+    "id": "world-torrent",
+    "sha256": "cbda6f4f9693e75696995a3d562cbadd43e7683aa7191d8019f57645d6670bc0",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/detail/42/fixture-release",
+    "details_path": "/detail/42/fixture-release",
+    "category": 2000,
+    "search_path": "/derniers",
+    "search_paths": [
+      "/recherche/Fixture"
+    ],
+    "published": "2026-10-27T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "table.table",
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture\">get</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture"
+    }
+  }
+]

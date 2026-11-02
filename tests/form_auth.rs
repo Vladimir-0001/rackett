@@ -435,6 +435,8 @@ async fn form_controls_csrf_overrides_encoding_reuse_and_download() {
     );
     let s = server.site.lock().unwrap();
     assert_eq!(s.posts, 1);
+    // The validated session sends no test before its second search; downloads
+    // still check it (docs/session-validation.md).
     assert_eq!(
         s.hits.iter().map(|h| h.path.as_str()).collect::<Vec<_>>(),
         [
@@ -443,7 +445,6 @@ async fn form_controls_csrf_overrides_encoding_reuse_and_download() {
             "/welcome",
             "/account",
             "/search",
-            "/account",
             "/search",
             "/account",
             "/download"
@@ -698,6 +699,15 @@ fn credential_post_yaml() -> String {
 fn credential_post_accepts_only_declared_bounded_password_posts() {
     let yaml = credential_post_yaml();
     assert!(plan(&yaml).is_ok());
+    // Pinned TestLogin: the test, and its selector, are optional (`CardigannIndexer.cs:896`, `:935`).
+    for test in ["test: {path: account}\n  ", ""] {
+        let optional = yaml.replace(
+            "test: {path: account, selector: 'a[href=\"logout\"]'}\n  ",
+            test,
+        );
+        assert_ne!(optional, yaml);
+        assert!(plan(&optional).is_ok());
+    }
     for extra in [
         "form: form",
         "submitpath: other",
@@ -713,7 +723,7 @@ fn credential_post_accepts_only_declared_bounded_password_posts() {
         yaml.replace(".Config.username", ".Config.password"),
         yaml.replace(
             "test: {path: account, selector: 'a[href=\"logout\"]'}",
-            "test: {path: account}",
+            "test: {selector: 'a[href=\"logout\"]'}",
         ),
         yaml.replace("path: submit", "path: '{{ .Config.password }}'"),
         yaml.replace("path: submit", "path: submit\n  path: other"),

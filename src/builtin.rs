@@ -16,6 +16,7 @@ pub const PROVENANCE: &str =
 pub const READY_IDS: &[&str] = &[
     "0dayfiles-api",
     "0daykiev",
+    "0magnet",
     "1337x",
     "13city",
     "13city-api",
@@ -23,25 +24,39 @@ pub const READY_IDS: &[&str] = &[
     "1ptbar-api",
     "3dvault-api",
     "4thd",
+    "52bt",
     "52pt",
     "abtorrents",
     "acgrip",
+    "acrossthetasman",
     "agsvpt",
     "aidoruonline",
     "aither-api",
+    "alabala-api",
     "alingpt",
     "alingpt-api",
     "anibt",
     "animebybelka",
+    "animetorrentsro",
+    "animetosho-xyz",
     "animeworld-api",
     "anirena",
+    "anisource",
+    "anthelion-api",
+    "arabafenice",
     "arabicsource-api",
+    "arabp2p",
+    "arabscene",
+    "arabtorrents",
     "asiancinema",
     "asiandvdclub",
+    "astratorrent",
     "audiences",
+    "audionews",
     "aussierules",
     "azusa",
     "backups",
+    "bangumi-moe",
     "baozipt",
     "baozipt-api",
     "beload",
@@ -50,93 +65,150 @@ pub const READY_IDS: &[&str] = &[
     "bibliotik",
     "bigcore",
     "bigfangroup",
+    "binarybay",
+    "bitagent",
+    "bitbazis",
     "bitded",
     "bitgamer",
     "bithumen",
+    "bitmagnet",
     "bitporn",
     "bitturk",
+    "blueroms",
+    "bluetorrents",
     "bluraytracker",
     "blutopia-api",
+    "booktracker",
     "bootytape",
+    "borgzelle",
+    "boxingtorrents",
+    "btarg",
+    "btdirectory",
     "btetree",
+    "btnext",
     "btschool",
     "bwtorrents",
     "byrbt",
+    "byrutor",
+    "c411",
     "cangbaoge",
     "capybarabr",
     "carpathians",
     "carpt",
     "cathoderaytube",
+    "catorrent",
     "ceskeforum",
     "cgpeers",
     "cinemageddon",
+    "cinemamovies",
     "cinematik",
     "clearjav-api",
+    "coastalcrew",
+    "comicat",
     "concertos",
     "crabpt",
     "crabpt-api",
+    "crackingpatching",
+    "crazyspirits-api",
     "crnaberza",
     "crnaberza2fa",
     "crt2fa",
     "cspt",
     "cyanbug",
+    "cyclingarchiveclub",
+    "czteam-api",
+    "damagnet",
     "danishbits-api",
     "darkpeers",
+    "dasunerwartete",
+    "dasunerwartete-api",
     "datascene-api",
     "daxiangjiao",
     "daxiangjiao-api",
     "deildu",
     "depthstudio",
     "depthstudio-api",
+    "desitorrents-api",
     "diablotorrent",
+    "digitalcore-api",
+    "dimeadozen",
+    "dirtybytes-api",
     "discfan",
     "discfan-api",
     "dmhy",
     "docspedia",
+    "draupnirr",
     "dreadvault-api",
     "dreamingtree",
+    "ds-reloaded",
     "dubhe",
+    "dxp",
+    "ebookbay",
     "ehentai",
     "empornium",
     "empornium2fa",
     "emuwarez",
     "estone",
+    "ex-torrenty",
     "exitorrent-org",
     "exkinoray",
+    "explosiv-world",
     "extratorrent-st",
     "eztv",
+    "eztvl",
     "f1carreras-api",
     "fanoin",
+    "fappaizuri",
+    "fappaizuri2fa",
     "femdomcult",
     "fenyarnyek-tracker",
+    "file-tracker",
+    "fileiplay",
+    "filemood",
+    "finelite",
+    "flood",
     "freefarm",
     "freefarm-api",
+    "freejavtorrent",
     "funzone-api",
     "futuretorrent",
+    "g3minitr4ck3r-api",
     "gay-torrents",
+    "gaytorrentru",
+    "generationfree-api",
     "ggpt",
     "gigatorrents",
+    "girotorrent",
     "haidan",
     "haitang",
     "happyfappy",
     "happyfappy2fa",
     "hd-club",
     "hd-unit3d-api",
+    "hdarea",
     "hdbao",
     "hdbao-api",
+    "hdc",
     "hddolby",
     "hdfans",
+    "hdgalaktik",
     "hdhome",
     "hdkylin",
+    "hdolimpo-api",
+    "hdonly-api",
     "hdroute",
     "hdspace",
     "hdspacecookie",
     "hdtime",
+    "hdtorrents",
     "hdtorrentsit",
     "hdu",
     "hdvideo-api",
     "hdzero",
+    "hebits",
+    "hellashut-api",
     "hellenic-hd-api",
+    "helltorrents",
     "herobit",
     "hhd-api",
     "houseofdevil",
@@ -144,8 +216,10 @@ pub const READY_IDS: &[&str] = &[
     "hudbt",
     "huntorrent",
     "hxpt",
+    "immortuos",
     "indietorrents",
     "infinityhd-api",
+    "infire",
     "insanetracker",
     "internetarchive",
     "itatorrents",
@@ -158,6 +232,7 @@ pub const READY_IDS: &[&str] = &[
     "kickasstorrents-ws",
     "kinorun",
     "korsar",
+    "krazyzone",
     "kufei",
     "kufei-api",
     "kufirc",
@@ -167,9 +242,12 @@ pub const READY_IDS: &[&str] = &[
     "lastdigitalunderground",
     "lat-team-api",
     "learnflakes",
+    "leech24",
     "lemonhd-net",
     "lemonhd-net-api",
+    "lesaloon",
     "libranet",
+    "limetorrents",
     "linkomanija",
     "linuxtracker",
     "locadora",
@@ -180,26 +258,37 @@ pub const READY_IDS: &[&str] = &[
     "lst",
     "luckpt",
     "luminarr-api",
+    "mactorrentsdownload",
     "madsrevolution",
     "magico",
+    "magnetcat",
+    "magnetdownload",
+    "magnetz",
     "majomparade",
     "malayabits-api",
     "march",
+    "marinetracker",
     "matrix",
+    "mazepa",
     "mdan",
     "megapeer",
+    "memphis",
     "mesevilag",
     "metalguru",
+    "metaltracker",
     "midnightscene",
     "mikan",
     "milkie",
     "milnueve-api",
+    "miobt",
+    "mixtapetorrent",
     "mma-torrents",
     "mnv",
     "mojblink",
     "momentpt",
     "monikadesign-api",
     "mousebits",
+    "musebootlegs",
     "musopia",
     "musopia-api",
     "muxuege",
@@ -207,9 +296,12 @@ pub const READY_IDS: &[&str] = &[
     "mvgroupmain",
     "mypornclub",
     "nanyangpt",
+    "ncore",
     "nekobt",
     "nethd",
     "new-team",
+    "newheaven",
+    "newretro",
     "newstudio",
     "newstudiol",
     "nicept",
@@ -218,11 +310,16 @@ pub const READY_IDS: &[&str] = &[
     "nirvana",
     "njtupt",
     "nobs",
+    "noname-club",
     "nordicbytes",
     "nordicquality",
+    "nostradamus",
     "novahd",
+    "nyaasi",
     "okpt",
+    "oldgreektracker",
     "oldtoonsworld",
+    "onejav",
     "onlyencodes-api",
     "opencd",
     "opensharing",
@@ -236,8 +333,10 @@ pub const READY_IDS: &[&str] = &[
     "parabellumhd-api",
     "party-tracker",
     "pctorrent",
+    "peeratiko",
     "peergarden",
     "peersfm",
+    "periodical",
     "phoenixproject",
     "phoenixpt",
     "phoenixpt-api",
@@ -247,15 +346,21 @@ pub const READY_IDS: &[&str] = &[
     "playletpt",
     "plugintorrent",
     "podzemlje",
+    "polishtorrent",
     "pornorip",
     "pornotorrent",
+    "pornrips",
+    "pornxlab",
     "portugas-api",
+    "postman-api",
     "proaudiotorrents",
+    "proporno",
     "ptcafe",
     "ptcafe-api",
     "ptcc",
     "pterclub",
     "ptfans",
+    "ptfiles",
     "ptgtk",
     "ptgtk-api",
     "ptitzmx",
@@ -267,6 +372,7 @@ pub const READY_IDS: &[&str] = &[
     "ptzone",
     "ptzone-api",
     "punkshorror",
+    "puntotorrent",
     "pussytorrents",
     "putao",
     "pwtorrents",
@@ -275,14 +381,21 @@ pub const READY_IDS: &[&str] = &[
     "r3vwtf",
     "racing4everyone-api",
     "racing4us",
+    "racingforme",
     "railgunpt",
     "rastastugan-api",
     "redstartorrent",
     "reelflix-api",
     "retromoviesclub-api",
+    "retrotoon",
+    "rgfootball",
     "rintor",
+    "rintornet",
     "riperam",
     "rockethd",
+    "rousi-pro",
+    "rustorka",
+    "rutor",
     "rutracker-ru",
     "samaritano",
     "sapibr",
@@ -294,41 +407,83 @@ pub const READY_IDS: &[&str] = &[
     "sewerpt",
     "sextorrent-api",
     "sexypics",
+    "shadowbit",
     "shanaproject",
     "shareisland-api",
+    "showrss",
     "siqi",
+    "skidrowrepack",
     "skipthecommercials-api",
+    "sktorrent",
     "sktorrent-org",
     "snowpt",
+    "sosulki",
     "soulvoice",
     "soulvoice-api",
+    "sportscora",
     "sportscult",
     "springsunday",
+    "stellarwinds",
     "sukebeinyaasi",
+    "superbits",
+    "swarmazon-api",
     "tangpt",
+    "teamflix",
     "teamhd",
+    "thebrothers",
+    "thecrazyones",
     "theempire",
+    "thefallingangels",
+    "thegeeks",
     "thekitchen",
     "theleachzone-api",
     "themixingbowl",
     "thenewfun",
+    "thenewheaven",
     "theoccult",
+    "theoldschool-api",
+    "thepiratebay",
+    "theplace",
     "therarbg",
+    "theshow",
     "thevault",
+    "thewordmusic",
     "thorhub-api",
     "tjupt",
     "tlfbits",
+    "tmghub",
     "tokyotosho",
+    "tormac",
+    "tornado",
+    "torrent-heaven",
     "torrent-pirat",
+    "torrent-turk",
+    "torrent9",
+    "torrentby",
     "torrentbyte",
     "torrentccf",
+    "torrentclaw",
+    "torrentcore",
+    "torrentdd",
+    "torrentdownload",
+    "torrentdownloads",
     "torrenteros-api",
+    "torrentgalaxyclone",
     "torrenthaven-api",
     "torrenthr-api",
     "torrenting",
+    "torrentkitty",
+    "torrentleech",
+    "torrentlt",
     "torrentmasters",
+    "torrentproject2",
+    "torrenttip",
+    "torrenttrader",
     "totheglory",
     "totheglory2fa",
+    "tr4ker",
+    "trackermk",
+    "trackerzero",
     "traht",
     "trancetraffic",
     "trezzor",
@@ -336,19 +491,31 @@ pub const READY_IDS: &[&str] = &[
     "tribalmixes",
     "turkseed-api",
     "turktorrent",
+    "u2",
     "u3c3",
+    "uatorrent",
     "ubits",
     "uindex",
+    "ultrabits-api",
     "ultrahd",
     "ultrahd-api",
+    "unbreakable",
     "uploadcx",
     "upscalevault",
     "utopia",
+    "uztracker",
+    "vault-network",
     "vc-lib",
     "vc-lib-api",
     "vietmediaf",
+    "vsthouse",
+    "vstorrent",
+    "vsttorrents",
     "whiteangel",
+    "wihd",
     "wintersakura",
+    "world-of-tomorrow-api",
+    "world-torrent",
     "xdy",
     "xdy-api",
     "xingtan",
@@ -356,19 +523,28 @@ pub const READY_IDS: &[&str] = &[
     "xingyung",
     "xloli",
     "xloli-api",
+    "xtorrenty",
     "xtremebytes",
     "xwtclassics",
     "xwtclassics2fa",
     "xwtorrents",
     "xwtorrents2fa",
+    "xxxclub",
     "xxxtor",
+    "yts",
     "yuscene-api",
     "zamundalife",
+    "zappateers",
     "zenith",
     "zmpt",
     "zmpt-api",
     "zrpt",
+    "ztracker",
 ];
+/// Public definitions whose search path is an absolute URL on a declared API host. Their
+/// searches may use that one origin besides the site; see [`api_origin`] and
+/// docs/api-origins.md. This admits no runtime: each is still gated by [`READY_IDS`].
+pub const API_ORIGIN_IDS: &[&str] = &["animetosho-xyz", "thepiratebay", "yts"];
 /// Definitions whose source may carry a saved cookie and use the opt-in challenge solver.
 /// This admits no runtime: each is still gated by [`READY_IDS`].
 pub const CHALLENGE_IDS: &[&str] = &["1337x", "eztv", "tokyotosho"];
@@ -387,28 +563,38 @@ pub const COOKIE_IDS: &[&str] = &[
     "baozipt",
     "beload",
     "bigcore",
+    "bitbazis",
     "bithumen",
+    "boxingtorrents",
     "byrbt",
     "cangbaoge",
     "cgpeers",
+    "cinemamovies",
     "crnaberza2fa",
     "crt2fa",
     "cspt",
     "daxiangjiao",
     "depthstudio",
     "docspedia",
+    "ds-reloaded",
     "dubhe",
     "empornium2fa",
+    "ex-torrenty",
     "exitorrent-org",
+    "fappaizuri2fa",
     "freefarm",
+    "gaytorrentru",
     "ggpt",
     "happyfappy2fa",
+    "hdarea",
     "hdbao",
     "hddolby",
+    "hdgalaktik",
     "hdhome",
     "hdkylin",
     "hdspacecookie",
     "hdtime",
+    "hebits",
     "herobit",
     "hqmusic",
     "huntorrent",
@@ -416,10 +602,12 @@ pub const COOKIE_IDS: &[&str] = &[
     "kamept",
     "keepfriends",
     "korsar",
+    "krazyzone",
     "kufei",
     "kufirc2fa",
     "lajidui",
     "learnflakes",
+    "leech24",
     "lp-bits",
     "luckpt",
     "majomparade",
@@ -430,6 +618,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "musopia",
     "muxuege",
     "nanyangpt",
+    "newheaven",
     "nicept",
     "novahd",
     "okpt",
@@ -452,21 +641,30 @@ pub const COOKIE_IDS: &[&str] = &[
     "punkshorror",
     "pwtorrents2fa",
     "qingwa",
+    "rousi-pro",
+    "rustorka",
     "siqi",
     "springsunday",
+    "superbits",
     "tangpt",
     "teamhd",
     "theempire",
+    "thegeeks",
     "thekitchen",
     "theoccult",
+    "theplace",
+    "theshow",
     "thevault",
     "tjupt",
+    "tormac",
+    "torrent-turk",
     "torrentccf",
     "torrenting",
     "torrentmasters",
     "totheglory2fa",
     "trezzorcookie",
     "turktorrent",
+    "u2",
     "ubits",
     "ultrahd",
     "vc-lib",
@@ -474,6 +672,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "xingwan",
     "xingyung",
     "xloli",
+    "xtorrenty",
     "xwtclassics2fa",
     "xwtorrents2fa",
     "zmpt",
@@ -533,62 +732,142 @@ pub(crate) fn cookie_session(
 pub const FORM_IDS: &[&str] = &[
     "4thd",
     "52pt",
+    "animetorrentsro",
+    "arabp2p",
     "aussierules",
     "bitturk",
     "bluraytracker",
+    "booktracker",
+    "btnext",
     "btschool",
     "carpt",
     "cathoderaytube",
+    "coastalcrew",
+    "comicat",
     "crabpt",
     "crnaberza",
     "cyanbug",
+    "dasunerwartete",
     "diablotorrent",
     "discfan",
     "dreamingtree",
     "empornium",
+    "explosiv-world",
     "femdomcult",
+    "file-tracker",
+    "finelite",
     "gigatorrents",
     "haidan",
     "haitang",
     "happyfappy",
+    "hdc",
     "hdfans",
+    "hdtorrents",
     "hdu",
+    "helltorrents",
     "hudbt",
+    "immortuos",
     "indietorrents",
+    "infire",
     "kufirc",
     "lemonhd-net",
+    "lesaloon",
     "longpt",
     "magico",
+    "magnetz",
+    "marinetracker",
     "mesevilag",
+    "miobt",
     "mojblink",
     "mousebits",
+    "musebootlegs",
     "mvgroupforum",
     "mvgroupmain",
     "new-team",
+    "newretro",
     "njtupt",
     "oshenpt",
     "p2pbg",
+    "peeratiko",
     "pixelcove",
+    "proporno",
     "ptcafe",
+    "ptfiles",
     "ptgtk",
     "ptitzmx",
     "ptlgs",
     "putao",
     "r3vwtf",
     "railgunpt",
+    "rgfootball",
     "riperam",
     "sbpt",
     "sewerpt",
+    "sktorrent",
     "snowpt",
     "soulvoice",
+    "thebrothers",
+    "thecrazyones",
+    "thefallingangels",
+    "thenewheaven",
+    "thewordmusic",
     "tlfbits",
+    "tmghub",
+    "tornado",
+    "torrent-heaven",
+    "torrentleech",
+    "torrenttrader",
     "totheglory",
+    "uatorrent",
+    "unbreakable",
+    "uztracker",
+    "wihd",
     "wintersakura",
     "xingtan",
+    "zappateers",
+    "ztracker",
 ];
 /// Credential-POST presets with pinned layouts and complete authenticated lifecycle tests.
 /// API-key presets with a `login: get` probe and complete fixture lifecycle tests.
-pub const GET_IDS: &[&str] = &[];
+pub const GET_IDS: &[&str] = &[
+    "alabala-api",
+    "anthelion-api",
+    "astratorrent",
+    "binarybay",
+    "bitagent",
+    "bluetorrents",
+    "c411",
+    "crazyspirits-api",
+    "czteam-api",
+    "desitorrents-api",
+    "digitalcore-api",
+    "dirtybytes-api",
+    "draupnirr",
+    "fileiplay",
+    "flood",
+    "g3minitr4ck3r-api",
+    "generationfree-api",
+    "hdolimpo-api",
+    "hdonly-api",
+    "hellashut-api",
+    "memphis",
+    "nostradamus",
+    "periodical",
+    "polishtorrent",
+    "postman-api",
+    "retrotoon",
+    "shadowbit",
+    "sportscora",
+    "stellarwinds",
+    "swarmazon-api",
+    "teamflix",
+    "theoldschool-api",
+    "torrentclaw",
+    "tr4ker",
+    "trackerzero",
+    "ultrabits-api",
+    "world-of-tomorrow-api",
+];
 /// The `login: get` probe of an admitted [`GET_IDS`] preset, with its configured URL.
 pub(crate) fn get_login(
     i: &Indexer,
@@ -613,6 +892,11 @@ pub(crate) fn get_login(
 }
 pub const POST_IDS: &[&str] = &[
     "0daykiev",
+    "acrossthetasman",
+    "arabafenice",
+    "arabscene",
+    "arabtorrents",
+    "audionews",
     "backups",
     "best-torrents",
     "bestcore",
@@ -620,17 +904,25 @@ pub const POST_IDS: &[&str] = &[
     "bitded",
     "bitgamer",
     "bootytape",
+    "borgzelle",
+    "btarg",
     "bwtorrents",
     "carpathians",
     "ceskeforum",
     "cinemageddon",
+    "cyclingarchiveclub",
     "deildu",
+    "dimeadozen",
+    "dxp",
     "estone",
     "exkinoray",
+    "eztvl",
     "fanoin",
+    "fappaizuri",
     "fenyarnyek-tracker",
     "futuretorrent",
     "gay-torrents",
+    "girotorrent",
     "hd-club",
     "hdroute",
     "hdspace",
@@ -642,18 +934,24 @@ pub const POST_IDS: &[&str] = &[
     "linkomanija",
     "losslessclub",
     "madsrevolution",
+    "mazepa",
     "mdan",
     "metalguru",
+    "metaltracker",
     "mnv",
+    "ncore",
     "nethd",
     "newstudiol",
+    "oldgreektracker",
     "party-tracker",
     "peersfm",
     "phoenixproject",
     "pttime",
+    "puntotorrent",
     "pussytorrents",
     "pwtorrents",
     "racing4us",
+    "racingforme",
     "redstartorrent",
     "rintor",
     "scenerush",
@@ -662,10 +960,14 @@ pub const POST_IDS: &[&str] = &[
     "sportscult",
     "themixingbowl",
     "thenewfun",
+    "torrentdd",
+    "torrentlt",
+    "trackermk",
     "traht",
     "trancetraffic",
     "trezzor",
     "tribalmixes",
+    "vault-network",
     "whiteangel",
     "xtremebytes",
     "xwtclassics",
@@ -994,6 +1296,99 @@ fn ready(r: &Node) -> Result<Plan> {
     }
     Ok(p)
 }
+/// The one API origin an [`API_ORIGIN_IDS`] search may use besides the site, as a
+/// `scheme://host[:port]/` base. Upstream resolves an absolute search path as is
+/// (`resolvePath`, `CardigannIndexer.cs:1436`, `:1543`). Every declared search path must
+/// start with `http://` or `https://`, and its host must be a literal or exactly one
+/// `{{ .Config.name }}` setting, whose configured (or default) value must render to that
+/// same non-empty host. Requests are rendered with an empty query, so a query value never
+/// chooses the origin. `None` when the definition is not listed or the configured host
+/// is the site's own origin.
+fn api_origin(
+    r: &Node,
+    plan: &Plan,
+    settings: &BTreeMap<String, Value>,
+    site: &url::Url,
+) -> Result<Option<url::Url>> {
+    if !API_ORIGIN_IDS.contains(&catalog_id(r)) {
+        return Ok(None);
+    }
+    let invalid = || anyhow!("Invalid API host setting");
+    let search = r.get("search");
+    let paths: Vec<&str> = search
+        .and_then(|s| s.get("paths"))
+        .and_then(Node::items)
+        .unwrap_or_default()
+        .iter()
+        .map(|p| p.string("path").unwrap_or_default())
+        .chain(search.and_then(|s| s.string("path")))
+        .collect();
+    if paths.is_empty() {
+        bail!("API origin definitions must declare absolute search paths");
+    }
+    let mut expected = Vec::new();
+    for path in paths {
+        let lower = path.to_ascii_lowercase();
+        let Some(scheme) = ["https", "http"]
+            .into_iter()
+            .find(|s| lower.starts_with(&format!("{s}://")))
+        else {
+            bail!("API origin definitions must declare absolute search paths");
+        };
+        let authority = path[scheme.len() + 3..]
+            .split('/')
+            .next()
+            .unwrap_or_default();
+        let host = match authority
+            .strip_prefix("{{")
+            .and_then(|a| a.strip_suffix("}}"))
+            .and_then(|a| a.trim().strip_prefix(".Config."))
+        {
+            Some(name) => settings
+                .get(name)
+                .and_then(Value::as_str)
+                .or_else(|| {
+                    r.get("settings")
+                        .and_then(Node::items)
+                        .unwrap_or_default()
+                        .iter()
+                        .find(|s| s.string("name") == Some(name))
+                        .and_then(|s| s.string("default"))
+                })
+                .unwrap_or_default(),
+            None if !authority.contains("{{") => authority,
+            None => bail!("Unsupported API host template"),
+        };
+        if host.is_empty() {
+            return Err(invalid());
+        }
+        expected.push(
+            url::Url::parse(&format!("{scheme}://{host}/"))
+                .map_err(|_| invalid())?
+                .origin(),
+        );
+    }
+    let ctx = plan.context(settings, &SearchQuery::default(), chrono::Utc::now());
+    let requests = plan.build_requests(&ctx).map_err(|_| invalid())?;
+    let mut origin: Option<url::Url> = None;
+    for request in requests {
+        let mut u = url::Url::parse(&request.url).map_err(|_| invalid())?;
+        if !u.username().is_empty() || u.password().is_some() || !expected.contains(&u.origin()) {
+            return Err(invalid());
+        }
+        u.set_path("/");
+        u.set_query(None);
+        u.set_fragment(None);
+        match &origin {
+            Some(o) if o.origin() != u.origin() => {
+                bail!("API origin definitions must search a single API host")
+            }
+            Some(_) => {}
+            None => origin = Some(u),
+        }
+    }
+    Ok(origin.filter(|o| o.origin() != site.origin()))
+}
 fn schema(r: &Node) -> Vec<Value> {
     r.get("settings").and_then(Node::items).unwrap_or_default().iter().map(|s|{
   let source_type=s.string("type").unwrap_or("text");
@@ -1105,6 +1500,8 @@ pub struct Runtime {
     pub empty_html_container: Option<String>,
     /// Detail-page magnet resolution for ticketed links; `None` downloads them directly.
     pub download: Option<DetailMagnet>,
+    /// The admitted API origin this source searches besides its site ([`api_origin`]).
+    pub api_origin: Option<url::Url>,
 }
 impl Runtime {
     pub fn compile(i: &Indexer) -> Result<Self> {
@@ -1204,6 +1601,7 @@ impl Runtime {
         let plan = gate(&r)?;
         plan.check_settings(&settings)
             .map_err(|_| anyhow!("Invalid bundled setting value"))?;
+        let api_origin = api_origin(&r, &plan, &settings, &base)?;
         // Resolve the settings of the admitted DetailMagnet shape. Any other admitted
         // download block is general selector resolution, see [`download_selectors`].
         let download = if detail_magnet_shape(&r) {
@@ -1249,7 +1647,7 @@ impl Runtime {
                 "tokyotosho" => Some("table.listing".into()),
                 "uindex" => Some("table.sr-table".into()),
                 "bigfangroup" => Some("tbody#highlighted".into()),
-                "megapeer" => Some("table".into()),
+                "megapeer" | "torrentby" => Some("table".into()),
                 "mypornclub" => Some("div.torrents_list".into()),
                 // DataLife Engine (its /engine/download.php links) wraps results here.
                 "pctorrent" => Some("div#dle-content".into()),
@@ -1259,9 +1657,75 @@ impl Runtime {
                 "nekobt" => Some("channel".into()),
                 "pandacd" => Some("channel".into()),
                 "pornotorrent" => Some("channel".into()),
+                "0magnet" => Some("table".into()),
+                "52bt" => Some("main".into()),
+                "anisource" => Some("div#content".into()),
+                "blueroms" => Some("div.row".into()),
+                "btdirectory" => Some("main".into()),
+                "crackingpatching" => Some("main".into()),
+                "freejavtorrent" => Some("main".into()),
+                "mactorrentsdownload" => Some("main".into()),
+                "magnetcat" => Some("main".into()),
+                "mixtapetorrent" => Some("dl.search-results".into()),
+                "nyaasi" => Some("table".into()),
+                "onejav" => Some("div.columns".into()),
+                "pornrips" => Some("main".into()),
+                "pornxlab" => Some("main".into()),
+                // DataLife Engine search (do=search&subaction=search), as pctorrent.
+                "byrutor" => Some("div#dle-content".into()),
+                "rutor" => Some("div#index".into()),
+                "noname-club" => Some("table.forumline.tablesorter".into()),
+                // The scopes the pinned row selectors name.
+                "torrentcore" => Some("div.content".into()),
+                "damagnet" => Some("table.table-striped".into()),
+                "limetorrents" => Some("table.table2".into()),
+                "torrentdownloads" => Some("div.inner_container".into()),
+                "magnetdownload" => Some("table".into()),
+                // DataLife Engine search, as byrutor.
+                "catorrent" | "skidrowrepack" => Some("div#dle-content".into()),
+                "ebookbay" => Some("div#content".into()),
+                // Torznab XML API sources (`login: get`): results sit in the RSS channel.
+                "binarybay" => Some("channel".into()),
+                "bluetorrents" => Some("channel".into()),
+                "fileiplay" => Some("channel".into()),
+                "periodical" => Some("channel".into()),
+                "retrotoon" => Some("channel".into()),
+                "shadowbit" => Some("channel".into()),
+                "world-of-tomorrow-api" => Some("channel".into()),
+                // RSS-shaped XML API (`rows: item`).
+                "dasunerwartete-api" => Some("channel".into()),
+                "showrss" => Some("channel".into()),
+                "sosulki" => Some("table".into()),
+                "torrentkitty" => Some("table#archiveResult".into()),
+                "torrentdownload" => Some("table.table2".into()),
+                "torrentgalaxyclone" => Some("div.tgxtable".into()),
+                "torrent9" => Some("table.table-striped".into()),
+                "torrenttip" => Some("ul.page-list".into()),
+                "vsthouse" => Some("div#content".into()),
+                "vstorrent" => Some("main".into()),
+                "vsttorrents" => Some("main".into()),
+                "xxxclub" => Some("div.browsetableinside".into()),
+                "rintornet" => Some("div#dle".into()),
+                "bitmagnet" => Some("channel".into()),
+                "filemood" => Some("table".into()),
+                "world-torrent" => Some("table.table".into()),
+                "bitagent" => Some("channel".into()),
+                "stellarwinds" => Some("channel".into()),
+                "torrentclaw" => Some("channel".into()),
+                "astratorrent" => Some("channel".into()),
+                "c411" => Some("channel".into()),
+                "crazyspirits-api" => Some("channel".into()),
+                "draupnirr" => Some("channel".into()),
+                "memphis" => Some("channel".into()),
+                "nostradamus" => Some("channel".into()),
+                "tr4ker" => Some("channel".into()),
+                "torrentproject2" => Some("div#similarfiles".into()),
+                // Torznab XML from the API origin (docs/api-origins.md).
+                "animetosho-xyz" => Some("channel".into()),
                 _ => None,
             },
             download,
+            api_origin,
         })
     }
     pub fn validate_query(&self, q: &SearchQuery) -> Result<()> {
@@ -1443,24 +1907,24 @@ mod tests {
                 .to_owned()
         };
         assert!(catalog().iter().find(|e| e["id"] == "1337x").unwrap()["blocked_reason"].is_null());
-        // Same settings and rewrite with templated selectors stays blocked. A plain
-        // magnet selector is general download.selectors resolution: eligible, but
-        // still not ready without fixtures. torrentdownloads stops earlier, at its
-        // search redirect policy.
+        // The same settings and rewrite with other templated selectors are general
+        // download.selectors resolution (limetorrents, fixture-validated), never the
+        // 1337x policy. A plain magnet selector is eligible but not ready without fixtures.
+        assert!(!detail_magnet_shape(&root("limetorrents").unwrap()));
+        assert!(catalog()
+            .iter()
+            .find(|e| e["id"] == "limetorrents")
+            .unwrap()["blocked_reason"]
+            .is_null());
+        assert!(eligible(&root("torrentsome").unwrap()).is_ok());
         assert_eq!(
-            reason("limetorrents"),
-            "$.download: download-resolution",
-            "limetorrents"
-        );
-        assert!(eligible(&root("torrentgalaxyclone").unwrap()).is_ok());
-        assert_eq!(
-            reason("torrentgalaxyclone"),
+            reason("torrentsome"),
             "Runtime integration has not been fixture-validated for this definition"
         );
         assert!(eligible(&root("1337x").unwrap()).is_ok());
     }
     #[test]
-    fn altered_1337x_download_blocks_stay_blocked() {
+    fn altered_1337x_download_blocks_leave_the_detail_magnet_policy() {
         let original = pinned_source("1337x");
         for (from, to) in [
             (
@@ -1499,8 +1963,12 @@ mod tests {
             assert!(original.contains(from), "{from}");
             let r = parsed(&original.replacen(from, to, 1));
             assert!(!detail_magnet_shape(&r), "{to}");
+            // Off the 1337x policy, the general same-origin resolver takes over
+            // (docs/download-selectors.md); download method and headers stay blocked.
+            let general = crate::builtin_runtime::download::DownloadSelectors::compile(&r).is_ok();
+            assert_eq!(general, !to.starts_with("download:\n  "), "{to}");
             let e = eligible(&r).err().map(|e| e.to_string()).unwrap_or_default();
-            assert!(e.starts_with("$."), "{to}: {e}");
+            assert!(general == e.is_empty() && (general || e.starts_with("$.")), "{to}: {e}");
         }
         // A detail-page download removed entirely leaves no policy to apply.
         let start = original.find("download:\n").unwrap();
@@ -1588,9 +2056,9 @@ mod tests {
         );
         assert!(plan.blockers().is_empty());
         assert!(eligible(&r).is_ok());
-        // Non-UTF-8 definitions with other blockers: urldecode, windows-1255/874,
-        // TIS-620 and POST search.
-        for id in ["aftershock", "fuzer", "siambit", "unlimitz", "file-tracker"] {
+        // Non-UTF-8 definitions with other blockers: urldecode, windows-1255/874 and
+        // TIS-620. Non-UTF-8 POST searches (file-tracker) are encoded since 2026-11-01.
+        for id in ["aftershock", "fuzer", "siambit", "unlimitz"] {
             assert!(eligible(&root(id).unwrap()).is_err(), "{id}");
             assert!(ready(&root(id).unwrap()).is_err(), "{id}");
         }

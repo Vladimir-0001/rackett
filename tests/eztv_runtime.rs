@@ -71,6 +71,7 @@ fn runtime(base: &str, container: Option<&str>) -> Runtime {
         modes: builtin::source_modes(&indexer(base)),
         empty_html_container: container.map(Into::into),
         download: None,
+        api_origin: None,
     }
 }
 fn query(params: &[(&str, &str)]) -> SearchQuery {

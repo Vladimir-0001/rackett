@@ -1,0 +1,46 @@
+[
+ {
+  "id": "bangumi-moe",
+  "sha256": "f30a3c2e9043d98fca156061b02039f9cb3cec0b75d34d4a6b4da45513760e93",
+  "category": 7030,
+  "request_count": 1,
+  "search_path": "/api/v2/torrent/search",
+  "query_pair": [
+   "query",
+   "Fixture"
+  ],
+  "download_path": "magnet",
+  "details_path": "/",
+  "seeders": 11,
+  "peers": 15,
+  "published": "2026-10-28T10:30:00Z",
+  "optional_size": true,
+  "download_factor": "0",
+  "delay_ms": 4000,
+  "title": "Fixture Release",
+  "json": true,
+  "empty_body": "{\"page_count\": 0, \"torrents\": []}",
+  "container": null
+ },
+ {
+  "id": "noname-club",
+  "sha256": "6ba61b74e55dd82735203ff32445d831e7fa3e51af492ff4f18e52404944097f",
+  "category": 100925,
+  "request_count": 1,
+  "search_path": "/forum/tracker.php",
+  "query_pair": [
+   "nm",
+   "Fixture"
+  ],
+  "search_post": true,
+  "download_path": "/forum/download.php?id=42",
+  "details_path": "/forum/viewtopic.php?t=42",
+  "seeders": 11,
+  "peers": 15,
+  "published": "2026-10-28T10:30:00Z",
+  "delay_ms": 0,
+  "title": "Fixture Тестовый Релиз",
+  "json": false,
+  "container": "table.forumline.tablesorter"
+ }
+]

@@ -61,8 +61,29 @@ fn pinned_complete_schema_and_only_reviewed_cookie_preset_is_admitted() {
         format!("{SOURCE}\ndownload: {{headers: {{X-Test: abc}}}}\n"),
         SOURCE.replace("  - name: cookie", "  - name: cookie\n    name: password"),
         SOURCE.replace("    type: text", "    type: text\n    type: info"),
+        SOURCE.replace("    path: index.php\n", ""),
+        SOURCE.replace(
+            "    path: index.php\n",
+            "    path: index.php\n    other: x\n",
+        ),
+        SOURCE.replace(
+            "  test:\n    path: index.php\n    selector: a[href=\"logout.php\"]\n",
+            "  test: {}\n",
+        ),
     ] {
         assert!(plan(&yaml).is_err(), "Unexpected schema admission");
+    }
+    // Pinned TestLogin accepts an absent test or a test without a selector
+    // (`CardigannIndexer.cs:896`, `:935`); see docs/login-without-test.md.
+    for yaml in [
+        SOURCE.replace(
+            "  test:\n    path: index.php\n    selector: a[href=\"logout.php\"]\n",
+            "",
+        ),
+        SOURCE.replace("    selector: a[href=\"logout.php\"]\n", ""),
+    ] {
+        assert_ne!(yaml, SOURCE);
+        assert!(plan(&yaml).is_ok());
     }
     for id in [
         "1337x",
@@ -591,6 +612,7 @@ fn login_structural_selectors_and_shadow_roots_keep_the_existing_guards() {
 #[test]
 fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it() {
     let mut checked = Vec::new();
+    let mut without_test = Vec::new();
     for (id, source) in builtin::SOURCES {
         let root = cardigann::parse(source, cardigann::Limits::default()).unwrap();
         if CookiePlan::compile(&root).is_err() {
@@ -599,16 +621,26 @@ fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it
         let Ok(plan) = rackett::cardigann_exec::Plan::compile(&root) else {
             continue;
         };
-        if plan.blockers().iter().any(|b| b.path != "$.login") {
+        // Pinned certificates are admitted (docs/pinned-certificates.md), and so are
+        // download blocks that DownloadSelectors runs (docs/download-selectors.md).
+        let downloads =
+            rackett::builtin_runtime::download::DownloadSelectors::compile(&root).is_ok();
+        let admitted = |path: &str| {
+            matches!(path, "$.login" | "$.certificates") || (path == "$.download" && downloads)
+        };
+        if plan.blockers().iter().any(|b| !admitted(&b.path)) {
             continue;
         }
-        let selector = root
+        // Definitions without a login test have no marker to check.
+        let Some(selector) = root
             .get("login")
             .unwrap()
             .get("test")
-            .unwrap()
-            .string("selector")
-            .unwrap();
+            .and_then(|test| test.string("selector"))
+        else {
+            without_test.push(*id);
+            continue;
+        };
         assert_eq!(
             rackett::cardigann_exec::query_selector_exists(
                 "<select><option>Filter</option></select>",
@@ -620,8 +652,25 @@ fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it
         checked.push(*id);
     }
     // 105 after single-byte encodings (bithumen, newheaven, trezzorcookie,
-    // xwtorrents2fa); 109 after form POST searches and JSON/XML session responses.
-    assert_eq!(checked.len(), 109);
+    // xwtorrents2fa); 109 after form POST searches and JSON/XML session responses;
+    // 110 after JSON `rows.multiple` (hebits); 116 with the pinned-certificate sources
+    // (krazyzone, leech24, thegeeks, theplace, theshow, torrent-turk); 121 with
+    // runnable download blocks (boxingtorrents, fappaizuri2fa, hdarea, u2, xtorrenty);
+    // 126 with session search headers (docs/session-search-headers.md): gaytorrentru
+    // and torrentbd (site-link Referer), hdgalaktik, rustorka and tormac (literal Cookie).
+    assert_eq!(checked.len(), 126, "{checked:?}");
+    for id in [
+        "gaytorrentru",
+        "hdgalaktik",
+        "torrentbd",
+        "rustorka",
+        "tormac",
+    ] {
+        assert!(
+            checked.contains(&id),
+            "{id}: declared session search headers"
+        );
+    }
     for id in [
         "animebybelka",
         "hdtime",
@@ -638,7 +687,10 @@ fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it
         assert!(checked.contains(&id), "{id}: configured User-Agent schema");
     }
     assert!(checked.contains(&"musopia"));
-    assert!(builtin::COOKIE_IDS.iter().all(|id| checked.contains(id)));
+    assert_eq!(without_test, ["rousi-pro", "superbits"]);
+    assert!(builtin::COOKIE_IDS
+        .iter()
+        .all(|id| checked.contains(id) || without_test.contains(id)));
 }
 
 #[test]
@@ -897,9 +949,12 @@ async fn aidoru_ajax_table_requires_login_preflight_and_its_own_response_marker(
             .unwrap_err()
             .to_string();
         assert!(!error.contains("fixture-private-error"));
+        // Mode 1 searches the validated session without a preflight; its failure
+        // clears that trust, so later modes run the preflight first and mode 5
+        // fails at it (docs/session-validation.md).
         assert_eq!(
             state.hits.swap(0, Ordering::SeqCst),
-            if mode == 5 { 1 } else { 2 }
+            if matches!(mode, 1 | 5) { 1 } else { 2 }
         );
     }
     state.mode.store(0, Ordering::SeqCst);
@@ -1070,8 +1125,6 @@ async fn declared_user_agent_reaches_positive_login_search_redirect_and_download
             "/index.php",
             "/validated",
             "/download.php",
-            "/index.php",
-            "/validated",
             "/redirect",
             "/index.php",
             "/validated",

@@ -1,1 +1,76 @@
-[]
+[
+ {
+  "id": "immortuos",
+  "sha256": "c4577199c9d68aa9be8469ecbd639bde7ba0062866c3dddaad06f237a304e69f",
+  "search_fixture": "form:immortuos",
+  "direct_post": false,
+  "no_test": true,
+  "form_path": "/login",
+  "submit_path": "/login",
+  "form_id": "login",
+  "form_attributes": "action=\"/login\" method=\"POST\"",
+  "landing_html": "<input type=\"hidden\" name=\"_token\" value=\"fixture-token\">",
+  "expected_inputs": {
+   "username": "{{ .Config.username }}",
+   "password": "{{ .Config.password }}",
+   "remember": "on",
+   "_token": "fixture-token"
+  },
+  "request_count": 1,
+  "login_path": "/fixture-no-login-test",
+  "keyword": "search",
+  "keyword_value": "Fixture",
+  "download_path": "/torrents/download/42",
+  "details_path": "/torrents/42",
+  "published": "2026-10-28T12:00:00Z",
+  "free_markup": "<i class=\"fas fa-star text-gold\"></i>",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1,
+  "expected_size": 1073741824,
+  "error_html": "<script nonce=\"fixture\">Error: fixture-private-error</script>",
+  "category": 2000,
+  "category_input": [
+   "categories[]",
+   "1"
+  ],
+  "search_path": "/filterTorrents"
+ },
+ {
+  "id": "zappateers",
+  "sha256": "3e83dfae4fd908b43b53ba009032812f51371b2f4c26bbc30c78b0a67262776a",
+  "search_fixture": "form:zappateers",
+  "direct_post": false,
+  "no_test": true,
+  "form_path": "/login",
+  "submit_path": "/login",
+  "form_id": "login",
+  "form_attributes": "action=\"/login\" method=\"POST\"",
+  "landing_html": "<input type=\"hidden\" name=\"_token\" value=\"fixture-token\">",
+  "expected_inputs": {
+   "username": "{{ .Config.username }}",
+   "password": "{{ .Config.password }}",
+   "remember": "on",
+   "_token": "fixture-token"
+  },
+  "request_count": 1,
+  "login_path": "/fixture-no-login-test",
+  "keyword": "search",
+  "keyword_value": "Fixture",
+  "download_path": "/torrents/download/42",
+  "details_path": "/torrents/42",
+  "published": "2026-10-28T12:00:00Z",
+  "free_markup": "<i class=\"fas fa-star text-gold\"></i>",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1,
+  "expected_size": 1073741824,
+  "error_html": "<div id=\"ERROR_COPY\">fixture-private-error</div>",
+  "category": 3000,
+  "category_input": [
+   "categories[]",
+   "1"
+  ],
+  "search_path": "/torrents/filter"
+ }
+]

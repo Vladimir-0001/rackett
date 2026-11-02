@@ -79,9 +79,10 @@ fn pinned_empty_message_definitions_compile_with_login_blockers() {
         assert!(!built.is_empty(), "{name}");
         assert!(built.iter().all(BuiltRequest::empty_no_results), "{name}");
     }
-    // A different no-results semantic stays blocked.
-    let e = compile(&pinned("hdforever-api")).err().unwrap();
-    assert_eq!(e.path, "$.search.rows.missingAttributeEqualsNoResults");
+    // missingAttributeEqualsNoResults is supported (tests/cardigann_json_rows.rs); the
+    // definition now stops at its login.
+    let plan = compile(&pinned("hdforever-api")).unwrap();
+    assert!(plan.blockers().iter().any(|b| b.path == "$.login"));
 }
 
 #[test]

@@ -137,8 +137,9 @@ fn html_configuration_branch_changes_real_row_membership() {
 #[test]
 fn every_branch_validated_and_dynamic_or_excessive_selectors_rejected() {
     for (source, json) in [
+        // A number is not a :contains argument token (AngleSharp ContainsFunctionState).
         (
-            "article{{ if .Config.freeleech }}:contains(a b){{ else }}{{ end }}",
+            "article{{ if .Config.freeleech }}:contains(1){{ else }}{{ end }}",
             false,
         ),
         ("data{{ if .Config.freeleech }}[*]{{ else }}{{ end }}", true),
@@ -182,9 +183,16 @@ fn root_token_remains_single_array_and_unsupported_paths_are_explicit() {
     assert_eq!(selector::json_rows(&value, "$", None, 1).unwrap().len(), 1);
     assert!(selector::json_rows(&serde_json::json!({"data":[]}), "$", None, 1).is_err());
     assert!(selector::json_rows(&value, "$", None, 0).is_err());
-    for path in ["$..name", "$.*", "$[?(@.name)]", "$.name", "$name"] {
+    for path in ["$..name", "$.*", "$[?(@.name)]", "$name"] {
         assert!(selector::json_select(&value, path).is_err(), "{path}");
     }
+    // `$` is the queried token, so `$.name` is `name`: nothing on an array (Newtonsoft
+    // SelectToken returns null) and the property on its first row.
+    assert_eq!(selector::json_select(&value, "$.name").unwrap(), None);
+    assert_eq!(
+        selector::json_select(&value, "$[0].name").unwrap(),
+        Some(&serde_json::json!("row"))
+    );
     let too_many = serde_json::json!(vec![serde_json::json!({}); 100_001]);
     assert!(selector::json_rows(&too_many, "$", None, 200_000)
         .unwrap_err()

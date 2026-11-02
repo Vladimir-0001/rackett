@@ -40,7 +40,7 @@ fancy-regex parses the whole pattern itself. It runs look-around, atomic groups
 and backreferences in a backtracking VM and hands the plain sub-expressions to
 the `regex` crate. So `\b`, `\w`, `\d`, `\s`, `\p{..}` and `(?i)` keep exactly the
 Unicode semantics `regex` already gives. Those are the compatibility level
-documented in [cardigann.md](cardigann.md): the same Unicode-version, case-folding
+documented in cardigann.md: the same Unicode-version, case-folding
 and final-newline limits as before. Tests check this inside the VM with non-ASCII
 letters (`é`, `ż`, Arabic-Indic digits, the Kelvin sign under `(?i)`) and `\b`
 next to non-ASCII word characters. A differential test wraps every pinned

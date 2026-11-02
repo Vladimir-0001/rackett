@@ -1,1 +1,22 @@
-[]
+[
+  {
+    "id": "torrentby",
+    "sha256": "6f50a1debf750add40e63dd7e87094a0654755cea86e18f311902f45d2c7b7d4",
+    "category": 8000,
+    "request_count": 1,
+    "search_path": "/search/",
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "/download.php?id=42",
+    "details_path": "/details/42",
+    "seeders": 11,
+    "peers": 15,
+    "published": "2026-10-27T21:00:00Z",
+    "delay_ms": 5000,
+    "title": "Fixture Release",
+    "json": false,
+    "container": "table"
+  }
+]

@@ -157,9 +157,9 @@ between requests, so it takes about as long in either program.
 
 ## Current limitations
 
-- **Not every Jackett site works yet.** 354 of the 583 bundled definitions (about
-  60%) are ready. The rest are listed with the feature they still need, for example
-  CAPTCHA logins or a few rare character sets.
+- **Not every Jackett site works yet.** 526 of the 583 bundled definitions (about
+  90%) are ready. The rest are listed with the feature they still need, for example
+  CAPTCHA logins, unusual login forms or a few rare character sets.
 - **Fixture-tested, not live-tested.** Ready means the definition passes a complete
   automated test against a simulated copy of the site: login, search, caching,
   downloads and session expiry. It does not guarantee the real site is online or
@@ -186,8 +186,15 @@ features: [legacy character sets](docs/legacy-encodings.md),
 [download-page resolution](docs/download-selectors.md),
 [XML responses](docs/xml-responses.md),
 [.NET regex look-around](docs/dotnet-regex-lookaround.md),
-[pinned certificates](docs/pinned-certificates.md) and
-[logged-in search shapes](docs/session-search-shapes.md).
+[pinned certificates](docs/pinned-certificates.md),
+[logged-in search shapes](docs/session-search-shapes.md),
+[search headers in logged-in sessions](docs/session-search-headers.md),
+[one login check per session](docs/session-validation.md),
+[logins without a test page](docs/login-without-test.md),
+[searches on a separate API host](docs/api-origins.md),
+[date header rows](docs/date-headers.md),
+[JSON row shapes](docs/json-row-shapes.md) and
+[CSS selector compatibility](docs/nested-has-selectors.md).
 
 ## Acknowledgements
 

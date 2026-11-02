@@ -1,0 +1,69 @@
+[
+ {
+  "id": "file-tracker",
+  "sha256": "1cc28dd31eaad384a9215cce7131b05e6e6d7fc2bc5359d1325055a64d6f33f6",
+  "search_fixture": "form:file-tracker",
+  "form_path": "/login.php",
+  "submit_path": "/login.php",
+  "form_id": "",
+  "form_attributes": "action=\"/login.php\"",
+  "landing_html": "<input name=\"cookie_test\" value=\"fixture-cookie-test\">",
+  "expected_inputs": {
+   "login_username": "{{ .Config.username }}",
+   "login_password": "{{ .Config.password }}",
+   "autologin": "1",
+   "cookie_test": "fixture-cookie-test"
+  },
+  "error_html": "<h4 class=\"warnColor1\">fixture-private-error</h4>",
+  "expected_title": "Fixture Тестовый Релиз",
+  "login_path": "/search.php",
+  "search_post": true,
+  "search_path": "/tracker.php",
+  "keyword": "nm",
+  "keyword_value": "Fixture",
+  "category": 100387,
+  "category_input": [
+   "f[]",
+   "387"
+  ],
+  "request_count": 1,
+  "download_path": "/download.php?id=42",
+  "details_path": "/viewtopic.php?t=42",
+  "published": "2026-10-28T10:30:00Z",
+  "free_markup": "<img src=\"images/tor_gold.gif\">",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1
+ },
+ {
+  "id": "torrentleech",
+  "sha256": "337179a7b8eadcd2786b220d62a2cc01438610212a33ff049b8a1ffe55e967b0",
+  "search_fixture": "form:torrentleech",
+  "json": true,
+  "empty_body": "{\"menu\": \"<a href=/user/account/logout>Logout</a>\", \"numFound\": 0, \"torrentList\": []}",
+  "form_path": "/user/account/login/",
+  "submit_path": "/user/account/login/",
+  "form_id": "",
+  "form_attributes": "name=\"login-form\" action=\"/user/account/login/\"",
+  "expected_inputs": {
+   "username": "{{ .Config.username }}",
+   "password": "{{ .Config.password }}",
+   "alt2FAToken": ""
+  },
+  "error_html": "<p class=\"text-danger\">fixture-private-error</p>",
+  "login_path": "/",
+  "search_path": "/torrents/browse/list/categories/26/exact/1/query/Fixture/orderby/added/order/desc",
+  "keyword": "",
+  "keyword_value": "Fixture",
+  "category": 100026,
+  "request_count": 1,
+  "download_path": "/download/42/Fixture.Release.torrent",
+  "details_path": "/torrent/42",
+  "published": "2026-10-28T10:30:00Z",
+  "free_markup": "0",
+  "normal_markup": "1",
+  "free_download": 0,
+  "free_upload": 1,
+  "missing_title": "TorrentLeech did not provide a title"
+ }
+]

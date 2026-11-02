@@ -244,7 +244,11 @@ async fn create_restart_search_test_ticket_and_credentials_use_one_runtime() {
         .await["ok"],
         true
     );
-    assert_eq!(upstream.take().len(), 2);
+    // The test search reuses the session the first search validated: no preflight
+    // (docs/session-validation.md). Downloads still check it.
+    let seen = upstream.take();
+    assert_eq!(seen.len(), 1);
+    assert!(seen[0].0.starts_with("/torrents.php?"));
     assert_eq!(
         download(&app, ticket).await,
         (StatusCode::OK, TORRENT.to_vec())

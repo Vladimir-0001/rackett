@@ -1,0 +1,160 @@
+[
+  {
+    "id": "catorrent",
+    "sha256": "0d50806e1e1db9eb9c4ace842e3a0e1a0b01384524e4671a712cd2461a45357c",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "delay_ms": 0,
+    "json": false,
+    "title": "Fixture Release",
+    "container": "div#dle-content",
+    "category": 1090,
+    "search_path": "/index.php",
+    "query_pair": [
+      "story",
+      "Fixture"
+    ],
+    "download_path": "/42-fixture-release.html",
+    "details_path": "/42-fixture-release.html",
+    "published": "2026-10-29T12:00:00Z",
+    "expected_size": 536870912,
+    "fixed_size": true,
+    "expected_headers": {
+      "referer": "$SITELINK"
+    },
+    "detail": {
+      "html": "<div class=\"full\"><a href=\"/index.php?do=download&amp;id=42\">Download</a></div>",
+      "resolved": "/index.php?do=download&id=42"
+    }
+  },
+  {
+    "id": "damagnet",
+    "sha256": "6e4f2a4255d84ad786fbe22367b8b1f4fc196e896e2b0b809e6e601e5a27cf97",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "delay_ms": 0,
+    "json": false,
+    "title": "Fixture Release",
+    "container": "table.table-striped",
+    "category": 8000,
+    "search_path": "/",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/fixture-release-42.html",
+    "details_path": "/fixture-release-42.html",
+    "published": "2026-10-29T12:00:00Z",
+    "expected_headers": {
+      "referer": "$SITELINK"
+    },
+    "detail": {
+      "html": "<form><input name=\"q\" value=\"Fixture Release\"></form><a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=x\">magnet</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture+Release&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce"
+    }
+  },
+  {
+    "id": "limetorrents",
+    "sha256": "6a315c4e13fe39438fb0dcaa18218dd573f09bdefbe8d42905bc334ede51dd88",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "delay_ms": 0,
+    "json": false,
+    "title": "Fixture Release",
+    "container": "table.table2",
+    "category": 2000,
+    "search_path": "/search/all/Fixture/date/1/",
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/Fixture-Release-torrent-42.html",
+    "details_path": "/Fixture-Release-torrent-42.html",
+    "published": "2026-10-28T12:00:00Z",
+    "detail": {
+      "html": "<a class=\"csprite_dltorrent\" href=\"http://itorrents.org/torrent/X.torrent\">torrent</a><a class=\"csprite_dltorrent\" href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture+Release\">magnet</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture+Release"
+    }
+  },
+  {
+    "id": "magnetdownload",
+    "sha256": "b3317407a6c6cedaa8d3656df4ef5671fb267948d4111f04e9aea42809be009f",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "delay_ms": 0,
+    "json": false,
+    "title": "Fixture Release",
+    "container": "table",
+    "category": 8000,
+    "search_path": "/search/Fixture/",
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/info/42",
+    "details_path": "/info/42",
+    "published": "2026-10-28T12:00:00Z",
+    "detail": {
+      "before": "/api/json_info?hashes=42",
+      "html": "{\"0123456789abcdef0123456789abcdef01234567\": {\"name\": \"Fixture Release\", \"size\": 1073741824}}",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture+Release&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce"
+    }
+  },
+  {
+    "id": "skidrowrepack",
+    "sha256": "8ddc67a477c0f178810dd3f317bab2c986b27ab0f4b62e11e7b1f33a0be474f1",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "delay_ms": 0,
+    "json": false,
+    "title": "Fixture Release",
+    "container": "div#dle-content",
+    "category": 4050,
+    "search_path": "/index.php",
+    "query_pair": [
+      "story",
+      "Fixture"
+    ],
+    "download_path": "/42-fixture-release.html",
+    "details_path": "/42-fixture-release.html",
+    "published": "2026-10-29T12:00:00Z",
+    "expected_size": 4294967296,
+    "fixed_size": true,
+    "expected_headers": {
+      "referer": "$SITELINK"
+    },
+    "detail": {
+      "html": "<div class=\"full\"><a class=\"dwn-load\" href=\"/engine/download.php?id=42\">Download</a></div>",
+      "resolved": "/engine/download.php?id=42"
+    }
+  },
+  {
+    "id": "torrentdownloads",
+    "sha256": "8cbb78b5fe8493ac2bab433050c88e514a412e0c953a64663d195eff262aa933",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "delay_ms": 0,
+    "json": false,
+    "title": "Fixture Release",
+    "container": "div.inner_container",
+    "category": 2000,
+    "search_path": "/search/",
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "/torrent/42/Fixture+Release",
+    "details_path": "/torrent/42/Fixture+Release",
+    "published": "2026-10-29T12:00:00Z",
+    "detail": {
+      "html": "<a href=\"http://itorrents.org/torrent/X.torrent\">torrent</a><a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&amp;dn=Fixture+Release\">magnet</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture+Release"
+    }
+  }
+]

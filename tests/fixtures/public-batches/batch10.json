@@ -1,1 +1,359 @@
-[]
+[
+  {
+    "id": "0magnet",
+    "sha256": "5406ee29c28d0f5a435171bd87779d4c20520b932084d65b8ecde50af884f740",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "category": 6000,
+    "search_path": "/search",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/magnet/42",
+    "details_path": "/magnet/42",
+    "published": "2026-10-28T00:00:00Z",
+    "title": "Fixture Magnet Release",
+    "container": "table",
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=FixtureMagnet&tr=x\">magnet</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=FixtureMagnet&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce"
+    }
+  },
+  {
+    "id": "52bt",
+    "sha256": "974a6b79b3882b6a41c38647d3257eb9c3dff3f2098b0c5fb7eae828e070ce98",
+    "request_count": 2,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 2000,
+    "json": false,
+    "category": 5000,
+    "search_path": "/search-2026-0-2-1.html",
+    "search_paths": [
+      "/search-Fixture-0-2-1.html",
+      "/search-Fixture-0-2-2.html"
+    ],
+    "query_pair": [
+      "lang",
+      "en"
+    ],
+    "download_path": "magnet",
+    "details_path": "/hash/0123456789abcdef0123456789abcdef01234567",
+    "published": "2026-10-27T16:00:00Z",
+    "title": "Fixture Release",
+    "container": "main"
+  },
+  {
+    "id": "anisource",
+    "sha256": "122a960657ce1f13c7f1a07da4893a0cb0640966e3811f9229068441324896cc",
+    "request_count": 2,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 5000,
+    "json": false,
+    "category": 5070,
+    "search_path": "/",
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "magnet",
+    "details_path": "/showprofile/0123456789abcdef0123456789abcdef01234567",
+    "published": "2026-10-28T21:00:00Z",
+    "title": "Fixture Release [FixtureGrp]",
+    "container": "div#content"
+  },
+  {
+    "id": "blueroms",
+    "sha256": "762a2883dbb1a2a1fe7e6980f29f210281f2b55f11f4deb54ee5e64ea70034c6",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 2097152,
+    "delay_ms": 0,
+    "json": false,
+    "category": 1090,
+    "search_path": "/search",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "/download/42",
+    "details_path": "/rom/42-fixture",
+    "published": "2026-10-29T12:00:00Z",
+    "title": "Fixture Rom - Arcade",
+    "container": "div.row",
+    "fixed_size": true,
+    "detail": {
+      "html": "<button id=\"magnet-button\" data-link=\"bWFnbmV0Oj94dD11cm46YnRpaDowMTIzNDU2Nzg5YWJjZGVmMDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3\">m</button>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567"
+    }
+  },
+  {
+    "id": "btdirectory",
+    "sha256": "0431599b550c9f2a033c5ca2666cc944b691ad8c96959312e0b408ba609428d1",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 2147483648,
+    "delay_ms": 0,
+    "json": false,
+    "category": 8000,
+    "search_path": "/search-create.html",
+    "search_paths": [
+      "/search.html"
+    ],
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "download_path": "magnet",
+    "details_path": "/hash/0123456789abcdef0123456789abcdef01234567",
+    "published": "2026-10-28T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "main",
+    "fixed_size": true
+  },
+  {
+    "id": "crackingpatching",
+    "sha256": "99e2b184733bfc29294ccd9a25aa283d26415379b506997bcd5add50a8d1b36d",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 536870912,
+    "delay_ms": 0,
+    "json": false,
+    "category": 4050,
+    "search_path": "/",
+    "query_pair": [
+      "s",
+      "Fixture"
+    ],
+    "download_path": "/p/42",
+    "details_path": "/p/42",
+    "published": "2026-10-29T12:00:00Z",
+    "title": "Fixture Patch",
+    "container": "main",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x\">Magnet</a>",
+      "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=x"
+    }
+  },
+  {
+    "id": "freejavtorrent",
+    "sha256": "cd29c15c8dec8af6ab74beec24754f71e46953a28c96c2b4df423284f9ac3796",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 2199023255552,
+    "delay_ms": 0,
+    "json": false,
+    "category": 6000,
+    "search_path": "/",
+    "search_paths": [
+      "/s.php"
+    ],
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "/dl.php?t=42",
+    "details_path": "/torrent-42.html",
+    "published": "2026-10-29T12:00:00Z",
+    "title": "Fixture Title",
+    "container": "main",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a class=\"download-button\" href=\"/get/42.torrent\">dl</a>",
+      "resolved": "/get/42.torrent"
+    }
+  },
+  {
+    "id": "mactorrentsdownload",
+    "sha256": "1d83665a84b3538a9841ddb88dedef91ce6f578217085cfe2ad2bc8fb6850c5e",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 536870912,
+    "delay_ms": 0,
+    "json": false,
+    "category": 4030,
+    "search_path": "/",
+    "query_pair": [
+      "s",
+      "Fixture"
+    ],
+    "download_path": "/apps/42",
+    "details_path": "/apps/42",
+    "published": "2026-10-28T07:00:00Z",
+    "title": "Fixture Mac App",
+    "container": "main",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a class=\"download-btn\" href=\"/get/42.torrent\">dl</a>",
+      "resolved": "/get/42.torrent"
+    }
+  },
+  {
+    "id": "magnetcat",
+    "sha256": "7bfdde331d22ca519e24c67b162decc1b12a79b2cf4c7754a3a3b4a3624bc73d",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 2000,
+    "json": false,
+    "category": 5000,
+    "search_path": "/search-2026-0-2-1.html",
+    "search_paths": [
+      "/search-Fixture-0-2-1.html"
+    ],
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "magnet",
+    "details_path": "/hash/0123456789abcdef0123456789abcdef01234567",
+    "published": "2026-10-27T16:00:00Z",
+    "title": "Fixture Release",
+    "container": "main"
+  },
+  {
+    "id": "mixtapetorrent",
+    "sha256": "f3cd585a4c71b9dd5ea1bdaef5e4bd9a82ba5dd7a44fe6ff0e2dc65bed2fb07b",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 134217728,
+    "delay_ms": 0,
+    "json": false,
+    "category": 3000,
+    "search_path": "/search/node/2020%20type:story",
+    "search_paths": [
+      "/search/node/Fixture%20type:story"
+    ],
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/mix/42",
+    "details_path": "/mix/42",
+    "published": "2026-10-29T00:30:00Z",
+    "title": "Fixture Mixtape",
+    "container": "dl.search-results",
+    "fixed_size": true,
+    "detail": {
+      "html": "<table id=\"attachments\"><tr class=\"odd\"><td><a href=\"/files/42.torrent\">t</a></td></tr></table>",
+      "resolved": "/files/42.torrent"
+    }
+  },
+  {
+    "id": "nyaasi",
+    "sha256": "cea7a06c93abbc46dbb1eb0d74d34dfeca1f244f3f7ffe08a1d6335d6400687b",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 2000,
+    "json": false,
+    "category": 5070,
+    "keywordless_request_count": 2,
+    "search_path": "/",
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "download_path": "magnet",
+    "details_path": "/view/42",
+    "published": "2026-10-28T12:00:00Z",
+    "title": "Fixture Release",
+    "container": "table"
+  },
+  {
+    "id": "onejav",
+    "sha256": "f23e8493204430d12a38893853ab710a5a9d7f1e52cc0ab5bc116144bcc34e5f",
+    "request_count": 2,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 2000,
+    "json": false,
+    "category": 6000,
+    "search_path": "/new",
+    "search_paths": [
+      "/search/Fixture"
+    ],
+    "query_pair": [
+      "",
+      ""
+    ],
+    "download_path": "/download/42/onejav.torrent",
+    "details_path": "/torrent/fixture-42",
+    "published": "2026-10-28T07:00:00Z",
+    "title": "Fixture Release",
+    "container": "div.columns"
+  },
+  {
+    "id": "pornrips",
+    "sha256": "d568a257f9c8362cd2bfd0a87129f7556f1acdb22de29971ea4cd134bc91611d",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 2147483648,
+    "delay_ms": 0,
+    "json": false,
+    "category": 6000,
+    "search_path": "/",
+    "query_pair": [
+      "s",
+      "Fixture"
+    ],
+    "download_path": "/video/42",
+    "details_path": "/video/42",
+    "published": "2026-10-28T12:00:00Z",
+    "title": "Fixture Porn Rip",
+    "container": "main",
+    "fixed_size": true,
+    "detail": {
+      "html": "<a href=\"/torrents/42.torrent\">dl</a>",
+      "resolved": "/torrents/42.torrent"
+    }
+  },
+  {
+    "id": "pornxlab",
+    "sha256": "66411a55b216e06ff5c763155222465eff3bc9bf4e4fb6bb97c07bb7292b96c5",
+    "request_count": 1,
+    "seeders": 1,
+    "peers": 2,
+    "expected_size": 1073741824,
+    "delay_ms": 0,
+    "json": false,
+    "category": 6000,
+    "search_path": "/",
+    "search_paths": [
+      "/s.php"
+    ],
+    "query_pair": [
+      "search",
+      "Fixture"
+    ],
+    "download_path": "/dl.php?t=42",
+    "details_path": "/torrent-42.html",
+    "published": "2026-10-29T12:00:00Z",
+    "title": "Fixture Title",
+    "container": "main",
+    "fixed_size": false,
+    "detail": {
+      "html": "<a class=\"download-button\" href=\"/get/42.torrent\">dl</a>",
+      "resolved": "/get/42.torrent"
+    }
+  }
+]

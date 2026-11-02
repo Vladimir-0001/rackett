@@ -251,8 +251,11 @@ impl<'i> parser::Parser<'i> for Parser<'_> {
     fn parse_has(&self) -> bool {
         true
     }
-    /// Approved subset of AngleSharp's `ContainsFunctionState`: exactly one
-    /// ident or terminated string token, optionally surrounded by whitespace.
+    /// Approved subset of AngleSharp's `ContainsFunctionState` (`CssSelectorConstructor.cs:958-998`):
+    /// one or more ident or terminated string tokens, separated by optional whitespace.
+    /// Like upstream, the last token is the needle, so `:contains(Only Upload)` matches
+    /// "Upload". Configured values substituted into an argument stay one token
+    /// ([`contains_value`]).
     fn parse_non_ts_functional_pseudo_class<'t>(
         &self,
         name: cssparser::CowRcStr<'i>,
@@ -264,28 +267,27 @@ impl<'i> parser::Parser<'i> for Parser<'_> {
                 SelectorParseErrorKind::UnsupportedPseudoClassOrElement(name),
             ));
         }
-        // Record the argument token's own start, after whitespace and comments.
-        let (start, token) = loop {
+        let mut needle = None;
+        loop {
+            // Record the argument token's own start, after whitespace and comments.
             let start = input.position();
             match input.next_including_whitespace_and_comments() {
                 Ok(Token::WhiteSpace(_) | Token::Comment(_)) => {}
-                Ok(token) => break (start, token.clone()),
-                Err(_) => return self.reject(input, "empty argument"),
-            }
-        };
-        let needle = match token {
-            Token::Ident(value) => value.to_string(),
-            Token::QuotedString(value) => {
-                if !terminated_string(input.slice_from(start)) {
-                    return self.reject(input, "unterminated string");
+                Ok(Token::Ident(value)) => needle = Some(value.to_string()),
+                Ok(Token::QuotedString(value)) => {
+                    let value = value.to_string();
+                    if !terminated_string(input.slice_from(start)) {
+                        return self.reject(input, "unterminated string");
+                    }
+                    needle = Some(value);
                 }
-                value.to_string()
+                Ok(_) => return self.reject(input, "argument must be idents or strings"),
+                Err(_) => break,
             }
-            _ => return self.reject(input, "argument must be one ident or string"),
-        };
-        if input.expect_exhausted().is_err() {
-            return self.reject(input, "argument must be exactly one token");
         }
+        let Some(needle) = needle else {
+            return self.reject(input, "empty argument");
+        };
         // The nested block ends at its `)` or, leniently, at end of input.
         input.skip_whitespace();
         if !self.source[input.position().byte_index()..].starts_with(')') {
@@ -498,6 +500,183 @@ const CASE_INSENSITIVE_ATTRIBUTES: [&str; 46] = [
 /// selector parenthesis limit, this also counts brackets and braces, so some
 /// otherwise-valid selectors at the boundary are conservatively rejected.
 const MAX_REWRITE_DEPTH: usize = 32;
+
+/// End (exclusive) of the parenthesised block opening just before `start`, skipping
+/// strings, escapes and brackets; `None` when unbalanced.
+fn block_end(source: &str, start: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let (mut depth, mut quote, mut i) = (1usize, None, start);
+    while i < bytes.len() {
+        let b = bytes[i];
+        match quote {
+            _ if b == b'\\' => i += 1,
+            Some(q) if b == q => quote = None,
+            Some(_) => {}
+            None if b == b'"' || b == b'\'' => quote = Some(b),
+            None if b == b'(' || b == b'[' => depth += 1,
+            None if b == b')' || b == b']' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(i);
+                }
+            }
+            None => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// First `:has(` at or after `from` that is outside strings and escapes.
+fn find_has(source: &str, from: usize) -> Option<usize> {
+    let bytes = source.as_bytes();
+    let (mut quote, mut i) = (None, from);
+    while i < bytes.len() {
+        let b = bytes[i];
+        match quote {
+            _ if b == b'\\' => i += 1,
+            Some(q) if b == q => quote = None,
+            Some(_) => {}
+            None if b == b'"' || b == b'\'' => quote = Some(b),
+            None if bytes[i..].starts_with(b":has(") => return Some(i),
+            None => {}
+        }
+        i += 1;
+    }
+    None
+}
+
+/// Whether `part` is one compound selector: no top-level whitespace, combinator, list
+/// separator or nested block other than attribute brackets and strings.
+fn is_compound(part: &str) -> bool {
+    let bytes = part.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        match bytes[i] {
+            b'\\' => i += 1,
+            b'[' => match block_end(part, i + 1) {
+                Some(end) => i = end,
+                None => return false,
+            },
+            b'(' | b')' | b',' | b'>' | b'+' | b'~' => return false,
+            b if b.is_ascii_whitespace() => return false,
+            _ => {}
+        }
+        i += 1;
+    }
+    !part.is_empty()
+}
+
+/// Drops a type selector that repeats its compound's leading type later in the same
+/// compound, as in puntotorrent's `a:not(:contains("HDTV"))a:not(...)`. AngleSharp
+/// v1.8.6 adds a type selector found anywhere in a compound to that compound
+/// (`CssSelectorConstructor.cs:211-213,465-492`), so the repeat is a no-op there; the
+/// selectors crate rejects it. Only top-level compounds are rewritten. Any other
+/// misplaced type selector (no leading type, a different type, a namespace) is left
+/// unchanged and stays rejected.
+fn rewrite_repeated_type(source: &str) -> Cow<'_, str> {
+    let mut input = ParserInput::new(source);
+    let mut input = cssparser::Parser::new(&mut input);
+    let mut leading: Option<String> = None;
+    let mut at_start = true;
+    let mut previous: Option<Token<'_>> = None;
+    let mut drop = vec![];
+    loop {
+        let start = input.position().byte_index();
+        let Ok(token) = input.next_including_whitespace_and_comments().cloned() else {
+            break;
+        };
+        match &token {
+            Token::WhiteSpace(_) | Token::Comma | Token::Delim('>' | '+' | '~') => {
+                leading = None;
+                at_start = true;
+            }
+            Token::Delim('|') => return Cow::Borrowed(source),
+            Token::Comment(_) => continue,
+            Token::Ident(name) if !matches!(previous, Some(Token::Colon | Token::Delim('.'))) => {
+                if at_start {
+                    leading = Some(name.to_ascii_lowercase());
+                } else if leading.as_deref() == Some(&*name.to_ascii_lowercase()) {
+                    drop.push(start..input.position().byte_index());
+                } else {
+                    return Cow::Borrowed(source);
+                }
+                at_start = false;
+            }
+            Token::Function(_)
+            | Token::ParenthesisBlock
+            | Token::SquareBracketBlock
+            | Token::CurlyBracketBlock => {
+                // Consume the block now, so the next token's start is after its end.
+                let skipped = input.parse_nested_block(|block| {
+                    while block.next_including_whitespace_and_comments().is_ok() {}
+                    Ok::<_, cssparser::ParseError<'_, ()>>(())
+                });
+                if skipped.is_err() {
+                    return Cow::Borrowed(source);
+                }
+                at_start = false;
+            }
+            _ => at_start = false,
+        }
+        previous = Some(token);
+    }
+    if drop.is_empty() {
+        return Cow::Borrowed(source);
+    }
+    let mut out = String::with_capacity(source.len());
+    let mut copied = 0;
+    for range in drop {
+        out.push_str(&source[copied..range.start]);
+        copied = range.end;
+    }
+    out.push_str(&source[copied..]);
+    Cow::Owned(out)
+}
+
+/// Flattens `:has(B:has(C))` to `:has(B C)` when B and C are single compound
+/// selectors, the only nested shape in the pinned corpus (rutor, selezen,
+/// torrentdownloads). The selectors crate rejects nested `:has`, as the CSS spec does.
+/// AngleSharp v1.8.6 accepts it; for compound B and C both forms mean "a descendant
+/// matching B that has a descendant matching C", so the flattened selector matches the
+/// same elements. Every other nested shape is left unchanged and stays rejected.
+fn rewrite_nested_has(source: &str) -> Cow<'_, str> {
+    const HAS: &str = ":has(";
+    let mut out = String::new();
+    let mut copied = 0;
+    let mut from = 0;
+    while let Some(found) = find_has(source, from) {
+        let open = found + HAS.len();
+        let Some(close) = block_end(source, open) else {
+            break;
+        };
+        let argument = &source[open..close];
+        from = close;
+        let Some(inner) = find_has(argument, 0) else {
+            continue;
+        };
+        let (outer_part, rest) = argument.split_at(inner);
+        let inner_open = HAS.len();
+        if block_end(rest, inner_open) != Some(rest.len() - 1) {
+            continue;
+        }
+        let inner_part = &rest[inner_open..rest.len() - 1];
+        if !is_compound(outer_part) || !is_compound(inner_part) || find_has(inner_part, 0).is_some()
+        {
+            continue;
+        }
+        out.push_str(&source[copied..open]);
+        out.push_str(outer_part);
+        out.push(' ');
+        out.push_str(inner_part);
+        copied = close;
+    }
+    if copied == 0 {
+        return Cow::Borrowed(source);
+    }
+    out.push_str(&source[copied..]);
+    Cow::Owned(out)
+}
 
 /// Rewrites AngleSharp's `[name!=value]` into `:not([name="value" s])`.
 ///
@@ -739,7 +918,10 @@ impl Css {
         })
     }
     pub fn parse(source: &str) -> Result<Self, String> {
-        let rewritten = rewrite_inequality(source).map_err(|reason| {
+        // Flattening only shortens the source, so it stays within the parse bounds.
+        let flattened = rewrite_nested_has(source);
+        let flattened = rewrite_repeated_type(&flattened);
+        let rewritten = rewrite_inequality(&flattened).map_err(|reason| {
             format!("unsupported CSS selector {source:?}: invalid [attribute!=value]: {reason}")
         })?;
         if let Cow::Owned(rewritten) = &rewritten {
@@ -778,6 +960,16 @@ impl Css {
     /// A selector with a non-empty `:contains` fails on a marked document before
     /// matching, even where matching would never reach that pseudo-class.
     pub fn matches(&self, element: &ElementRef<'_>, scan: &Scan) -> Result<bool, String> {
+        self.matches_in(element, None, scan)
+    }
+    /// Matching with `:scope` bound to `scope`, as AngleSharp binds it to the element a
+    /// `QuerySelector` call starts from. Without a scope `:scope` is the root.
+    pub fn matches_in(
+        &self,
+        element: &ElementRef<'_>,
+        scope: Option<OpaqueElement>,
+        scan: &Scan,
+    ) -> Result<bool, String> {
         if self.scans_text && is_marked(element) {
             scan.fail(DROPPED_SHADOW_ROOT);
         }
@@ -790,6 +982,7 @@ impl Css {
             matching::NeedsSelectorFlags::No,
             matching::MatchingForInvalidation::No,
         );
+        context.scope_element = scope;
         let node = Node {
             element: *element,
             scan,
@@ -1189,5 +1382,51 @@ impl TreeSink for ShadowRootSink<'_> {
             self.dropped.set(true);
         }
         attached
+    }
+}
+
+#[cfg(test)]
+mod nested_has_tests {
+    use super::*;
+    #[test]
+    fn compound_nested_has_flattens_and_other_shapes_stay() {
+        let flat = |s| rewrite_nested_has(s).into_owned();
+        assert_eq!(
+            flat(r#"tr:has(td:has(a[href^="magnet:?xt="]))"#),
+            r#"tr:has(td a[href^="magnet:?xt="])"#
+        );
+        assert_eq!(
+            flat(r#"div.card:has(h4):not(:has(a[href*="/news/"])):has(a:has(span.bx-download))"#),
+            r#"div.card:has(h4):not(:has(a[href*="/news/"])):has(a span.bx-download)"#
+        );
+        // A `:has(` inside a string, a complex outer or inner part, or a doubly nested
+        // argument is not flattened.
+        for unchanged in [
+            r#"a[title=":has(b:has(c))"]"#,
+            "tr:has(td > b:has(a))",
+            "tr:has(td:has(b a))",
+            "tr:has(td:has(b:has(a)))",
+            "tr:has(td:has(a), b)",
+            "tr:has(td:contains(Ünïcödé)) a",
+        ] {
+            assert_eq!(flat(unchanged), unchanged);
+        }
+    }
+    #[test]
+    fn flattened_selectors_match_like_nested_has() {
+        let html = Html::parse_fragment(
+            r#"<table><tr id="hit"><td><a href="magnet:?xt=1">m</a></td></tr>
+<tr id="miss"><td><a href="/t/1">t</a></td></tr></table>"#,
+        );
+        let css = Css::parse(r#"tr:has(td:has(a[href^="magnet:?xt="]))"#).unwrap();
+        let scan = Scan::default();
+        let hits: Vec<_> = html
+            .root_element()
+            .descendants()
+            .filter_map(ElementRef::wrap)
+            .filter(|e| css.matches(e, &scan).unwrap())
+            .filter_map(|e| e.value().attr("id"))
+            .collect();
+        assert_eq!(hits, ["hit"]);
     }
 }

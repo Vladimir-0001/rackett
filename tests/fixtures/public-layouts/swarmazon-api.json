@@ -1,0 +1,20 @@
+{
+ "data": [
+  {
+   "categoryid": 1,
+   "name": "Fixture Release",
+   "torrent": "/details/42",
+   "download": "/dl/42.torrent",
+   "media_poster": "N/A",
+   "media_genre": "action",
+   "hash": "0123456789abcdef0123456789abcdef01234567",
+   "ref_id": "tt1234567",
+   "seeders": 1,
+   "leechers": 2,
+   "completed": 5,
+   "upload_timestamp": "2026-10-24 07:29:31",
+   "size": 1073741824,
+   "freeleech": "yes"
+  }
+ ]
+}

@@ -44,6 +44,23 @@ struct Case {
     before_fields: BTreeMap<String, String>,
     #[serde(default)]
     direct_post: bool,
+    /// The login identity setting is not called `username` (magnetz uses `email`).
+    #[serde(default)]
+    user_setting: Option<String>,
+    /// The definition declares no settings and logs in without credentials (comicat and
+    /// miobt send a literal `visitor_test` input). The password-change step is skipped.
+    #[serde(default)]
+    no_credentials: bool,
+    /// The definition declares this literal `Cookie` search header (eztvl). Pinned Jackett
+    /// sends declared headers on every request, so each request must carry it, alone or
+    /// followed by `"; "` and the session cookie (docs/session-search-headers.md).
+    #[serde(default)]
+    literal_cookie: Option<String>,
+    /// The definition declares no `login.test`: pinned TestLogin sends no validation
+    /// request and only a search redirect means expiry (docs/login-without-test.md).
+    /// `login_path` then names a path the session must never request.
+    #[serde(default)]
+    no_test: bool,
     sha256: String,
     search_fixture: String,
     form_path: String,
@@ -58,6 +75,12 @@ struct Case {
     expected_inputs: BTreeMap<String, String>,
     #[serde(default)]
     configured_settings: BTreeMap<String, String>,
+    /// Declared non-secret settings sent with the credentials and used for the offline
+    /// extraction context, e.g. animelayer's `category-id` select in its search path.
+    /// The catalog must list each as not secret; unlike `configured_settings` they are
+    /// not leak-checked, since public definitions show them.
+    #[serde(default)]
+    public_settings: BTreeMap<String, String>,
     error_html: String,
     search_error_html: Option<String>,
     category: u32,
@@ -66,11 +89,17 @@ struct Case {
     request_count: usize,
     login_path: String,
     search_path: String,
+    /// Query or body key that carries `keyword_value`. Empty when the definition has
+    /// no search inputs and its path carries the keyword (torrentleech); the exact
+    /// `search_path` then identifies a search request.
     keyword: String,
     keyword_value: String,
     category_input: Option<[String; 2]>,
     download_path: String,
-    details_path: String,
+    /// Expected details link suffix. Absent when the definition declares no `details`
+    /// field (acrossthetasman): releases must then carry no details link.
+    #[serde(default)]
+    details_path: Option<String>,
     published: String,
     free_markup: String,
     normal_markup: String,
@@ -80,8 +109,13 @@ struct Case {
     normal_upload: Option<f64>,
     normal_download: Option<f64>,
 }
+impl Case {
+    fn user_key(&self) -> &str {
+        self.user_setting.as_deref().unwrap_or("username")
+    }
+}
 /// Independently reviewed admission batches; each file uses the same `Case` schema.
-const FORM_BATCHES: [&str; 20] = [
+const FORM_BATCHES: [&str; 24] = [
     include_str!("fixtures/form-batches/batch1.json"),
     include_str!("fixtures/form-batches/batch2.json"),
     include_str!("fixtures/form-batches/batch3.json"),
@@ -102,7 +136,17 @@ const FORM_BATCHES: [&str; 20] = [
     include_str!("fixtures/form-batches/batch18.json"),
     include_str!("fixtures/form-batches/batch19.json"),
     include_str!("fixtures/form-batches/batch20.json"),
+    include_str!("fixtures/form-batches/batch21.json"),
+    include_str!("fixtures/form-batches/batch22.json"),
+    include_str!("fixtures/form-batches/batch23.json"),
+    include_str!("fixtures/form-batches/batch24.json"),
 ];
+/// Whole-lifecycle budget: five times a case's declared minimum request timeout, at
+/// least 300 s. Slow pinned sources (multi-page searches with request delays) declare
+/// `timeout_seconds` (see docs/session-validation.md).
+fn lifecycle_budget(c: &Case) -> std::time::Duration {
+    std::time::Duration::from_secs(c.timeout_seconds.unwrap_or(0).saturating_mul(5).max(300))
+}
 fn cases() -> Vec<Case> {
     let mut cases: Vec<Case> =
         serde_json::from_str(include_str!("fixtures/form-layouts/cases.json")).unwrap();
@@ -113,12 +157,20 @@ fn cases() -> Vec<Case> {
     for batch in FORM_BATCHES {
         cases.extend(serde_json::from_str::<Vec<Case>>(batch).unwrap());
     }
+    // `RACKETT_FORM_CASES=pttime,jpopsuki` re-runs single lifecycles locally.
+    if let Ok(only) = std::env::var("RACKETT_FORM_CASES") {
+        let only: Vec<&str> = only.split(',').collect();
+        cases.retain(|c| only.contains(&c.id.as_str()));
+    }
     cases
 }
 fn credentials(c: &Case, user: &str, password: &str) -> serde_json::Value {
-    let mut settings = c.configured_settings.clone();
-    settings.insert("username".into(), user.into());
-    settings.insert("password".into(), password.into());
+    let mut settings = c.public_settings.clone();
+    settings.extend(c.configured_settings.clone());
+    if !c.no_credentials {
+        settings.insert(c.user_key().into(), user.into());
+        settings.insert("password".into(), password.into());
+    }
     json!(settings)
 }
 fn root(c: &Case) -> cardigann::Node {
@@ -167,13 +219,65 @@ fn query(c: &Case) -> SearchQuery {
         ]),
     }
 }
+/// Parses a form body in order, keeping repeated keys. A non-UTF-8 body must use
+/// HttpUtility.UrlEncode's lower-case escapes; its bytes decode with the definition
+/// charset (WebClient.FormUrlEncodedContentWithEncoding).
+fn form_pairs(
+    c: &Case,
+    charset: rackett::cardigann_exec::request::Charset,
+    body: &[u8],
+) -> Vec<(String, String)> {
+    if charset == rackett::cardigann_exec::request::Charset::Utf8 {
+        return url::form_urlencoded::parse(body).into_owned().collect();
+    }
+    let text = std::str::from_utf8(body).expect("percent-encoded body is ASCII");
+    for escape in text.split('%').skip(1) {
+        assert!(
+            escape.len() >= 2
+                && escape[..2]
+                    .bytes()
+                    .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+            "{}: non-HttpUtility escape in {text}",
+            c.id
+        );
+    }
+    let decode = |part: &str| {
+        let raw = part.replace('+', " ");
+        let mut bytes = Vec::new();
+        let mut i = 0;
+        while i < raw.len() {
+            if raw.as_bytes()[i] == b'%' {
+                bytes.push(u8::from_str_radix(&raw[i + 1..i + 3], 16).unwrap());
+                i += 3;
+            } else {
+                bytes.push(raw.as_bytes()[i]);
+                i += 1;
+            }
+        }
+        charset.decode(bytes).unwrap()
+    };
+    text.split('&')
+        .filter(|pair| !pair.is_empty())
+        .map(|pair| {
+            let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+            (decode(k), decode(v))
+        })
+        .collect()
+}
+/// Re-serializes decoded pairs as a UTF-8 query so search matching sees one shape.
+fn query_text(pairs: &[(String, String)]) -> String {
+    url::form_urlencoded::Serializer::new(String::new())
+        .extend_pairs(pairs)
+        .finish()
+}
 fn request_matches(c: &Case, url: &url::Url) {
     assert_eq!(url.path(), c.search_path, "{}", c.id);
     let pairs: Vec<_> = url.query_pairs().collect();
     assert!(
-        pairs
-            .iter()
-            .any(|(k, v)| k == c.keyword.as_str() && v == c.keyword_value.as_str()),
+        c.keyword.is_empty() && url.path().contains(c.keyword_value.as_str())
+            || pairs
+                .iter()
+                .any(|(k, v)| k == c.keyword.as_str() && v == c.keyword_value.as_str()),
         "{}: keyword",
         c.id
     );
@@ -202,14 +306,23 @@ fn pinned_form_layouts_extract_fields_promotions_and_empty_results() {
 fn check_layout(c: Case) {
     let p = Plan::compile(&root(&c)).unwrap_or_else(|e| panic!("{}: {e}", c.id));
     let now = "2026-10-29T12:00:00Z".parse().unwrap();
-    let ctx = p.context(&BTreeMap::new(), &query(&c), now);
+    let public = c
+        .public_settings
+        .iter()
+        .map(|(k, v)| (k.clone(), json!(v)))
+        .collect();
+    let ctx = p.context(&public, &query(&c), now);
     let requests = p.build_requests(&ctx).unwrap();
     assert_eq!(requests.len(), c.request_count, "{}", c.id);
     let request = &requests[0];
     let mut url = url::Url::parse(&request.url).unwrap();
     if c.search_post {
         assert_eq!(request.method, "POST", "{}", c.id);
-        let body = request.body.clone().unwrap_or_default();
+        let body = query_text(&form_pairs(
+            &c,
+            p.charset(),
+            request.body.as_deref().unwrap_or_default().as_bytes(),
+        ));
         let query = url.query().map(|q| format!("{q}&{body}")).unwrap_or(body);
         url.set_query(Some(&query));
     }
@@ -254,12 +367,26 @@ fn check_layout(c: Case) {
             "{}",
             c.id
         );
-        assert!(r.link.ends_with(&c.download_path), "{}: download", c.id);
-        assert!(
-            r.details.as_deref().unwrap().ends_with(&c.details_path),
-            "{}: details",
-            c.id
-        );
+        if c.download_path == "magnet" {
+            const HASH: &str = "0123456789abcdef0123456789abcdef01234567";
+            assert!(
+                r.link.starts_with("magnet:?") && r.link.contains(HASH)
+                    || r.attributes.get("infohash").is_some_and(|v| v == HASH),
+                "{}: {:?}",
+                c.id,
+                r
+            );
+        } else {
+            assert!(r.link.ends_with(&c.download_path), "{}: download", c.id);
+        }
+        match &c.details_path {
+            Some(path) => assert!(
+                r.details.as_deref().unwrap().ends_with(path),
+                "{}: details",
+                c.id
+            ),
+            None => assert_eq!(r.details, None, "{}: undeclared details", c.id),
+        }
         assert_eq!(
             r.attributes
                 .get("downloadvolumefactor")
@@ -312,10 +439,16 @@ fn check_layout(c: Case) {
 
 #[test]
 fn deferred_form_layouts_remain_unadmitted_with_reproducible_blockers() {
-    let deferred: Vec<Case> =
+    let mut deferred: Vec<Case> =
         serde_json::from_str(include_str!("fixtures/form-layouts/deferred.json")).unwrap();
+    deferred.extend(
+        serde_json::from_str::<Vec<Case>>(include_str!(
+            "fixtures/form-layouts/deferred-animelayer.json"
+        ))
+        .unwrap(),
+    );
     for c in deferred {
-        assert_eq!(c.id, "hdtorrents");
+        assert!(["hdtorrents", "animelayer"].contains(&c.id.as_str()));
         assert!(!builtin::FORM_IDS.contains(&c.id.as_str()));
         let catalog = builtin::catalog();
         assert_eq!(
@@ -323,15 +456,19 @@ fn deferred_form_layouts_remain_unadmitted_with_reproducible_blockers() {
             false
         );
         let p = Plan::compile(&root(&c)).unwrap();
-        let ctx = p.context(
-            &BTreeMap::new(),
-            &query(&c),
-            "2026-10-29T12:00:00Z".parse().unwrap(),
-        );
+        let public = c
+            .public_settings
+            .iter()
+            .map(|(k, v)| (k.clone(), json!(v)))
+            .collect();
+        let ctx = p.context(&public, &query(&c), "2026-10-29T12:00:00Z".parse().unwrap());
         let request = p.build_requests(&ctx).unwrap().remove(0);
-        // Pinned layout is HH:mm:ss<two spaces>dd/MM/yyyy. HTML extraction
-        // normalizes the text to one space; dateparse leaves it unchanged and
-        // the bounded fuzzy parser rejects it. Keep the actual definition intact.
+        request_matches(&c, &url::Url::parse(&request.url).unwrap());
+        // hdtorrents: pinned layout is HH:mm:ss<two spaces>dd/MM/yyyy. HTML extraction
+        // normalizes the text to one space; dateparse leaves it unchanged and the
+        // bounded fuzzy parser rejects it. animelayer: its month replacements yield
+        // `28 October 2026 13:30` with no dateparse, also outside the fuzzy subset.
+        // Keep the actual definitions intact.
         let error = p.extract(&request, &page(&c, false), &ctx).unwrap_err();
         assert_eq!(error.path, "$.search.fields.date");
         assert!(error.to_string().contains("unsupported fuzzy date syntax"));
@@ -482,8 +619,14 @@ fn form_admission_matches_the_fixture_manifest_and_keeps_secrets_private() {
             .find(|row| row["id"] == c.id)
             .unwrap();
         assert_eq!(row["ready"], true, "{}: {}", c.id, row["blocked_reason"]);
-        for field in ["username", "password"]
-            .into_iter()
+        let identity: &[&str] = if c.no_credentials {
+            &[]
+        } else {
+            &[c.user_key(), "password"]
+        };
+        for field in identity
+            .iter()
+            .copied()
             .chain(c.configured_settings.keys().map(String::as_str))
         {
             assert!(row["settings"]
@@ -491,6 +634,17 @@ fn form_admission_matches_the_fixture_manifest_and_keeps_secrets_private() {
                 .unwrap()
                 .iter()
                 .any(|s| s["name"] == field && s["secret"] == true));
+        }
+        for field in c.public_settings.keys() {
+            assert!(
+                row["settings"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .any(|s| s["name"] == field.as_str() && s["secret"] == false),
+                "{}: {field} must be a declared non-secret setting",
+                c.id
+            );
         }
         let base = "https://fixture.example/";
         let mut i = rackett::models::Indexer {
@@ -506,9 +660,11 @@ fn form_admission_matches_the_fixture_manifest_and_keeps_secrets_private() {
             .unwrap()
             .to_string()
             .contains("fixture-password"));
-        i.definition.as_mut().unwrap()["settings"]["password"] = json!(false);
-        assert!(builtin::Runtime::compile(&i).is_err(), "{}", c.id);
-        for key in c.configured_settings.keys() {
+        if !c.no_credentials {
+            i.definition.as_mut().unwrap()["settings"]["password"] = json!(false);
+            assert!(builtin::Runtime::compile(&i).is_err(), "{}", c.id);
+        }
+        for key in c.configured_settings.keys().chain(c.public_settings.keys()) {
             i.definition.as_mut().unwrap()["settings"] =
                 credentials(&c, "fixture-user", "fixture-password");
             i.definition.as_mut().unwrap()["settings"][key] = json!(false);
@@ -529,7 +685,7 @@ async fn every_form_provider_passes_login_cache_download_expiry_edit_and_restart
         .map(|case| async move {
             let name = case.id.clone();
             let run = tokio::spawn(tokio::time::timeout(
-                std::time::Duration::from_secs(300),
+                lifecycle_budget(&case),
                 lifecycle(case),
             ));
             match run.await {
@@ -582,6 +738,7 @@ async fn lifecycle(c: Case) {
     const PASS: &str = "fixture-password";
     const CHANGED: &str = "fixture-changed-password";
     const TORRENT: &[u8] = b"d4:infod4:name7:fixture6:lengthi42eee";
+    const HASH: &str = "0123456789abcdef0123456789abcdef01234567";
     struct StateData {
         mode: u8,
         token: String,
@@ -618,42 +775,8 @@ async fn lifecycle(c: Case) {
         }
         /// Parses a form body, decoding percent-escaped bytes with the definition charset.
         fn form(&self, body: &[u8]) -> BTreeMap<String, String> {
-            if self.charset == Charset::Utf8 {
-                return url::form_urlencoded::parse(body).into_owned().collect();
-            }
-            let text = std::str::from_utf8(body).expect("percent-encoded body is ASCII");
-            // HttpUtility.UrlEncode emits lowercase hex escapes.
-            for escape in text.split('%').skip(1) {
-                assert!(
-                    escape.len() >= 2
-                        && escape[..2]
-                            .bytes()
-                            .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
-                    "{}: non-HttpUtility escape in {text}",
-                    self.case.id
-                );
-            }
-            let decode = |part: &str| {
-                let raw = part.replace('+', " ");
-                let mut bytes = Vec::new();
-                let mut i = 0;
-                while i < raw.len() {
-                    if raw.as_bytes()[i] == b'%' {
-                        bytes.push(u8::from_str_radix(&raw[i + 1..i + 3], 16).unwrap());
-                        i += 3;
-                    } else {
-                        bytes.push(raw.as_bytes()[i]);
-                        i += 1;
-                    }
-                }
-                self.charset.decode(bytes).unwrap()
-            };
-            text.split('&')
-                .filter(|pair| !pair.is_empty())
-                .map(|pair| {
-                    let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-                    (decode(k), decode(v))
-                })
+            form_pairs(&self.case, self.charset, body)
+                .into_iter()
                 .collect()
         }
         fn take(&self) -> Vec<(String, String)> {
@@ -670,7 +793,24 @@ async fn lifecycle(c: Case) {
         h: HeaderMap,
         body: Bytes,
     ) -> axum::response::Response {
+        // The engine addresses the fixture as 127.0.0.1. Local port scanners on a shared
+        // machine (seen as `Host: localhost:<port>`, `user-agent: node`) are not
+        // engine requests and must not count as hits.
+        if !h
+            .get("host")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|host| host.starts_with("127.0.0.1:"))
+        {
+            return StatusCode::NOT_FOUND.into_response();
+        }
         let cookie = h.get("cookie").and_then(|v| v.to_str().ok()).unwrap_or("");
+        let cookie = match f.case.literal_cookie.as_deref() {
+            None => cookie,
+            Some(literal) => cookie
+                .strip_prefix(literal)
+                .and_then(|rest| rest.strip_prefix("; ").or(rest.is_empty().then_some("")))
+                .unwrap_or_else(|| panic!("{}: literal cookie missing: {cookie}", f.case.id)),
+        };
         let mut state = f.state.lock().unwrap();
         state.hits.push((uri.to_string(), cookie.into()));
         let form_url = url::Url::parse(&f.base)
@@ -713,7 +853,13 @@ async fn lifecycle(c: Case) {
                 .insert("set-cookie", "csrf=fixture-csrf; Path=/".parse().unwrap());
             return r;
         }
-        if f.case.before_path.as_deref() == Some(uri.path()) {
+        // A `before` request that targets the release's own details page (tmghub posts
+        // the thank-you comment to `{{ .DownloadUri }}`) shares its path with searches,
+        // the login test and the login submit; only the other POST is the before request.
+        if f.case.before_path.as_deref() == Some(uri.path())
+            && (f.case.search_path != uri.path()
+                || method == Method::POST && uri.to_string() != f.case.submit_path)
+        {
             if method == Method::POST {
                 let posted = f.form(&body);
                 for (k, v) in &f.case.before_fields {
@@ -726,9 +872,11 @@ async fn lifecycle(c: Case) {
             f.case.search_post && method == Method::POST && uri.path() == f.case.search_path;
         if search_post {
             // Record the body as query pairs so search matching sees one request shape.
+            // Legacy-encoded bodies are decoded with the definition charset first.
+            let pairs = query_text(&form_pairs(&f.case, f.charset, &body));
             let hit = state.hits.last_mut().unwrap();
             hit.0.push(if hit.0.contains('?') { '&' } else { '?' });
-            hit.0.push_str(std::str::from_utf8(&body).unwrap());
+            hit.0.push_str(&pairs);
         }
         if method == Method::POST && !search_post {
             assert_eq!(
@@ -778,6 +926,9 @@ async fn lifecycle(c: Case) {
                 .map(|(k, v)| {
                     let v = match v.as_str() {
                         "{{ .Config.username }}" => f.user.into(),
+                        other if other == format!("{{{{ .Config.{} }}}}", f.case.user_key()) => {
+                            f.user.into()
+                        }
                         "{{ .Config.password }}" => state.password.clone(),
                         "{{ .Config.sitelink }}" => f.base.clone(),
                         "{{ .Config.passid }}" => "0".into(),
@@ -792,6 +943,7 @@ async fn lifecycle(c: Case) {
                             f.case
                                 .configured_settings
                                 .get(key)
+                                .or_else(|| f.case.public_settings.get(key))
                                 .cloned()
                                 .unwrap_or_default()
                         }
@@ -836,6 +988,7 @@ async fn lifecycle(c: Case) {
         }
         let search = uri.path() == f.case.search_path
             && (search_post
+                || f.case.keyword.is_empty()
                 || uri.query().is_some_and(|q| {
                     url::form_urlencoded::parse(q.as_bytes()).any(|(key, _)| key == f.case.keyword)
                 }));
@@ -855,7 +1008,7 @@ async fn lifecycle(c: Case) {
                 return (StatusCode::SERVICE_UNAVAILABLE, "fixture-private-error").into_response();
             }
             if state.mode == 6 {
-                // Expire exactly once at search time, after a successful preflight.
+                // Expire exactly once on a search page of a validated session.
                 state.mode = 0;
                 state.token.clear();
                 let mut r = StatusCode::FOUND.into_response();
@@ -987,14 +1140,42 @@ async fn lifecycle(c: Case) {
         .as_str()
     );
     assert!(hits.iter().any(|(u, _)| u == &c.submit_path));
-    let searches: Vec<_> = hits
-        .iter()
-        .filter(|(u, _)| {
-            let url = url::Url::parse(&base).unwrap().join(u).unwrap();
-            url.path() == c.search_path && url.query_pairs().any(|(key, _)| key == c.keyword)
-        })
-        .collect();
+    let is_search = |(u, _): &(String, String)| {
+        let url = url::Url::parse(&base).unwrap().join(u).unwrap();
+        url.path() == c.search_path
+            && (c.keyword.is_empty() || url.query_pairs().any(|(key, _)| key == c.keyword))
+    };
+    let searches: Vec<_> = hits.iter().filter(|h| is_search(h)).collect();
     assert_eq!(searches.len(), c.request_count);
+    // Login and TestLogin run once; the validated session then sends one request per
+    // page, as pinned PerformQuery does (docs/session-validation.md).
+    let first_search = hits.iter().position(is_search).unwrap();
+    assert_eq!(
+        hits.len(),
+        first_search + c.request_count,
+        "{}: request between search pages: {hits:?}",
+        c.id
+    );
+    if !c.no_test {
+        assert_eq!(
+            hits[first_search - 1].0,
+            c.login_path,
+            "{}: TestLogin",
+            c.id
+        );
+    }
+    // Relogin after a search shows expiry: landing (unless a credential POST),
+    // submit and TestLogin (pinned Relogin, `CardigannIndexer.cs:874-890`).
+    let relogin = usize::from(!c.direct_post) + 1 + usize::from(!c.no_test);
+    if c.no_test {
+        // Landing (unless a credential POST), submit and searches; no validation.
+        assert_eq!(
+            hits.len(),
+            usize::from(!c.direct_post) + 1 + c.request_count,
+            "{}: {hits:?}",
+            c.id
+        );
+    }
     for (u, _) in searches {
         request_matches(&c, &url::Url::parse(&base).unwrap().join(u).unwrap());
     }
@@ -1007,25 +1188,40 @@ async fn lifecycle(c: Case) {
         "fixture-management-key",
         "http://127.0.0.1:9117",
     );
-    assert!(shown.results[0]
-        .link
-        .starts_with("http://127.0.0.1:9117/dl/"));
+    // A release whose link is itself a magnet (`download_path: "magnet"`) needs no
+    // ticket and sends no download request, as in the public harness.
+    let magnet = c.download_path == "magnet";
+    if magnet {
+        assert!(
+            r.link.starts_with("magnet:?xt=urn:btih:") && r.link.contains(HASH),
+            "{}: {}",
+            c.id,
+            r.link
+        );
+        assert_eq!(shown.results[0].link, r.link, "{}", c.id);
+    } else {
+        assert!(shown.results[0]
+            .link
+            .starts_with("http://127.0.0.1:9117/dl/"));
+    }
     for secret in [user, PASS, "fixture-form", "fixture-csrf"] {
         assert!(!serde_json::to_string(&shown).unwrap().contains(secret));
     }
-    assert_eq!(
-        engine
-            .download(&i.id, r.source_epoch, &r.link)
-            .await
-            .unwrap_or_else(|e| panic!("{} download: {e}", c.id)),
-        match c.detail.as_ref().map(|d| d.resolved.as_str()) {
-            Some(magnet) if magnet.starts_with("magnet:") => Download::Magnet(magnet.into()),
-            _ => Download::Torrent {
-                bytes: TORRENT.to_vec(),
-                content_type: "application/x-bittorrent".into(),
-            },
-        }
-    );
+    if !magnet {
+        assert_eq!(
+            engine
+                .download(&i.id, r.source_epoch, &r.link)
+                .await
+                .unwrap_or_else(|e| panic!("{} download: {e}", c.id)),
+            match c.detail.as_ref().map(|d| d.resolved.as_str()) {
+                Some(magnet) if magnet.starts_with("magnet:") => Download::Magnet(magnet.into()),
+                _ => Download::Torrent {
+                    bytes: TORRENT.to_vec(),
+                    content_type: "application/x-bittorrent".into(),
+                },
+            }
+        );
+    }
     let hits = fixture.take();
     assert!(hits.iter().all(|(_, c)| c.contains("-renewed")));
     if let Some(before) = &c.before_path {
@@ -1055,10 +1251,12 @@ async fn lifecycle(c: Case) {
         .patch_indexer(&i.id, json!({"name":"Edited fixture"}))
         .await
         .unwrap();
-    assert!(engine
-        .download(&i.id, r.source_epoch, &r.link)
-        .await
-        .is_err());
+    if !magnet {
+        assert!(engine
+            .download(&i.id, r.source_epoch, &r.link)
+            .await
+            .is_err());
+    }
     assert!(fixture.take().is_empty());
     drop(engine);
     let engine = Arc::new(Engine::new(path.clone()).await.unwrap());
@@ -1071,51 +1269,79 @@ async fn lifecycle(c: Case) {
     );
     assert_eq!(restarted.results.len(), 1);
     assert_eq!(fixture.posts(), 1);
-    assert!(fixture
-        .take()
-        .iter()
-        .all(|(_, cookie)| cookie.contains("-renewed")));
-    // Configured credential changes retire the old session and ticket, not just the cache.
-    fixture.state.lock().unwrap().password = CHANGED.into();
-    engine
-        .patch_indexer(
-            &i.id,
-            json!({"definition":{"builtin_id":c.id,"settings":{"password":CHANGED}}}),
-        )
-        .await
-        .unwrap();
-    assert!(engine
-        .download(
-            &i.id,
-            restarted.results[0].source_epoch,
-            &restarted.results[0].link
-        )
-        .await
-        .is_err());
-    let changed = engine.search(vec![i.id.clone()], q.clone()).await;
-    assert!(changed.errors.is_empty(), "{}: {:?}", c.id, changed.errors);
-    assert_eq!(fixture.posts(), 2);
-    let password_input = c
-        .expected_inputs
-        .iter()
-        .find(|(_, v)| v.as_str() == "{{ .Config.password }}")
-        .unwrap()
-        .0;
+    let hits = fixture.take();
+    assert!(hits.iter().all(|(_, cookie)| cookie.contains("-renewed")));
+    // Validation is in memory: the restored session is tested once, then trusted.
     assert_eq!(
-        fixture.state.lock().unwrap().posted[1][password_input],
-        CHANGED
-    );
-    assert!(
-        fixture.take()[0].1.is_empty(),
-        "{}: old session reused after password change",
+        hits.len(),
+        usize::from(!c.no_test) + c.request_count,
+        "{}: restart: {hits:?}",
         c.id
     );
+    if !c.no_test {
+        assert_eq!(hits[0].0, c.login_path, "{}: restart TestLogin", c.id);
+    }
+    // Configured credential changes retire the old session and ticket, not just the cache.
+    // A credential-less source has nothing to change.
+    if !c.no_credentials {
+        fixture.state.lock().unwrap().password = CHANGED.into();
+        engine
+            .patch_indexer(
+                &i.id,
+                json!({"definition":{"builtin_id":c.id,"settings":{"password":CHANGED}}}),
+            )
+            .await
+            .unwrap();
+        assert!(engine
+            .download(
+                &i.id,
+                restarted.results[0].source_epoch,
+                &restarted.results[0].link
+            )
+            .await
+            .is_err());
+        let changed = engine.search(vec![i.id.clone()], q.clone()).await;
+        assert!(changed.errors.is_empty(), "{}: {:?}", c.id, changed.errors);
+        assert_eq!(fixture.posts(), 2);
+        let password_input = c
+            .expected_inputs
+            .iter()
+            .find(|(_, v)| v.as_str() == "{{ .Config.password }}")
+            .unwrap()
+            .0;
+        assert_eq!(
+            fixture.state.lock().unwrap().posted[1][password_input],
+            CHANGED
+        );
+        let hits = fixture.take();
+        // The re-login starts from scratch: no cookie, or only the declared `login.cookies`
+        // seed, which pinned DoLogin sets as the cookie header (`CardigannIndexer.cs:1026`).
+        assert!(
+            hits[0].1.is_empty() || Some(hits[0].1.as_str()) == c.landing_cookie.as_deref(),
+            "{}: old session reused after password change",
+            c.id
+        );
+        assert_eq!(
+            hits.len(),
+            relogin + c.request_count,
+            "{}: changed credentials: {hits:?}",
+            c.id
+        );
+    }
     engine.clear_cache().await;
     fixture.state.lock().unwrap().mode = 6;
     let renewed = engine.search(vec![i.id.clone()], q.clone()).await;
     assert!(renewed.errors.is_empty(), "{}: {:?}", c.id, renewed.errors);
-    assert_eq!(fixture.posts(), 3);
-    fixture.take();
+    assert_eq!(fixture.posts(), 2 + usize::from(!c.no_credentials));
+    // The expired page, one relogin, its retry, then the remaining pages.
+    let hits = fixture.take();
+    assert!(is_search(&hits[0]), "{}: {hits:?}", c.id);
+    assert_eq!(
+        hits.len(),
+        1 + relogin + c.request_count,
+        "{}: expiry relogin: {hits:?}",
+        c.id
+    );
     let mut modes = vec![1, 2, 3, 4];
     if c.search_error_html.is_some() {
         modes.push(7);
@@ -1126,24 +1352,42 @@ async fn lifecycle(c: Case) {
         let before = fixture.posts();
         let result = engine.search(vec![i.id.clone()], q.clone()).await;
         assert!(result.results.is_empty(), "{} mode {mode}", c.id);
+        // Without a test a marker-less HTML page is an empty result and never a
+        // relogin (pinned CheckIfLoginIsNeeded, `CardigannIndexer.cs:977-980`).
         assert_eq!(
             result.errors.is_empty(),
-            mode == 1,
+            mode == 1 || (mode == 2 && c.no_test && !c.json),
             "{} mode {mode}: {:?}",
             c.id,
             result.errors
         );
         assert_eq!(
             fixture.posts() - before,
-            usize::from(mode == 2),
-            "{}: bounded auth retry",
-            c.id
+            usize::from(mode == 2 && !c.no_test),
+            "{} mode {mode}: bounded auth retry: {:?}",
+            c.id,
+            result.errors
         );
         let text = serde_json::to_string(&result).unwrap();
         for secret in [user, PASS, CHANGED, "fixture-private-error"] {
             assert!(!text.contains(secret));
         }
-        assert!(!fixture.take().is_empty());
+        let hits = fixture.take();
+        assert!(!hits.is_empty());
+        if !c.no_test {
+            // Mode 1 pages trust the validated session and mode 2 relogs on its
+            // first page. Its failed retry clears that trust, so later searches
+            // run TestLogin first.
+            match mode {
+                1 => assert_eq!(hits.len(), c.request_count, "{} mode 1", c.id),
+                2 => assert!(is_search(&hits[0]), "{} mode 2: {hits:?}", c.id),
+                _ => assert!(
+                    hits[0].0 == c.login_path && hits.len() > 1 && is_search(&hits[1]),
+                    "{} mode {mode}: {hits:?}",
+                    c.id
+                ),
+            }
+        }
     }
     fixture.state.lock().unwrap().mode = 0;
     let recovered = engine.search(vec![i.id.clone()], q.clone()).await;
@@ -1154,7 +1398,14 @@ async fn lifecycle(c: Case) {
         recovered.errors
     );
     assert_eq!(recovered.results.len(), 1);
-    assert!(!fixture.take().is_empty());
+    // Mode 7 pages pass the login check, so only a mode 4 failure leaves TestLogin.
+    let hits = fixture.take();
+    assert_eq!(
+        hits.len(),
+        usize::from(!c.no_test && c.search_error_html.is_none()) + c.request_count,
+        "{}: recovered: {hits:?}",
+        c.id
+    );
     // A wrong-password/error page on reauthentication must never reach extraction.
     engine.clear_cache().await;
     {
@@ -1440,7 +1691,7 @@ async fn pttime_adult_path_passes_the_same_complete_authenticated_lifecycle() {
     c.search_path = "/adults.php".into();
     c.search_fixture = "post:pttime-adults".into();
     check_layout(c.clone());
-    tokio::time::timeout(std::time::Duration::from_secs(300), lifecycle(c))
+    tokio::time::timeout(lifecycle_budget(&c), lifecycle(c))
         .await
         .unwrap();
 }
@@ -1529,4 +1780,60 @@ fn second_post_batch_preserves_provider_filters_and_declared_limitations() {
         p.extract(&req, &body, &ctx).unwrap_err().path,
         "$.search.fields.date"
     );
+}
+
+#[test]
+fn puntotorrent_title_suffix_follows_each_quality_branch() {
+    // The title is the cell text with `\W` turned into dots, then ` ` plus the
+    // quality markers that each optional field adds (docs/nested-has-selectors.md
+    // covers the repeated `a:not(...)a:not(...)` compound the BluRay field uses).
+    // Expected values are derived by hand from the pinned selectors: BluRay needs
+    // `1080` without HDTV/REMUX/WEB, or `2160` together with a lower-case `uhd`.
+    let all = cases();
+    let c = all.iter().find(|c| c.id == "puntotorrent").unwrap();
+    let p = Plan::compile(&root(c)).unwrap();
+    let ctx = p.context(
+        &BTreeMap::new(),
+        &query(c),
+        "2026-10-29T12:00:00Z".parse().unwrap(),
+    );
+    let req = p.build_requests(&ctx).unwrap().remove(0);
+    let body = page(c, false);
+    const MAIN: &str = "Fixture Release BluRay 1080p 4K";
+    assert!(body.contains(MAIN));
+    for (text, expected) in [
+        (
+            MAIN,
+            "Fixture.Release.BluRay.1080p.4K BluRay.2160p.Spanish-PuntoTorrent1080p.Spanish-PuntoTorrent",
+        ),
+        (
+            "Fixture Release 2160p uhd",
+            "Fixture.Release.2160p.uhd BluRay.2160p.Spanish-PuntoTorrent",
+        ),
+        (
+            "Fixture Release REMUX 1080p",
+            "Fixture.Release.REMUX.1080p Remux.1080p.Spanish-PuntoTorrent",
+        ),
+        (
+            "Fixture Release WEB-DL 720p",
+            "Fixture.Release.WEB.DL.720p WEBDL.720p.Spanish-PuntoTorrent",
+        ),
+        (
+            "Fixture Release HDTV 720p",
+            "Fixture.Release.HDTV.720p HDTV.720p.Spanish-PuntoTorrent",
+        ),
+        (
+            "Fixture Release DVDRip Xvid",
+            "Fixture.Release.DVDRip.Xvid DVD.Spanish-PuntoTorrent480p.Spanish-PuntoTorrent",
+        ),
+        (
+            "Fixture Release VOSE 720p",
+            "Fixture Release VOSE 720p | English 720p.Spanish-PuntoTorrent",
+        ),
+    ] {
+        let rows = p
+            .extract(&req, &body.replace(MAIN, text), &ctx)
+            .unwrap_or_else(|e| panic!("{text}: {e}"));
+        assert_eq!(rows[0].title, expected, "{text}");
+    }
 }

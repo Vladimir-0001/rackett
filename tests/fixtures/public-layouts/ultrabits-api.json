@@ -1,0 +1,23 @@
+{
+ "total": 1,
+ "data": [
+  {
+   "name": "Fixture Release",
+   "detailsUrl": "/details/42",
+   "downloadUrl": "/dl/42.torrent",
+   "categorySlug": "Movie-x264",
+   "size": 1073741824,
+   "seeders": 1,
+   "leechers": 2,
+   "grabs": 5,
+   "addedAt": "10/24/2026 07:29:31",
+   "infoHash": "0123456789abcdef0123456789abcdef01234567",
+   "imdbId": "1234567",
+   "tmdbId": "42",
+   "downloadvolumefactor": 0,
+   "uploadvolumefactor": 1,
+   "minimumratio": 1.0,
+   "minimumseedtime": 259200
+  }
+ ]
+}

@@ -1,0 +1,23 @@
+{
+ "data": [
+  {
+   "id": 42,
+   "attributes": {
+    "category": "Movie",
+    "name": "Fixture Release",
+    "download_link": "/dl/42.torrent",
+    "imdb_id": "1234567",
+    "tmdb_id": "42",
+    "tvdb_id": "43",
+    "num_file": 3,
+    "seeders": 1,
+    "leechers": 2,
+    "times_completed": 5,
+    "created_at": "10/24/2026 07:29:31",
+    "size": 1073741824,
+    "freeleech": "Yes",
+    "double_upload": "No"
+   }
+  }
+ ]
+}

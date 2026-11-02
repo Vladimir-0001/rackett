@@ -1,0 +1,35 @@
+{
+ "response": {
+  "total": 1
+ },
+ "item": [
+  {
+   "category": "2000",
+   "year": "2026",
+   "codec": "x264",
+   "container": "mkv",
+   "media": "WEB",
+   "resolution": "1080p",
+   "audioFormat": "AAC",
+   "subbing": null,
+   "flags": "",
+   "language": "",
+   "releaseGroup": "GRP",
+   "title": "Fixture Release",
+   "guid": "/details/42",
+   "link": "/dl/42.torrent",
+   "infohash": "0123456789abcdef0123456789abcdef01234567",
+   "imdb": "1234567",
+   "tmdb": "42",
+   "tags": "action",
+   "fileCount": "2",
+   "seeders": 1,
+   "leechers": 2,
+   "grabs": 5,
+   "pubDate": "Sat, 24 Oct 2026 07:29:31 +0000",
+   "size": 1073741824,
+   "downloadvolumefactor": 0,
+   "uploadvolumefactor": 1
+  }
+ ]
+}

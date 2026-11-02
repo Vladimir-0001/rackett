@@ -1,1 +1,341 @@
-[]
+[
+  {
+    "id": "desitorrents-api",
+    "sha256": "6b6947625f6a3f67ace9b06c24a3efb1647e280724d81ef97401f16781113db2",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api/v1/torrents?",
+    "category": 2000,
+    "search_path": "/api/v1/torrents/filter"
+  },
+  {
+    "id": "g3minitr4ck3r-api",
+    "sha256": "94666dd36d223b7c77d836198ef683012c9c12e1d3a6d94bb7ae2e650808a358",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent?use_token=1",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api/torrents?",
+    "category": 2000,
+    "search_path": "/api/torrents/filter"
+  },
+  {
+    "id": "generationfree-api",
+    "sha256": "cdb58eb2ac6eca2e6815e3668f9fd447c5bf9a6324aa1b55b6164abb3a41ea58",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api/torrents?",
+    "category": 2000,
+    "search_path": "/api/torrents/filter"
+  },
+  {
+    "id": "hdolimpo-api",
+    "sha256": "f37e13f9f311575a650a6b9f24413771206677a439137a376cb1aab01607101b",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release SPANiSH",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api/torrents?",
+    "category": 2000,
+    "search_path": "/api/torrents/filter"
+  },
+  {
+    "id": "polishtorrent",
+    "sha256": "54c84a7abbf108ef87337e88e3c626d0011950de84d2f019d5194c4a55891380",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api/torrents?",
+    "category": 4010,
+    "search_path": "/api/torrents/filter"
+  },
+  {
+    "id": "teamflix",
+    "sha256": "077104e00516aa4c750aedb5f3e771255b5fbdf3ab778ebca7b224193ec5d24f",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api/torrents?",
+    "category": 5070,
+    "search_path": "/api/torrents/filter"
+  },
+  {
+    "id": "theoldschool-api",
+    "sha256": "f6ed90ef1e320918dcd86c87f1d4391c6bb528ffc4043af39b345c70846b2435",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api/torrents?",
+    "category": 2000,
+    "search_path": "/api/torrents/filter"
+  },
+  {
+    "id": "alabala-api",
+    "sha256": "5e663f63ee64d156c585292f55d4d7672402c797ec68c494b686db6349721fa3",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"data\":[]}",
+    "probe": "/api.php?action=user",
+    "category": 2040,
+    "search_path": "/api.php"
+  },
+  {
+    "id": "dirtybytes-api",
+    "sha256": "d9a81e5d559e89e0cbe4bdd65ebac78e4670cf2d5ffe366f63bacc3539db0eb0",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key",
+      "passkey": "fixture-passkey"
+    },
+    "details_path": "/torrent/42",
+    "download_path": "/api/v1/torrents/download/42/fixture-passkey",
+    "published": "2026-10-24T05:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "searchText",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "[]",
+    "probe": "/api/v1/torrents?limit=1",
+    "category": 6040,
+    "search_path": "/api/v1/torrents"
+  },
+  {
+    "id": "trackerzero",
+    "sha256": "c08bcd98c8b8d25b7cdff2b1f170cd5c9b92de760ef08012303e64d5e7fd55aa",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key",
+      "passkey": "fixture-passkey"
+    },
+    "details_path": "/torrent/42",
+    "download_path": "/api/torrents/42/download-rss?passkey=fixture-passkey",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "q",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"items\":[]}",
+    "download_factor": "1",
+    "probe": "/api/torrents/latest?",
+    "category": 2045,
+    "search_path": "/api/torrents"
+  },
+  {
+    "id": "flood",
+    "sha256": "33e15a45bb8e07703a962f1c17a1ebfb6e850e12ae0b1bee78cad23f579961df",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 0,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "/details/42",
+    "download_path": "/dl/42.torrent",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "authorization": "Bearer fixture-source-key"
+    },
+    "empty_body": "{\"items\":[],\"total\":0}",
+    "probe": "/api/test?",
+    "category": 2000,
+    "search_path": "/api/torrents"
+  },
+  {
+    "id": "postman-api",
+    "sha256": "d22ac4e1f4e78e2339491b92d865b45b9b212d4a05540c1b14745899ba640d08",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 6000,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "details_path": "view=TorrentDetail&id=42",
+    "download_path": "/dl.php?action=Download&id=42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "query_pair": [
+      "name",
+      "Fixture"
+    ],
+    "expected_headers": {
+      "x-postman-token": "fixture-source-key"
+    },
+    "empty_body": "{\"torrents\":[],\"available_entries\":0}",
+    "probe": "/api/meta/session?",
+    "category": 2000,
+    "search_path": "/api/torrents"
+  }
+]

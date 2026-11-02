@@ -34,9 +34,9 @@ the list for the source's own site host, and nothing more.
 The verifier is installed with `reqwest::ClientBuilder::use_preconfigured_tls` on
 the engine's per-source runtime client (`engine.rs` `runtime_with`), which serves
 public searches, detail pages and downloads. The client reads the pins from the
-bundled definition through `builtin::certificates`. **Pending:** the same hook on the
-cookie/form/credential-POST session client (`auth.rs` `CookieSession`), which serves
-login and authenticated requests. See [Current state](#current-state).
+bundled definition through `builtin::certificates`. The cookie/form/credential-POST
+session client (`auth.rs` `CookieSession`), which serves login and authenticated
+requests, applies the same pins through `pinned_tls::apply`.
 
 The config mirrors reqwest's defaults: TLS 1.2 and 1.3, SNI on, and HTTP/1.1 ALPN.
 The crate doesn't enable reqwest's `http2` feature, so reqwest itself offers only
@@ -80,9 +80,7 @@ All 12 definitions blocked by this feature now compile with valid pins:
 
 | Status | Definitions |
 |---|---|
-| Passes `eligible` now; needs fixture admission (`READY_IDS`) | torrentby (public) |
-| `CookiePlan` compiles. Needs the session hook, then `COOKIE_IDS` admission and fixtures | krazyzone, leech24, thegeeks, theplace, theshow, torrent-turk |
-| Needs the session hook (`FormPlan` accepts pins), then `FORM_IDS` admission and fixtures | borgzelle, peeratiko, ptfiles, trackermk |
+| Ready (fixture-tested, 2026-10-30) | torrentby (public); krazyzone, leech24, thegeeks, theplace, theshow, torrent-turk (cookie); borgzelle, peeratiko, ptfiles, trackermk (form/credential POST) |
 | Also blocked by another feature | extremebits (`login.selectors: true` is unsupported) |
 
 The other three definitions that pin certificates are blocked elsewhere:
@@ -91,15 +89,9 @@ login and download shapes.
 
 ## Current state
 
-- Done: verifier, definition validation, engine-client hook, and the catalog gate
-  for public sources.
-- Pending (the session hook): in `src/builtin_runtime/auth.rs`, `CookiePlan` and
-  `FormPlan` carry `Pins`, and `CookieSession::create` passes its client builder
-  through `pinned_tls::apply(builder, plan.certificates.as_ref(), base)`. In
-  `form_auth.rs`, `FormPlan::compile` stops rejecting `certificates` and stores the
-  validated pins. In `builtin.rs` `eligible`, the `r.get("login").is_none()`
-  condition is dropped. The change is about 25 lines. It was prepared but not
-  committed, because those files were reserved by another task.
+- Done: verifier, definition validation, engine-client and session-client hooks, and
+  the catalog gate. All eleven sources above are admitted with fixture lifecycles,
+  which run over plain HTTP (the pins are exercised by the unit tests).
 
 ## Not supported
 

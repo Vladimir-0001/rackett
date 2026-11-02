@@ -12,12 +12,16 @@ order, `$raw`, encoding), and the session sends it as
 `application/x-www-form-urlencoded`. Expiry handling is unchanged: a redirect or
 missing login marker triggers one relogin and a retry of the same POST. On a
 301-303 redirect the body is dropped, as for login POSTs. Non-UTF-8 POST searches
-are still rejected by the request plan.
+are encoded with the definition charset, as upstream does
+([legacy-encodings.md](legacy-encodings.md#search-post-bodies)); the session sends the
+plan-encoded body unchanged.
 
 Unlocked: audionews, magico, marinetracker, metaltracker, rintor (fixtures pending).
 
-Harness: form cases set `"search_post": true`. The fixture server then treats a POST
-to `search_path` as the search and matches keyword and category pairs in the body.
+Harness: form, public and cookie cases set `"search_post": true`. The fixture server
+then treats a POST to `search_path` as the search and matches keyword and category
+pairs in the body, decoded with the definition charset
+(fixture-harness.md).
 
 ## JSON and XML search responses in sessions
 
@@ -66,3 +70,9 @@ path and query). The probe is answered with an empty capabilities document and n
 counted among search requests. Presented results must not contain any setting value.
 Header-key cases add `"expected_headers": {"authorization": "Bearer fixture-source-key"}`
 (lower-case names). Every request must carry them; no other Authorization is allowed.
+
+JSON sources set `"empty_body"` to their literal no-results response (a JSON body cannot
+carry the `<!-- rows:start -->` markers), and Torznab XML sources need the RSS `channel` as
+their `empty_html_container` in `src/builtin.rs` so an HTML error page is not mistaken for
+an empty result. Definitions that fix `downloadvolumefactor` (e.g. `text: 1`) set
+`"download_factor": "1"`.

@@ -16,7 +16,7 @@ struct Case {
 }
 
 /// Public layout cases: the original manifest plus independently merged batches.
-const PUBLIC_MANIFESTS: [&str; 11] = [
+const PUBLIC_MANIFESTS: [&str; 19] = [
     include_str!("fixtures/public-layouts/cases.json"),
     include_str!("fixtures/public-batches/batch1.json"),
     include_str!("fixtures/public-batches/batch2.json"),
@@ -28,14 +28,24 @@ const PUBLIC_MANIFESTS: [&str; 11] = [
     include_str!("fixtures/public-batches/batch8.json"),
     include_str!("fixtures/public-batches/batch9.json"),
     include_str!("fixtures/public-batches/batch10.json"),
+    include_str!("fixtures/public-batches/batch11.json"),
+    include_str!("fixtures/public-batches/batch12.json"),
+    include_str!("fixtures/public-batches/batch13.json"),
+    include_str!("fixtures/public-batches/batch14.json"),
+    include_str!("fixtures/public-batches/batch15.json"),
+    include_str!("fixtures/public-batches/batch16.json"),
+    include_str!("fixtures/public-batches/batch16-thepiratebay.json"),
+    include_str!("fixtures/public-batches/batch17.json"),
 ];
 /// Cookie layout cases: the original manifest plus independently merged batches.
-const COOKIE_MANIFESTS: [&str; 5] = [
+const COOKIE_MANIFESTS: [&str; 7] = [
     include_str!("fixtures/cookie-layouts/cases.json"),
     include_str!("fixtures/cookie-batches/batch1.json"),
     include_str!("fixtures/cookie-batches/batch2.json"),
     include_str!("fixtures/cookie-batches/batch3.json"),
     include_str!("fixtures/cookie-batches/batch4.json"),
+    include_str!("fixtures/cookie-batches/batch5.json"),
+    include_str!("fixtures/cookie-batches/batch6.json"),
 ];
 #[tokio::test]
 async fn every_admitted_nexusphp_case_passes_engine_session_search_download_and_restart() {
@@ -369,6 +379,10 @@ fn catalog_admission_is_exactly_the_baseline_and_the_source_pinned_family() {
         include_str!("fixtures/form-batches/batch18.json"),
         include_str!("fixtures/form-batches/batch19.json"),
         include_str!("fixtures/form-batches/batch20.json"),
+        include_str!("fixtures/form-batches/batch21.json"),
+        include_str!("fixtures/form-batches/batch22.json"),
+        include_str!("fixtures/form-batches/batch23.json"),
+        include_str!("fixtures/form-batches/batch24.json"),
     ] {
         let batch: Vec<serde_json::Value> = serde_json::from_str(batch).unwrap();
         ready.extend(batch.iter().map(|v| v["id"].as_str().unwrap().to_owned()));

@@ -1,0 +1,29 @@
+[
+ {
+  "id": "ex-torrenty",
+  "sha256": "24f15782ceab063a6bcac1c4eba6d76e9cd35d09434ef22f2cb6f125e83fe65f",
+  "category": 5060,
+  "custom_category": 100028,
+  "request_count": 1,
+  "login_path": "/index.php",
+  "search_path": "/szukaj.php",
+  "keyword": "search",
+  "keyword_value": "Fixture",
+  "category_input": [
+   "cat",
+   "0"
+  ],
+  "download_path": "/download/42/fixture-release",
+  "details_path": "/torrent/42/fixture-release",
+  "published": "2026-10-29T12:00:00Z",
+  "free_markup": "",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1,
+  "normal_download": 0,
+  "normal_upload": 1,
+  "user_agent": true,
+  "missing_title": null,
+  "expected_title": null
+ }
+]

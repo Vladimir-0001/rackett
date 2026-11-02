@@ -62,6 +62,7 @@ fn runtime(base: &str, delay_ms: u64) -> Runtime {
         modes: builtin::source_modes(&indexer(base, "")),
         empty_html_container: None,
         download: None,
+        api_origin: None,
     }
 }
 fn query(q: &str) -> SearchQuery {
@@ -545,6 +546,7 @@ async fn ordinary_pages_unrelated_errors_post_and_json_never_call_the_solver() {
             modes: BTreeMap::from([("search".into(), vec!["q".into()])]),
             empty_html_container: None,
             download: None,
+            api_origin: None,
         };
         let source = Source::new(&indexer(&challenged.url, ""), Some(Arc::new(solver))).unwrap();
         let error = run(&rt, &challenged.url, &source, "x", Duration::from_secs(20))

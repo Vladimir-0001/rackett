@@ -263,9 +263,9 @@ fn escaped_identifiers_follow_css_escape_decoding() {
         )
         .unwrap()
         .as_deref(),
+        // Field text is trimmed only (pinned ParseUtil.NormalizeSpace is Trim), so the
+        // non-breaking space inside the value is kept.
         Some("1.2\u{a0}GB")
-            .map(|s| s.split_whitespace().collect::<Vec<_>>().join(" "))
-            .as_deref()
     );
     assert_eq!(
         field(
@@ -336,9 +336,6 @@ fn grammar_rejections_are_explicit() {
     for bad in [
         "p:contains()",
         "p:contains( )",
-        "p:contains(a b)",
-        "p:contains(\"a\" \"b\")",
-        "p:contains(a \"b\")",
         "p:contains(1)",
         "p:contains(1.5)",
         "p:contains(a,b)",
@@ -352,16 +349,12 @@ fn grammar_rejections_are_explicit() {
         "p:contains(\"abc\"",
         "p:contains(/*c*/\"abc)",
         "p:contains(/*c*/)",
-        "p:contains(/*c*/ a /*d*/ b)",
-        "p:contains(/*c*/\"a\"/*d*/\"b\")",
         "p:contains(abc",
         "p:contains(\"a\nb\")",
         "p:contains(a(b))",
         "p:contains",
         "p:is(:contains(1))",
-        "p:where(:contains(a b), p)",
         "p:not(:contains())",
-        "p:has(:contains(\"x\" y))",
     ] {
         let err = Css::parse(bad).unwrap_err();
         assert!(err.contains("unsupported CSS selector"), "{bad}: {err}");
@@ -380,6 +373,13 @@ fn grammar_rejections_are_explicit() {
         "p:contains( /*c*/ 'a)' /*d*/ )",
         "p:CONTAINS(a)",
         "p:is(:contains(a), b)",
+        "p:contains(a b)",
+        "p:contains(\"a\" \"b\")",
+        "p:contains(a \"b\")",
+        "p:contains(/*c*/ a /*d*/ b)",
+        "p:contains(/*c*/\"a\"/*d*/\"b\")",
+        "p:where(:contains(a b), p)",
+        "p:has(:contains(\"x\" y))",
     ] {
         assert!(Css::parse(good).is_ok(), "{good}");
     }
@@ -704,6 +704,17 @@ fn engine_parser_matches_scraper_for_ordinary_documents() {
 }
 
 #[test]
+fn several_argument_tokens_keep_the_last_like_anglesharp() {
+    // ContainsFunctionState (AngleSharp 1.8.6, CssSelectorConstructor.cs:958-998) overwrites
+    // its value with every ident or string token; the tokenizer drops comments.
+    assert!(matches(":contains(Only Upload)", "<p id=t>Upload</p>"));
+    assert!(!matches(":contains(Only Upload)", "<p id=t>Only</p>"));
+    assert!(matches(":contains(\"x y\" z)", "<p id=t>z</p>"));
+    assert!(matches(":contains(a/*c*/'b c')", "<p id=t>b c</p>"));
+    assert!(!matches(":contains(a/*c*/'b c')", "<p id=t>a</p>"));
+}
+
+#[test]
 fn comments_before_quoted_argument_use_token_boundaries() {
     assert!(matches(":contains(/*c*/\"a b\")", "<p id=t>xa by</p>"));
     assert!(!matches(":contains(/*c*/'a  b')", "<p id=t>a b</p>"));
@@ -851,4 +862,27 @@ fn optional_fields_never_swallow_contains_failures() {
         assert!(err.message.starts_with("CSS :contains "), "{err:?}");
         assert!(err.message.contains(reason), "{err:?}");
     }
+}
+
+#[test]
+fn a_repeated_compound_type_is_a_no_op_like_anglesharp() {
+    // AngleSharp adds a type selector anywhere in a compound to that compound
+    // (CssSelectorConstructor.cs:211-213,465-492): `a:not(x)a` is `a:not(x)`.
+    let link = "<p><a id=t href=/x>1080p BluRay</a></p>";
+    assert!(matches("a:not(:contains(HDTV))a:contains(\"1080\")", link));
+    assert!(!matches(
+        "a:not(:contains(BluRay))a:contains(\"1080\")",
+        link
+    ));
+    assert!(matches("p A:not(.x)a", link));
+    // Other misplaced type selectors stay rejected.
+    for bad in [":not(.x)a", "a:not(.x)b", "a:not(.x)ns|a", "p :not(.x)a"] {
+        assert!(Css::parse(bad).is_err(), "{bad}");
+    }
+    // Pseudo-class names, classes and argument contents are never treated as types.
+    assert!(Css::parse("a:first-child.a:not(a)").is_ok());
+    let pinned = r#"td:nth-child(2) a:not(:contains("HDTV"))a:not(:contains("hdtv"))a:not(:contains("REMUX"))a:not(:contains("Remux"))a:not(:contains("remux"))a:not(:contains("WEB"))a:not(:contains("web"))a:not(:contains("Web"))a:contains("1080"),:contains("2160"):contains("uhd")"#;
+    let row = "<table><tr><td>x</td><td><a id=t>Film 1080p BluRay</a></td></tr></table>";
+    assert!(matches(pinned, row));
+    assert!(!matches(pinned, &row.replace("BluRay", "WEB-DL")));
 }

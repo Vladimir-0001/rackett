@@ -17,6 +17,11 @@ const HASH: &str = "0123456789abcdef0123456789abcdef01234567";
 struct Detail {
     html: String,
     resolved: String,
+    /// A public `download.before` request (path and query) whose response the
+    /// infohash reads (`usebeforeresponse`): `html` is served there instead, and the
+    /// release link itself is not fetched.
+    #[serde(default)]
+    before: Option<String>,
 }
 #[derive(Clone, Deserialize)]
 struct Case {
@@ -32,6 +37,10 @@ struct Case {
     #[serde(default)]
     optional_size: bool,
     query_pair: [String; 2],
+    /// The definition searches with `method: post`; `query_pair` is matched in the
+    /// form body, decoded with the definition charset, instead of the query string.
+    #[serde(default)]
+    search_post: bool,
     download_path: String,
     details_path: String,
     seeders: u64,
@@ -46,6 +55,15 @@ struct Case {
     /// make it malformed; the extraction must still yield `expected_size`.
     #[serde(default)]
     fixed_size: bool,
+    /// The size a malformed size text yields when the definition defaults a missing
+    /// size (byrutor's `default: "0 B"`), instead of an extraction error.
+    #[serde(default)]
+    defaulted_size: Option<u64>,
+    /// Minimum request timeout in seconds the source needs, e.g. a pinned 10.1 s
+    /// `requestDelay` (torrentcore). Sets the engine request timeout and a lifecycle
+    /// budget of five times this, at least 180 s.
+    #[serde(default)]
+    timeout_seconds: Option<u64>,
     /// Requests built for a keywordless query when it differs from `request_count`
     /// (e.g. category-expanded paths).
     #[serde(default)]
@@ -59,15 +77,40 @@ struct Case {
     probe: Option<String>,
     /// Rendered search headers every request (probe, search, download) must carry,
     /// e.g. `{"authorization": "Bearer fixture-source-key"}`. Names are lower case.
+    /// `$SITELINK` in a value is the fixture site link (`{{ .Config.sitelink }}`).
     #[serde(default)]
     expected_headers: BTreeMap<String, String>,
+    /// The source's no-results response, for bodies that cannot carry the
+    /// `<!-- rows:start -->` markers (JSON, or XML whose empty form differs).
+    #[serde(default)]
+    empty_body: Option<String>,
+    /// Expected `downloadvolumefactor` when the definition fixes it (default "0").
+    #[serde(default)]
+    download_factor: Option<String>,
     delay_ms: u64,
     title: String,
     json: bool,
     container: Option<String>,
+    /// The setting naming the source's API host (docs/api-origins.md). Its case value
+    /// is a synthetic `*.fixture.test` name the lifecycle serves over loopback TLS with
+    /// the same fixture; search requests must arrive there and downloads on the site.
+    #[serde(default)]
+    api_setting: Option<String>,
+    /// The mode-2 error body when the default one would be "no results" (a JSON rows
+    /// selector with `missingAttributeEqualsNoResults`, as yts).
+    #[serde(default)]
+    error_body: Option<String>,
+}
+impl Case {
+    /// The API host the lifecycle serves, from `api_setting`.
+    fn api_host(&self) -> Option<&str> {
+        self.settings
+            .get(self.api_setting.as_deref()?)
+            .and_then(serde_json::Value::as_str)
+    }
 }
 /// Public layout cases: the original manifest plus independently merged batches.
-const PUBLIC_MANIFESTS: [&str; 11] = [
+const PUBLIC_MANIFESTS: [&str; 19] = [
     include_str!("fixtures/public-layouts/cases.json"),
     include_str!("fixtures/public-batches/batch1.json"),
     include_str!("fixtures/public-batches/batch2.json"),
@@ -79,12 +122,30 @@ const PUBLIC_MANIFESTS: [&str; 11] = [
     include_str!("fixtures/public-batches/batch8.json"),
     include_str!("fixtures/public-batches/batch9.json"),
     include_str!("fixtures/public-batches/batch10.json"),
+    include_str!("fixtures/public-batches/batch11.json"),
+    include_str!("fixtures/public-batches/batch12.json"),
+    include_str!("fixtures/public-batches/batch13.json"),
+    include_str!("fixtures/public-batches/batch14.json"),
+    include_str!("fixtures/public-batches/batch15.json"),
+    include_str!("fixtures/public-batches/batch16.json"),
+    include_str!("fixtures/public-batches/batch16-thepiratebay.json"),
+    include_str!("fixtures/public-batches/batch17.json"),
 ];
+/// Whole-lifecycle budget: 180 s, or five times a case's `timeout_seconds`.
+fn lifecycle_budget(c: &Case) -> std::time::Duration {
+    std::time::Duration::from_secs(c.timeout_seconds.unwrap_or(0).saturating_mul(5).max(180))
+}
 fn cases() -> Vec<Case> {
-    PUBLIC_MANIFESTS
+    let mut cases: Vec<Case> = PUBLIC_MANIFESTS
         .iter()
         .flat_map(|m| serde_json::from_str::<Vec<Case>>(m).unwrap())
-        .collect()
+        .collect();
+    // `RACKETT_PUBLIC_CASES=rutor,ebookbay` re-runs single lifecycles locally.
+    if let Ok(only) = std::env::var("RACKETT_PUBLIC_CASES") {
+        let only: Vec<&str> = only.split(',').collect();
+        cases.retain(|c| only.contains(&c.id.as_str()));
+    }
+    cases
 }
 fn root(c: &Case) -> cardigann::Node {
     let raw = builtin::SOURCES
@@ -96,16 +157,47 @@ fn root(c: &Case) -> cardigann::Node {
     cardigann::parse(raw, cardigann::Limits::default()).unwrap()
 }
 fn page(c: &Case) -> String {
+    let root = root(c);
+    site_page(
+        c,
+        root.get("links").unwrap().items().unwrap()[0]
+            .text()
+            .unwrap(),
+    )
+}
+/// The fixture page with `@@SITE@@` replaced by `site`: absolute site links in an API
+/// response, which cannot resolve against the API search URL (docs/api-origins.md).
+fn site_page(c: &Case, site: &str) -> String {
     std::fs::read_to_string(format!(
         "tests/fixtures/public-layouts/{}.{}",
         c.id,
         if c.json { "json" } else { "html" }
     ))
     .unwrap()
+    .replace("@@SITE@@", site)
+}
+/// Extraction with HTTP 200 transport metadata, so definitions with an empty
+/// `noResultsMessage` (czteam-api) are checked like the rest, as in the cookie harness.
+fn extract(
+    p: &Plan,
+    request: &rackett::cardigann_exec::request::BuiltRequest,
+    body: &str,
+    ctx: &rackett::cardigann_exec::template::Context,
+) -> Result<Vec<rackett::models::Release>, rackett::cardigann_exec::ExecutionError> {
+    let meta = rackett::cardigann_exec::ResponseMeta {
+        status: 200,
+        redirected: false,
+        refresh: false,
+        body_bytes: body.len(),
+    };
+    p.extract_response(request, &meta, body, ctx)
 }
 fn empty(c: &Case, body: &str) -> String {
     if c.id == "dmhy" {
         return include_str!("fixtures/public-layouts/dmhy-empty.html").into();
+    }
+    if let Some(body) = &c.empty_body {
+        return body.clone();
     }
     if c.id == "therarbg" {
         return r#"{"results":[]}"#.into();
@@ -134,6 +226,61 @@ fn stock(c: &Case, base: &str) -> Indexer {
         definition: Some(json!({"builtin_id":c.id,"settings":c.settings})),
         ..Default::default()
     }
+}
+/// The request URL with a POST search body folded into its query, so one matcher
+/// covers both shapes. A non-UTF-8 body must use HttpUtility.UrlEncode's lower-case
+/// escapes, and its bytes decode with the definition charset.
+fn search_url(
+    c: &Case,
+    charset: rackett::cardigann_exec::request::Charset,
+    uri: &str,
+    body: &[u8],
+) -> url::Url {
+    let mut url = url::Url::parse(uri).unwrap();
+    if !c.search_post {
+        assert!(body.is_empty(), "{}: unexpected search body", c.id);
+        return url;
+    }
+    let pairs: Vec<(String, String)> = if charset == rackett::cardigann_exec::request::Charset::Utf8
+    {
+        url::form_urlencoded::parse(body).into_owned().collect()
+    } else {
+        let text = std::str::from_utf8(body).expect("percent-encoded body is ASCII");
+        for escape in text.split('%').skip(1) {
+            assert!(
+                escape.len() >= 2
+                    && escape[..2]
+                        .bytes()
+                        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+                "{}: non-HttpUtility escape in {text}",
+                c.id
+            );
+        }
+        let decode = |part: &str| {
+            let raw = part.replace('+', " ");
+            let mut bytes = Vec::new();
+            let mut i = 0;
+            while i < raw.len() {
+                if raw.as_bytes()[i] == b'%' {
+                    bytes.push(u8::from_str_radix(&raw[i + 1..i + 3], 16).unwrap());
+                    i += 3;
+                } else {
+                    bytes.push(raw.as_bytes()[i]);
+                    i += 1;
+                }
+            }
+            charset.decode(bytes).unwrap()
+        };
+        text.split('&')
+            .filter(|pair| !pair.is_empty())
+            .map(|pair| {
+                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                (decode(k), decode(v))
+            })
+            .collect()
+    };
+    url.query_pairs_mut().extend_pairs(pairs);
+    url
 }
 fn request_matches(c: &Case, url: &url::Url) {
     if c.search_paths.is_empty() {
@@ -170,7 +317,10 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
             // runtime resolves it (docs/download-selectors.md).
             assert!(
                 p.blockers().iter().all(|b| {
-                    c.detail.is_some() && b.path == "$.download"
+                    // Pinned certificates stay a plan blocker; `builtin::eligible` admits
+                    // only well-formed pins (docs/pinned-certificates.md).
+                    b.path == "$.certificates"
+                        || c.detail.is_some() && b.path == "$.download"
                         || c.probe.is_some() && b.path == "$.login"
                 }),
                 "{}",
@@ -189,11 +339,24 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
             let requests = p.build_requests(&ctx).unwrap();
             assert_eq!(requests.len(), c.request_count, "{}", c.id);
             for request in &requests {
-                request_matches(&c, &url::Url::parse(&request.url).unwrap());
+                assert_eq!(
+                    request.method,
+                    if c.search_post { "POST" } else { "GET" },
+                    "{}",
+                    c.id
+                );
+                request_matches(
+                    &c,
+                    &search_url(
+                        &c,
+                        p.charset(),
+                        &request.url,
+                        request.body.as_deref().unwrap_or_default().as_bytes(),
+                    ),
+                );
                 let body = page(&c);
-                let rows = p
-                    .extract(request, &body, &ctx)
-                    .unwrap_or_else(|e| panic!("{}: {e}", c.id));
+                let rows =
+                    extract(&p, request, &body, &ctx).unwrap_or_else(|e| panic!("{}: {e}", c.id));
                 assert_eq!(rows.len(), 1, "{}", c.id);
                 let r = &rows[0];
                 assert_eq!(r.title, c.title, "{}", c.id);
@@ -228,26 +391,41 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
                 } else {
                     assert!(r.link.ends_with(&c.download_path), "{}: {}", c.id, r.link);
                 }
-                assert_eq!(r.attributes["downloadvolumefactor"], "0");
+                assert_eq!(
+                    r.attributes["downloadvolumefactor"],
+                    c.download_factor.as_deref().unwrap_or("0"),
+                    "{}",
+                    c.id
+                );
                 assert_eq!(r.attributes["uploadvolumefactor"], "1");
                 assert!(
-                    p.extract(request, &empty(&c, &body), &ctx)
+                    extract(&p, request, &empty(&c, &body), &ctx)
                         .unwrap()
                         .is_empty(),
                     "{}",
                     c.id
                 );
+                // Also the non-breaking-space form a `:contains(\00a0GB)` size selects.
                 let broken = body
                     .replace("1 GB", "bad-size")
+                    .replace("1\u{a0}GB", "bad-size")
+                    .replace("1&nbsp;GB", "bad-size")
                     .replace("1 ГБ", "bad-size")
                     .replace("1073741824", "\"bad-size\"");
-                let malformed = p.extract(request, &broken, &ctx);
+                let malformed = extract(&p, request, &broken, &ctx);
                 if c.fixed_size {
                     assert_eq!(malformed.unwrap()[0].size, c.expected_size, "{}", c.id);
+                } else if let Some(size) = c.defaulted_size {
+                    assert_eq!(malformed.unwrap()[0].size, Some(size), "{}", c.id);
                 } else if c.optional_size {
                     assert_eq!(malformed.unwrap()[0].size, None, "{}", c.id);
                 } else {
-                    assert!(malformed.is_err(), "{}: malformed size accepted", c.id);
+                    assert!(
+                        malformed.is_err(),
+                        "{}: malformed size accepted: {:?}",
+                        c.id,
+                        malformed.map(|r| r[0].size)
+                    );
                 }
             }
         })
@@ -266,10 +444,7 @@ async fn every_public_layout_runs_engine_cache_download_restart_errors_and_recov
     let failed: Vec<String> = stream::iter(cases().into_iter().filter(|c| c.id != "dmhy"))
         .map(|c| async move {
             let name = c.id.clone();
-            let run = tokio::spawn(tokio::time::timeout(
-                std::time::Duration::from_secs(180),
-                lifecycle(c),
-            ));
+            let run = tokio::spawn(tokio::time::timeout(lifecycle_budget(&c), lifecycle(c)));
             match run.await {
                 Ok(Ok(())) => None,
                 Ok(Err(_)) => Some(format!("{name} (lifecycle deadline)")),
@@ -284,10 +459,11 @@ async fn every_public_layout_runs_engine_cache_download_restart_errors_and_recov
 }
 async fn lifecycle(c: Case) {
     use axum::{
+        body::Bytes,
         extract::State,
-        http::{HeaderMap, StatusCode, Uri},
+        http::{HeaderMap, Method, StatusCode, Uri},
         response::{IntoResponse, Response},
-        routing::get,
+        routing::any,
         Router,
     };
     use rackett::engine::{Download, Engine};
@@ -310,9 +486,11 @@ async fn lifecycle(c: Case) {
     );
     struct Fixture {
         case: Case,
+        base: String,
         body: String,
         charset: Charset,
         mode: AtomicU8,
+        /// Search URLs with any POST body folded into the query (`search_url`).
         hits: Mutex<Vec<String>>,
     }
     impl Fixture {
@@ -320,7 +498,24 @@ async fn lifecycle(c: Case) {
             std::mem::take(&mut *self.hits.lock().unwrap())
         }
     }
-    async fn respond(State(f): State<Arc<Fixture>>, uri: Uri, h: HeaderMap) -> Response {
+    async fn respond(
+        State(f): State<Arc<Fixture>>,
+        method: Method,
+        uri: Uri,
+        h: HeaderMap,
+        body: Bytes,
+    ) -> Response {
+        // The engine addresses the fixture as 127.0.0.1. Local port scanners on a shared
+        // machine (seen as `Host: localhost:<port>`, `user-agent: node`) are not
+        // engine requests and must not count as hits. The case's own API host is served
+        // over loopback TLS (`serve_api_host`).
+        if !h
+            .get("host")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|host| host.starts_with("127.0.0.1:") || Some(host) == f.case.api_host())
+        {
+            return StatusCode::NOT_FOUND.into_response();
+        }
         assert!(!h.contains_key("cookie"), "{}: cookie", f.case.id);
         assert!(
             !h.contains_key("authorization")
@@ -331,7 +526,7 @@ async fn lifecycle(c: Case) {
         for (name, value) in &f.case.expected_headers {
             assert_eq!(
                 h.get(name.as_str()).and_then(|v| v.to_str().ok()),
-                Some(value.as_str()),
+                Some(value.replace("$SITELINK", &f.base).as_str()),
                 "{}: header {name}",
                 f.case.id
             );
@@ -339,9 +534,40 @@ async fn lifecycle(c: Case) {
         if f.case.probe.as_deref() == Some(uri.to_string().as_str()) {
             return ([("content-type", "application/xml")], "<caps></caps>").into_response();
         }
-        f.hits.lock().unwrap().push(uri.to_string());
+        if let Some(api) = f.case.api_host() {
+            // Searches use the API origin; downloads stay on the site origin.
+            let host = h.get("host").and_then(|v| v.to_str().ok()).unwrap_or("");
+            let download = uri.to_string() == f.case.download_path
+                || f.case
+                    .detail
+                    .as_ref()
+                    .is_some_and(|d| uri.to_string() == d.resolved);
+            assert_eq!(host == api, !download, "{}: {uri} on {host}", f.case.id);
+        }
+        if method == Method::POST {
+            assert!(
+                f.case.search_post && uri.path() == f.case.search_path,
+                "{}: unexpected POST {uri}",
+                f.case.id
+            );
+            assert_eq!(
+                h.get("content-type").and_then(|v| v.to_str().ok()),
+                Some("application/x-www-form-urlencoded"),
+                "{}: search POST content type",
+                f.case.id
+            );
+            let url = search_url(&f.case, f.charset, &format!("http://fixture{uri}"), &body);
+            f.hits
+                .lock()
+                .unwrap()
+                .push(url[url::Position::BeforePath..].into());
+        } else {
+            assert_eq!(method, Method::GET, "{}: method", f.case.id);
+            f.hits.lock().unwrap().push(uri.to_string());
+        }
         if let Some(detail) = &f.case.detail {
-            if uri.to_string() == f.case.download_path {
+            let page = detail.before.as_deref().unwrap_or(&f.case.download_path);
+            if uri == page {
                 let page = f.charset.encode(&detail.html).unwrap_or_else(|| {
                     panic!("{}: detail text outside {}", f.case.id, f.charset.label())
                 });
@@ -396,6 +622,7 @@ async fn lifecycle(c: Case) {
             }
             7 if f.case.id == "dmhy" => f.body.replace("<td>11</td>", "<td>-</td>"),
             8 if f.case.id == "dmhy" => "<table id=topic_list><tbody></tbody></table>".into(),
+            2 if f.case.error_body.is_some() => f.case.error_body.clone().unwrap(),
             2 => {
                 if f.case.json {
                     "{\"error\":\"fixture-private-error\"}".into()
@@ -427,18 +654,23 @@ async fn lifecycle(c: Case) {
         }
         response
     }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/", listener.local_addr().unwrap());
     let fixture = Arc::new(Fixture {
         case: c.clone(),
-        body: page(&c),
+        base: base.clone(),
+        body: site_page(&c, &base),
         charset,
         mode: AtomicU8::new(0),
         hits: Default::default(),
     });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}/", listener.local_addr().unwrap());
     let app = Router::new()
-        .fallback(get(respond))
+        .fallback(any(respond))
         .with_state(fixture.clone());
+    let api_server = match c.api_host() {
+        Some(host) => Some(serve_api_host(host, app.clone()).await),
+        None => None,
+    };
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let runtime = builtin::Runtime::compile(&stock(&c, &base))
         .unwrap_or_else(|e| panic!("{} compile: {e}", c.id));
@@ -447,6 +679,12 @@ async fn lifecycle(c: Case) {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("config.json");
     let engine = Arc::new(Engine::new(path.clone()).await.unwrap());
+    if let Some(seconds) = c.timeout_seconds {
+        engine
+            .update_settings(json!({ "request_timeout_seconds": seconds }))
+            .await
+            .unwrap();
+    }
     let i = engine.put_indexer(stock(&c, &base), false).await.unwrap();
     assert!(fixture.take().is_empty());
     let q = query(&c);
@@ -538,8 +776,17 @@ async fn lifecycle(c: Case) {
             }
         );
         let hits = fixture.take();
-        assert_eq!(hits[0], c.download_path);
         match &c.detail {
+            Some(Detail {
+                before: Some(before),
+                ..
+            }) => assert_eq!(hits, std::slice::from_ref(before), "{}", c.id),
+            _ => assert_eq!(hits[0], c.download_path),
+        }
+        match &c.detail {
+            Some(Detail {
+                before: Some(_), ..
+            }) => {}
             Some(d) if !d.resolved.starts_with("magnet:") => {
                 assert_eq!(
                     hits,
@@ -660,6 +907,55 @@ async fn lifecycle(c: Case) {
     drop(engine);
     assert!(Engine::new(path).await.unwrap().indexers().await.is_empty());
     server.abort();
+    if let Some(api) = api_server {
+        api.abort();
+    }
+}
+/// Loopback TLS for axum: each accepted connection completes its handshake first.
+struct TlsListener {
+    tcp: tokio::net::TcpListener,
+    acceptor: tokio_rustls::TlsAcceptor,
+}
+impl axum::serve::Listener for TlsListener {
+    type Io = tokio_rustls::server::TlsStream<tokio::net::TcpStream>;
+    type Addr = std::net::SocketAddr;
+    async fn accept(&mut self) -> (Self::Io, Self::Addr) {
+        loop {
+            if let Ok((tcp, addr)) = self.tcp.accept().await {
+                if let Ok(tls) = self.acceptor.accept(tcp).await {
+                    return (tls, addr);
+                }
+            }
+        }
+    }
+    fn local_addr(&self) -> std::io::Result<Self::Addr> {
+        self.tcp.local_addr()
+    }
+}
+/// Serve `app` as `https://{host}/` on loopback (docs/api-origins.md): a throwaway
+/// self-signed certificate for `host`, which engine clients created afterwards in this
+/// process resolve and trust through `register_fixture_api_host`.
+async fn serve_api_host(host: &str, app: axum::Router) -> tokio::task::JoinHandle<()> {
+    use rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
+    let cert = rcgen::generate_simple_self_signed(vec![host.to_owned()]).unwrap();
+    let der = cert.cert.der().to_vec();
+    let key = PrivateKeyDer::Pkcs8(PrivatePkcs8KeyDer::from(cert.key_pair.serialize_der()));
+    let mut config = rustls::ServerConfig::builder_with_provider(std::sync::Arc::new(
+        rustls::crypto::ring::default_provider(),
+    ))
+    .with_safe_default_protocol_versions()
+    .unwrap()
+    .with_no_client_auth()
+    .with_single_cert(vec![CertificateDer::from(der.clone())], key)
+    .unwrap();
+    config.alpn_protocols = vec![b"http/1.1".to_vec()];
+    let tcp = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    rackett::engine::register_fixture_api_host(host, tcp.local_addr().unwrap(), &der);
+    let listener = TlsListener {
+        tcp,
+        acceptor: tokio_rustls::TlsAcceptor::from(std::sync::Arc::new(config)),
+    };
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() })
 }
 
 #[test]
@@ -687,7 +983,20 @@ fn pinned_public_settings_queries_and_optional_fields_are_preserved() {
             "kickasstorrents-to" => assert_eq!(url.path(), "/17/all/"),
             "kickasstorrents-ws" => assert_eq!(url.path(), "/new/"),
             "mikan" => assert_eq!(url.path(), "/Home/Classic"),
+            "rutor" => assert_eq!(url.path(), "/"),
+            "torrentcore" => assert_eq!(url.path(), "/index"),
+            "limetorrents" => assert_eq!(url.path(), "/latest100"),
+            "magnetdownload" => assert_eq!(url.path(), "/search/2026/"),
             "therarbg" => assert!(url.path().contains(":time:10D:")),
+            "torrentby" => assert_eq!(url.path(), "/today/"),
+            "torrentproject2" => assert_eq!(url.path(), "/browse"),
+            "thepiratebay" => assert_eq!(url.path(), "/precompiled/data_top100_recent.json"),
+            // The templated `method` is never rendered (CardigannIndexer.cs:1545-1550),
+            // so both branches are GET; the empty `query` input is dropped.
+            "bangumi-moe" => {
+                assert_eq!(url.path(), "/api/torrent/latest");
+                assert_eq!((requests[0].method.as_str(), url.query()), ("GET", None));
+            }
             "internetarchive" => assert!(url
                 .query_pairs()
                 .any(|(k, v)| k == "q" && v == "format:(\"Archive BitTorrent\")")),
@@ -696,7 +1005,9 @@ fn pinned_public_settings_queries_and_optional_fields_are_preserved() {
                 .any(|(k, v)| k == "keywords" && v == "2026")),
             _ => assert_eq!(url.path(), c.search_path),
         }
-        let mut settings: BTreeMap<String, serde_json::Value> = BTreeMap::new();
+        // Case settings (e.g. a `login: get` API key) first; layout overrides follow.
+        let mut settings: BTreeMap<String, serde_json::Value> =
+            c.settings.clone().into_iter().collect();
         match c.id.as_str() {
             "kickasstorrents-ws" => {
                 settings.insert("sort".into(), json!("size"));
@@ -732,7 +1043,7 @@ fn pinned_public_settings_queries_and_optional_fields_are_preserved() {
             .query_pairs()
             .map(|(k, v)| (k.into_owned(), v.into_owned()))
             .collect();
-        let rows = rt.plan.extract(&req, &page(&c), &ctx).unwrap();
+        let rows = extract(&rt.plan, &req, &page(&c), &ctx).unwrap();
         match c.id.as_str() {
             "kickasstorrents-ws" => {
                 assert_eq!(pairs["field"], "size");
@@ -740,7 +1051,7 @@ fn pinned_public_settings_queries_and_optional_fields_are_preserved() {
                 let body = page(&c)
                     .replace("<td>11</td>", "<td>N/A</td>")
                     .replace("<td>4</td>", "<td>N/A</td>");
-                let rows = rt.plan.extract(&req, &body, &ctx).unwrap();
+                let rows = extract(&rt.plan, &req, &body, &ctx).unwrap();
                 assert_eq!((rows[0].seeders, rows[0].peers), (Some(0), Some(0)));
             }
             "newstudio" => {
@@ -764,7 +1075,7 @@ fn pinned_public_settings_queries_and_optional_fields_are_preserved() {
                     .is_none_or(|v| v.is_empty()));
                 let body = page(&c).replace("\"title\": \"Fixture Release\",", "");
                 assert_eq!(
-                    rt.plan.extract(&req, &body, &ctx).unwrap()[0].title,
+                    extract(&rt.plan, &req, &body, &ctx).unwrap()[0].title,
                     "Missing title for fixture"
                 );
             }
@@ -1101,7 +1412,8 @@ fn replay_operator_supplied_dmhy_captures() {
 #[tokio::test]
 async fn dmhy_runtime_keeps_valid_rows_and_requires_explicit_empty_evidence() {
     let c = cases().into_iter().find(|c| c.id == "dmhy").unwrap();
-    tokio::time::timeout(std::time::Duration::from_secs(60), lifecycle(c))
+    // The same per-case budget as the main lifecycle test; 60 s failed under host load.
+    tokio::time::timeout(std::time::Duration::from_secs(180), lifecycle(c))
         .await
         .unwrap();
 }

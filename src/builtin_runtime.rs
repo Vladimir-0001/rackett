@@ -30,6 +30,19 @@ fn checked_url(raw: &str, base: &url::Url) -> Result<url::Url> {
     }
     Ok(u)
 }
+/// The base whose origin a planned search request must stay on: the site, or the
+/// source's admitted API origin ([`crate::builtin::API_ORIGIN_IDS`],
+/// docs/api-origins.md). Redirects and the final URL are then pinned to that origin.
+fn request_base<'a>(
+    raw: &str,
+    site: &'a url::Url,
+    api: Option<&'a url::Url>,
+) -> Result<&'a url::Url> {
+    match api {
+        Some(api) if checked_url(raw, api).is_ok() => Ok(api),
+        _ => checked_url(raw, site).map(|_| site),
+    }
+}
 fn headers(r: &BuiltRequest) -> Result<reqwest::header::HeaderMap> {
     let mut headers = reqwest::header::HeaderMap::new();
     for (k, v) in &r.headers {
@@ -517,6 +530,62 @@ impl Transport<'_> {
             Sent::Challenge(target, redirected) => self.solve(request, target, redirected).await,
         }
     }
+    /// Send one search request to the source's admitted API origin `api`
+    /// (docs/api-origins.md). Only the plan's own validated headers are sent, never a
+    /// `Cookie`: no saved cookie, solver clearance or session leaves the site origin.
+    /// Upstream sends its stored cookie header to every URL (`BaseIndexer.cs:607`); an
+    /// admitted public source has none. Redirects stay on `api`; no challenge is solved.
+    async fn fetch_api(&mut self, request: &BuiltRequest, api: &url::Url) -> Result<Fetched> {
+        if self.source.api_session.is_some()
+            || self.source.cookie_session.is_some()
+            || self.source.get_login.is_some()
+        {
+            bail!("API origin searches are supported only for public sources");
+        }
+        let headers = headers(request)?;
+        if headers.contains_key(reqwest::header::COOKIE) {
+            bail!("Cookies are never sent to an API origin");
+        }
+        let sent = send(
+            self.client,
+            request,
+            api,
+            self.gate,
+            self.delay_ms,
+            headers,
+            false,
+        )
+        .await?;
+        let Sent::Response(response, redirected) = sent else {
+            bail!(
+                "Cloudflare challenge detected; challenge solving is not supported for API hosts"
+            );
+        };
+        let status = response.status().as_u16();
+        let refresh = response.headers().contains_key("refresh");
+        let url = checked_url(response.url().as_str(), api)?;
+        let content_type = response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(str::to_owned);
+        let body = read_body(response).await?;
+        if flaresolverr::challenge_markers(&body) {
+            bail!(
+                "Cloudflare challenge detected; challenge solving is not supported for API hosts"
+            );
+        }
+        Ok(Fetched {
+            status,
+            redirected,
+            refresh,
+            url,
+            content_type,
+            body,
+            rendered: false,
+            decoded: false,
+        })
+    }
     async fn solve(
         &mut self,
         request: &BuiltRequest,
@@ -605,30 +674,48 @@ pub async fn resolve_download_selectors(
         chrono::Utc::now(),
     );
     download::add_download_uri(&mut before_ctx, page_url);
+    // Search headers of a public definition go with every download request (`:2094`).
+    let headers = selectors
+        .headers(&before_ctx)
+        .map_err(|_| anyhow!("Download headers could not be rendered"))?;
+    let get = |url: &url::Url| {
+        let mut request = BuiltRequest::html_get(url.to_string());
+        request.headers = headers.clone();
+        request
+    };
+    let mut before_page = None;
     if let Some(before) = selectors
         .before_request(&before_ctx)
         .map_err(|_| anyhow!("Download request could not be rendered"))?
     {
-        let session = transport
-            .source
-            .cookie_session
-            .as_ref()
-            .ok_or_else(|| anyhow!("Download before requests need a login session"))?;
-        let target = page_url
+        // `resolvePath(path)` resolves against the site link, not the release link.
+        let target = transport
+            .base
             .join(&before.path)
             .ok()
             .and_then(|t| checked_url(t.as_str(), transport.base).ok())
             .ok_or_else(|| anyhow!("Download before request target rejected"))?;
-        session
-            .send_before(target.as_str(), before.fields.as_deref(), page_url.as_str())
-            .await?;
+        if let Some(session) = &transport.source.cookie_session {
+            session
+                .send_before(target.as_str(), before.fields.as_deref(), page_url.as_str())
+                .await?;
+        } else if before.fields.is_none() && headers.is_empty() {
+            // A public GET (compile admits no other) with the release link as Referer.
+            let mut request = BuiltRequest::html_get(target.to_string());
+            request.headers = vec![("Referer".into(), page_url.to_string())];
+            before_page = Some(transport.fetch(&request, false).await?);
+        } else {
+            bail!("Download before request is not supported for this source");
+        }
     }
     if !selectors.selects() {
         // Upstream then downloads the release link itself.
         return Ok(None);
     }
-    let page_request = BuiltRequest::html_get(page_url.to_string());
-    let fetched = transport.fetch(&page_request, false).await?;
+    let fetched = match before_page.filter(|_| selectors.selects_before_response()) {
+        Some(page) => page,
+        None => transport.fetch(&get(page_url), false).await?,
+    };
     if fetched.refresh || !(200..300).contains(&fetched.status) {
         bail!("Source detail page could not be fetched");
     }
@@ -640,17 +727,13 @@ pub async fn resolve_download_selectors(
             .decode(fetched.body)
             .map_err(|_| anyhow!("Only UTF-8 response encoding supported"))?
     };
-    let ctx = rt.plan.context(
-        &rt.settings,
-        &crate::models::SearchQuery::default(),
-        chrono::Utc::now(),
-    );
     let permit = parser_permit().await?;
     let candidates = tokio::task::spawn_blocking({
         let selectors = selectors.clone();
         move || {
             let _permit = permit;
-            selectors.candidates(&page, &ctx)
+            // `MatchSelector` sees the `.DownloadUri` variables too.
+            selectors.candidates(&page, &before_ctx)
         }
     })
     .await
@@ -672,9 +755,7 @@ pub async fn resolve_download_selectors(
         let bytes = if let Some(session) = &transport.source.cookie_session {
             session.fetch_download(target.as_str()).await?
         } else {
-            let fetched = transport
-                .fetch(&BuiltRequest::html_get(target.to_string()), false)
-                .await?;
+            let fetched = transport.fetch(&get(&target), false).await?;
             if fetched.refresh || !(200..300).contains(&fetched.status) {
                 continue;
             }
@@ -765,9 +846,10 @@ pub async fn search_source(
         bail!("Plan request budget exceeded");
     }
     let base = url::Url::parse(&i.url)?;
+    let api = rt.api_origin.as_ref();
     // Validate the entire batch before sending credentials anywhere.
     for r in &requests {
-        checked_url(&r.url, &base)?;
+        request_base(&r.url, &base, api)?;
         headers(r)?;
         if !["GET", "POST"].contains(&r.method.as_str()) {
             bail!("Unsupported request method");
@@ -805,7 +887,10 @@ pub async fn search_source(
     for mut request in requests {
         // A rendered page is decoded DOM text, usable only as UTF-8 HTML.
         let solvable = request.response_type == "html" && charset == Charset::Utf8;
-        let fetched = transport.fetch(&request, solvable).await?;
+        let fetched = match api.filter(|api| checked_url(&request.url, api).is_ok()) {
+            Some(api) => transport.fetch_api(&request, api).await?,
+            None => transport.fetch(&request, solvable).await?,
+        };
         let (status, redirected, refresh) = (fetched.status, fetched.redirected, fetched.refresh);
         request.url = fetched.url.to_string();
         // WebResult.Encoding: the definition's Request.Encoding wins over response headers.
@@ -913,6 +998,16 @@ pub async fn search_source(
                 checked_url(&r.link, &base)?;
             }
         }
+        // Links resolved against an API search URL (`resolvePath(value, searchUrlUri)`,
+        // CardigannIndexer.cs:2228) must still be magnets or on the site origin:
+        // tickets and downloads never reach the API origin (docs/api-origins.md).
+        if api.is_some()
+            && !r.link.is_empty()
+            && !r.link.starts_with("magnet:")
+            && checked_url(&r.link, &base).is_err()
+        {
+            bail!("Release download link must remain on the site origin");
+        }
         if r.link.is_empty() {
             if let Some(magnet) = r.attributes.get("magnet") {
                 let url = url::Url::parse(magnet).map_err(|_| anyhow!("Invalid release magnet"))?;
@@ -923,8 +1018,24 @@ pub async fn search_source(
             }
         }
         if r.link.is_empty()
-            && crate::builtin::id(i)
-                .is_ok_and(|id| ["therarbg", "linuxtracker", "torrentbyte"].contains(&id))
+            && crate::builtin::id(i).is_ok_and(|id| {
+                [
+                    "therarbg",
+                    "linuxtracker",
+                    "torrentbyte",
+                    "52bt",
+                    "anisource",
+                    "btdirectory",
+                    "magnetcat",
+                    "bitmagnet",
+                    "filemood",
+                    "thepiratebay",
+                    "bangumi-moe",
+                    "comicat",
+                    "miobt",
+                ]
+                .contains(&id)
+            })
         {
             // These fixture-tested public definitions have no download URL. Validate the
             // entire value before constructing a URI; never interpret query syntax
@@ -970,6 +1081,7 @@ mod tests {
             empty_html_container: None,
             modes: BTreeMap::from([("search".into(), vec!["q".into()])]),
             download: None,
+            api_origin: None,
         }
     }
     async fn serve(router: axum::Router) -> (String, tokio::task::JoinHandle<()>) {
@@ -1121,6 +1233,7 @@ mod tests {
                 modes: BTreeMap::from([("search".into(), vec!["q".into()])]),
                 empty_html_container: None,
                 download: None,
+                api_origin: None,
             };
             let i = Indexer {
                 url,
@@ -1878,5 +1991,166 @@ mod tests {
         assert_eq!(other_hits.load(std::sync::atomic::Ordering::SeqCst), 0);
         server.abort();
         other_server.abort();
+    }
+
+    /// docs/api-origins.md: a listed definition's absolute search path may use its one
+    /// API origin. Only the plan's own headers go there, redirects stay on it, release
+    /// links stay on the site, and an unlisted runtime is still pinned to the site.
+    #[tokio::test]
+    async fn api_origin_searches_stay_on_their_origin_and_keep_links_on_the_site() {
+        use axum::routing::get;
+        type Seen = Arc<std::sync::Mutex<Vec<(String, bool)>>>;
+        let site_hits: Seen = Default::default();
+        let recorded = site_hits.clone();
+        let (site, site_server) = serve(axum::Router::new().fallback(get(
+            move |uri: axum::http::Uri, h: axum::http::HeaderMap| {
+                recorded
+                    .lock()
+                    .unwrap()
+                    .push((uri.to_string(), h.contains_key("cookie")));
+                async { "" }
+            },
+        )))
+        .await;
+        let api_hits: Seen = Default::default();
+        let recorded = api_hits.clone();
+        let link = format!("{site}torrent/42");
+        let target = site.clone();
+        let app =
+            axum::Router::new()
+                .route(
+                    "/api",
+                    get(move |h: axum::http::HeaderMap| {
+                        recorded
+                            .lock()
+                            .unwrap()
+                            .push(("/api".into(), h.contains_key("cookie")));
+                        let link = link.clone();
+                        async move {
+                            axum::Json(serde_json::json!({"items":[{"name":"Api","link":link}]}))
+                        }
+                    }),
+                )
+                .route(
+                    "/relative",
+                    get(|| async {
+                        axum::Json(
+                            serde_json::json!({"items":[{"name":"Api","link":"torrent/42"}]}),
+                        )
+                    }),
+                )
+                .route(
+                    "/moved",
+                    get(move || {
+                        let target = target.clone();
+                        async move { axum::response::Redirect::temporary(&format!("{target}api")) }
+                    }),
+                );
+        let (api, api_server) = serve(app).await;
+        let i = Indexer {
+            url: site.clone(),
+            ..Default::default()
+        };
+        let listed = |path: &str, headers: &str| {
+            let mut rt = runtime(
+                &site,
+                &format!("{headers}  paths: [{{path: '{api}{path}', response: {{type: json}}}}]\n{JSON_FIELDS}"),
+                0,
+            );
+            rt.api_origin = Some(url::Url::parse(&api).unwrap());
+            rt
+        };
+        let q = SearchQuery::default();
+        // Searched on the API origin without cookies; the site link is kept.
+        let rows = search_request(&listed("api", ""), &i, &q).await.unwrap();
+        assert_eq!(rows[0].link, format!("{site}torrent/42"));
+        assert_eq!(*api_hits.lock().unwrap(), [("/api".to_owned(), false)]);
+        assert!(site_hits.lock().unwrap().is_empty());
+        // A relative link resolves against the API search URL, as upstream; it is not
+        // a site download, so the search fails instead of issuing an API ticket.
+        let e = search_request(&listed("relative", ""), &i, &q)
+            .await
+            .unwrap_err();
+        assert!(e.to_string().contains("site origin"), "{e}");
+        // A redirect off the API origin, even to the site, is never followed.
+        api_hits.lock().unwrap().clear();
+        let e = search_request(&listed("moved", ""), &i, &q)
+            .await
+            .unwrap_err();
+        assert!(e.to_string().contains("configured origin"), "{e}");
+        assert!(api_hits.lock().unwrap().is_empty());
+        assert!(site_hits.lock().unwrap().is_empty());
+        // A plan Cookie header is never sent to the API origin.
+        let e = search_request(
+            &listed("api", "  headers: {Cookie: ['session=fixture']}\n"),
+            &i,
+            &q,
+        )
+        .await
+        .unwrap_err();
+        assert!(e.to_string().contains("Cookies"), "{e}");
+        assert!(api_hits.lock().unwrap().is_empty());
+        // Without an admitted API origin the same plan is refused before any request.
+        let mut unlisted = listed("api", "");
+        unlisted.api_origin = None;
+        let e = search_request(&unlisted, &i, &q).await.unwrap_err();
+        assert!(e.to_string().contains("configured origin"), "{e}");
+        // A third origin is refused even when an API origin is admitted.
+        let mut other = listed("api", "");
+        other.api_origin = Some(url::Url::parse("http://127.0.0.1:1/").unwrap());
+        assert!(search_request(&other, &i, &q).await.is_err());
+        assert!(api_hits.lock().unwrap().is_empty());
+        assert!(site_hits.lock().unwrap().is_empty());
+        site_server.abort();
+        api_server.abort();
+    }
+    #[test]
+    fn api_origins_come_from_listed_absolute_templates_and_settings_only() {
+        let stock = |id: &str, settings: serde_json::Value| Indexer {
+            kind: "cardigann".into(),
+            url: "https://site.example/".into(),
+            definition: Some(serde_json::json!({"builtin_id": id, "settings": settings})),
+            ..Default::default()
+        };
+        let origin = |i: &Indexer| {
+            builtin::Runtime::compile_unready(i).map(|rt| rt.api_origin.map(|u| u.to_string()))
+        };
+        assert_eq!(
+            origin(&stock("yts", serde_json::json!({})))
+                .unwrap()
+                .as_deref(),
+            Some("https://movies-api.accel.li/")
+        );
+        assert_eq!(
+            origin(&stock("yts", serde_json::json!({"apiurl": "api.example"})))
+                .unwrap()
+                .as_deref(),
+            Some("https://api.example/")
+        );
+        assert_eq!(
+            origin(&stock("animetosho-xyz", serde_json::json!({})))
+                .unwrap()
+                .as_deref(),
+            Some("https://feed.animetosho.net/")
+        );
+        // The site's own host is no separate origin.
+        assert_eq!(
+            origin(&stock("yts", serde_json::json!({"apiurl": "site.example"}))).unwrap(),
+            None
+        );
+        // Upstream URL-encodes the substituted host: a port, credentials or a path
+        // cannot be smuggled into it, and an empty host is not normalized into one.
+        for bad in [
+            "api.example:8443",
+            "user@api.example",
+            "api.example/x?",
+            "",
+            " ",
+        ] {
+            let compiled = origin(&stock("yts", serde_json::json!({"apiurl": bad})));
+            assert!(compiled.is_err(), "{bad}: {compiled:?}");
+        }
+        // A literal absolute API path outside the allowlist admits no origin.
+        assert!(!builtin::API_ORIGIN_IDS.contains(&"polishtracker-api"));
     }
 }

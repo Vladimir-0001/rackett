@@ -1,0 +1,105 @@
+[
+ {
+  "id": "byrutor",
+  "sha256": "7388c313b24d4c777ca0e7251ecc5d513e6a76bbb7fd2faba8bceb07b054ffa8",
+  "category": 100001,
+  "request_count": 1,
+  "search_path": "/index.php",
+  "query_pair": [
+   "story",
+   "Fixture"
+  ],
+  "download_path": "/42-fixture-release.html",
+  "details_path": "/42-fixture-release.html",
+  "seeders": 1,
+  "peers": 2,
+  "published": "2026-10-29T12:00:00Z",
+  "defaulted_size": 0,
+  "delay_ms": 0,
+  "title": "Fixture Release [2026] v1.0",
+  "json": false,
+  "container": "div#dle-content",
+  "detail": {
+   "html": "<div class=\"download\"><a class=\"itemdown_games\" href=\"/index.php?do=download&id=42\">Скачать</a></div>",
+   "resolved": "/index.php?do=download&id=42"
+  }
+ },
+ {
+  "id": "rutor",
+  "sha256": "8a80e5e93f8e2dd33d5e837e8727f29e1f7d94f8dafb31e727ec007e94e83a49",
+  "category": 8000,
+  "request_count": 1,
+  "search_path": "/search/0/0/100/0/Fixture/",
+  "query_pair": [
+   "",
+   ""
+  ],
+  "download_path": "/download/42",
+  "details_path": "/torrent/42/fixture-release",
+  "seeders": 11,
+  "peers": 15,
+  "published": "2026-10-27T21:00:00Z",
+  "optional_size": true,
+  "delay_ms": 0,
+  "title": "Fixture Release",
+  "json": false,
+  "container": "div#index"
+ },
+ {
+  "id": "torrentcore",
+  "sha256": "8adfd5dc7b0677ea8b71ffcc2ddbccbea6e5a568dda486b0af4bd229c69face3",
+  "category": 7000,
+  "request_count": 1,
+  "search_path": "/search",
+  "query_pair": [
+   "s",
+   "Fixture"
+  ],
+  "download_path": "/torrent/42/fixture-release",
+  "details_path": "/torrent/42/fixture-release",
+  "seeders": 1,
+  "peers": 2,
+  "published": "2026-10-28T12:34:00Z",
+  "timeout_seconds": 60,
+  "delay_ms": 10100,
+  "title": "Fixture Release",
+  "json": false,
+  "container": "div.content",
+  "detail": {
+   "html": "<div class=\"content\"><font color=\"orange\"> Fixture Release </font><br>Hash: 0123456789abcdef0123456789abcdef01234567</div>",
+   "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture+Release&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce"
+  }
+ },
+ {
+  "id": "ebookbay",
+  "sha256": "84b12e1b088c40ea72513ade617defe97d0e4f40fd9b26ef8d1834906f266acb",
+  "category": 7020,
+  "request_count": 5,
+  "search_path": "/",
+  "search_paths": [
+   "/",
+   "/page/2/",
+   "/page/3/",
+   "/page/4/",
+   "/page/5/"
+  ],
+  "query_pair": [
+   "s",
+   "fixture"
+  ],
+  "download_path": "/2026/10/fixture-release/",
+  "details_path": "/2026/10/fixture-release/",
+  "seeders": 11,
+  "peers": 15,
+  "published": "2026-10-29T12:00:00Z",
+  "delay_ms": 2000,
+  "title": "Fixture Release",
+  "json": false,
+  "container": "div#content",
+  "detail": {
+   "html": "<div id=\"content\"><div class=\"poststuff\"><div class=\"postname\"> Fixture Release </div></div><table><tr><td>Info Hash:</td><td>0123456789abcdef0123456789abcdef01234567</td></tr></table></div>",
+   "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Fixture+Release&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce"
+  },
+  "optional_size": true
+ }
+]

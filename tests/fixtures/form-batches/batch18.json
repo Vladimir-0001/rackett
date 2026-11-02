@@ -1,1 +1,105 @@
-[]
+[
+  {
+    "id": "tornado",
+    "sha256": "f6416e5ebbffcca3ef3513b91c7af156dc7ef4e9fab4dda04e2710749c9cca59",
+    "search_fixture": "form:tornado",
+    "form_path": "/?p=home&pid=1",
+    "submit_path": "/ajax/login.php",
+    "form_id": "sls_form",
+    "form_attributes": "id=\"sls_form\" action=\"/ajax/login.php\"",
+    "expected_inputs": {
+      "action": "login",
+      "loginbox_membername": "{{ .Config.username }}",
+      "loginbox_password": "{{ .Config.password }}",
+      "loginbox_remember": "1",
+      "securitytoken": "fixture-token"
+    },
+    "error_html": "<div class=\"error\">fixture-private-error</div>",
+    "category": 2030,
+    "request_count": 1,
+    "login_path": "/?p=home&pid=1",
+    "search_path": "/",
+    "keyword": "keywords",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "cid[]",
+      "32"
+    ],
+    "download_path": "/?p=torrents&pid=10&action=download&tid=42",
+    "details_path": "/?p=torrents&pid=10&action=details&tid=42",
+    "published": "2026-10-28T10:30:00Z",
+    "free_markup": "<img src=\"/torrent_free.png\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "custom_category": 100032,
+    "landing_html": "<script>stKey: \"fixture-token\",</script>"
+  },
+  {
+    "id": "musebootlegs",
+    "sha256": "bca6645c07ff3579e8ecbba7cf18a8582068462c408b66411ea8d23179f27616",
+    "search_fixture": "form:musebootlegs",
+    "form_path": "/?p=home&pid=1",
+    "submit_path": "/ajax/login.php",
+    "form_id": "loginbox_form",
+    "form_attributes": "id=\"loginbox_form\" action=\"/ajax/login.php\"",
+    "expected_inputs": {
+      "loginbox_membername": "{{ .Config.username }}",
+      "loginbox_password": "{{ .Config.password }}",
+      "securitytoken": "fixture-token"
+    },
+    "error_html": "<div class=\"error\">fixture-private-error</div>",
+    "category": 3040,
+    "request_count": 1,
+    "login_path": "/?p=home&pid=1",
+    "search_path": "/",
+    "keyword": "keywords",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "cid[]",
+      "4"
+    ],
+    "download_path": "/?p=torrents&pid=10&action=download&tid=42",
+    "details_path": "/?p=torrents&pid=10&action=details&tid=42",
+    "published": "2026-10-28T10:30:00Z",
+    "free_markup": "<img src=\"/torrent_free.png\" title=\"1\">",
+    "normal_markup": "",
+    "free_download": 1,
+    "free_upload": 1,
+    "custom_category": 100004,
+    "landing_html": "<script>stKey: \"fixture-token\",</script>"
+  },
+  {
+    "id": "torrentlt",
+    "direct_post": true,
+    "sha256": "c13fb3205364b48570a0f1cb5f700c53ba2470f2cb14b3a700e3e87699c25ce8",
+    "search_fixture": "form:torrentlt",
+    "form_path": "/lt/account-login.php",
+    "submit_path": "/lt/account-login.php",
+    "form_id": "",
+    "expected_inputs": {
+      "username": "{{ .Config.username }}",
+      "password": "{{ .Config.password }}"
+    },
+    "error_html": "<div class=\"klaida\">fixture-private-error</div>",
+    "category": 2000,
+    "custom_category": 100033,
+    "request_count": 1,
+    "login_path": "/lt/main",
+    "search_path": "/lt/torrents",
+    "keyword": "search",
+    "keyword_value": "Fixture",
+    "category_input": [
+      "cats[]",
+      "33"
+    ],
+    "download_path": "/lt/download?id=42",
+    "details_path": "/lt/torrents?id=42",
+    "published": "2026-10-28T08:30:00Z",
+    "free_markup": "<img src=\"/freedownload.gif\">",
+    "normal_markup": "",
+    "free_download": 0,
+    "free_upload": 1,
+    "expected_title": "Fixture Release"
+  }
+]

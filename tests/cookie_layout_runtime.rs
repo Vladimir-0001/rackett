@@ -24,6 +24,11 @@ struct Case {
     empty_body: Option<String>,
     #[serde(default)]
     detail: Option<Detail>,
+    /// The definition declares no `login.test`: pinned TestLogin sends no validation
+    /// request and only a search redirect means expiry (docs/login-without-test.md).
+    /// `login_path` is then unused.
+    #[serde(default)]
+    no_test: bool,
     sha256: String,
     category: u32,
     custom_category: Option<u32>,
@@ -37,6 +42,14 @@ struct Case {
     search_paths: Vec<String>,
     #[serde(default)]
     user_agent: bool,
+    /// The definition declares `Referer: {{ .Config.sitelink }}<suffix>`: login tests
+    /// and searches carry it (docs/session-search-headers.md).
+    #[serde(default)]
+    referer: Option<String>,
+    /// The definition declares this literal `Cookie` search header: every request
+    /// sends it first, then `"; "` and the session cookie.
+    #[serde(default)]
+    literal_cookie: Option<String>,
     #[serde(default = "one")]
     normal_download: f64,
     #[serde(default = "one")]
@@ -44,6 +57,10 @@ struct Case {
     keyword: String,
     keyword_value: String,
     category_input: Option<[String; 2]>,
+    /// The definition searches with `method: post`; keyword and category pairs are
+    /// matched in the form body, decoded with the definition charset.
+    #[serde(default)]
+    search_post: bool,
     download_path: String,
     details_path: String,
     published: String,
@@ -58,18 +75,26 @@ fn one() -> f64 {
 const AGENT: &str = "Fixture Browser/1.0";
 const AGENT_CHANGED: &str = "Fixture Browser/2.0";
 /// Cookie layout cases: the original manifest plus independently merged batches.
-const COOKIE_MANIFESTS: [&str; 5] = [
+const COOKIE_MANIFESTS: [&str; 7] = [
     include_str!("fixtures/cookie-layouts/cases.json"),
     include_str!("fixtures/cookie-batches/batch1.json"),
     include_str!("fixtures/cookie-batches/batch2.json"),
     include_str!("fixtures/cookie-batches/batch3.json"),
     include_str!("fixtures/cookie-batches/batch4.json"),
+    include_str!("fixtures/cookie-batches/batch5.json"),
+    include_str!("fixtures/cookie-batches/batch6.json"),
 ];
 fn cases() -> Vec<Case> {
-    COOKIE_MANIFESTS
+    let mut cases: Vec<Case> = COOKIE_MANIFESTS
         .iter()
         .flat_map(|m| serde_json::from_str::<Vec<Case>>(m).unwrap())
-        .collect()
+        .collect();
+    // `RACKETT_COOKIE_CASES=matrix,hdtime` re-runs single lifecycles locally.
+    if let Ok(only) = std::env::var("RACKETT_COOKIE_CASES") {
+        let only: Vec<&str> = only.split(',').collect();
+        cases.retain(|c| only.contains(&c.id.as_str()));
+    }
+    cases
 }
 fn root(c: &Case) -> cardigann::Node {
     let raw = builtin::SOURCES
@@ -103,6 +128,22 @@ fn empty(page: &str) -> String {
     let (_, after) = rest.split_once("<!-- rows:end -->").unwrap();
     format!("{before}{after}")
 }
+/// Extraction as the session runtime sees a plain HTTP 200 response, so definitions
+/// with an empty `noResultsMessage` (superbits) get their transport metadata.
+fn extract(
+    p: &Plan,
+    request: &rackett::cardigann_exec::request::BuiltRequest,
+    body: &str,
+    ctx: &rackett::cardigann_exec::template::Context,
+) -> Result<Vec<rackett::models::Release>, rackett::cardigann_exec::ExecutionError> {
+    let meta = rackett::cardigann_exec::ResponseMeta {
+        status: 200,
+        redirected: false,
+        refresh: false,
+        body_bytes: body.len(),
+    };
+    p.extract_response(request, &meta, body, ctx)
+}
 fn query(c: &Case) -> SearchQuery {
     SearchQuery {
         params: BTreeMap::from([
@@ -110,6 +151,80 @@ fn query(c: &Case) -> SearchQuery {
             ("cat".into(), c.category.to_string()),
         ]),
     }
+}
+/// The request URL with a POST search body folded into its query, so one matcher
+/// covers both shapes. A non-UTF-8 body must use HttpUtility.UrlEncode's lower-case
+/// escapes, and its bytes decode with the definition charset.
+fn search_url(
+    c: &Case,
+    charset: rackett::cardigann_exec::request::Charset,
+    uri: &str,
+    body: &[u8],
+) -> url::Url {
+    let mut url = url::Url::parse(uri).unwrap();
+    if !c.search_post {
+        assert!(body.is_empty(), "{}: unexpected search body", c.id);
+        return url;
+    }
+    let pairs: Vec<(String, String)> = if charset == rackett::cardigann_exec::request::Charset::Utf8
+    {
+        url::form_urlencoded::parse(body).into_owned().collect()
+    } else {
+        let text = std::str::from_utf8(body).expect("percent-encoded body is ASCII");
+        for escape in text.split('%').skip(1) {
+            assert!(
+                escape.len() >= 2
+                    && escape[..2]
+                        .bytes()
+                        .all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')),
+                "{}: non-HttpUtility escape in {text}",
+                c.id
+            );
+        }
+        let decode = |part: &str| {
+            let raw = part.replace('+', " ");
+            let mut bytes = Vec::new();
+            let mut i = 0;
+            while i < raw.len() {
+                if raw.as_bytes()[i] == b'%' {
+                    bytes.push(u8::from_str_radix(&raw[i + 1..i + 3], 16).unwrap());
+                    i += 3;
+                } else {
+                    bytes.push(raw.as_bytes()[i]);
+                    i += 1;
+                }
+            }
+            charset.decode(bytes).unwrap()
+        };
+        text.split('&')
+            .filter(|pair| !pair.is_empty())
+            .map(|pair| {
+                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
+                (decode(k), decode(v))
+            })
+            .collect()
+    };
+    url.query_pairs_mut().extend_pairs(pairs);
+    url
+}
+/// `search_url` for a built request; GET requests must carry no body.
+fn built_url(
+    c: &Case,
+    p: &Plan,
+    request: &rackett::cardigann_exec::request::BuiltRequest,
+) -> url::Url {
+    assert_eq!(
+        request.method,
+        if c.search_post { "POST" } else { "GET" },
+        "{}",
+        c.id
+    );
+    search_url(
+        c,
+        p.charset(),
+        &request.url,
+        request.body.as_deref().unwrap_or_default().as_bytes(),
+    )
 }
 fn request_matches(c: &Case, url: &url::Url) {
     assert!(
@@ -155,11 +270,10 @@ fn check_layout(c: Case) {
     let requests = p.build_requests(&ctx).unwrap();
     assert_eq!(requests.len(), c.request_count, "{}", c.id);
     let request = &requests[0];
-    request_matches(&c, &url::Url::parse(&request.url).unwrap());
+    request_matches(&c, &built_url(&c, &p, request));
     for free in [false, true] {
         let body = page(&c, free);
-        let rows = p
-            .extract(request, &body, &ctx)
+        let rows = extract(&p, request, &body, &ctx)
             .unwrap_or_else(|e| panic!("{} free={free}: {e}", c.id));
         assert_eq!(rows.len(), 1, "{}", c.id);
         let r = &rows[0];
@@ -204,7 +318,7 @@ fn check_layout(c: Case) {
             c.id
         );
         assert!(
-            p.extract(request, &empty_for(&c, &body), &ctx)
+            extract(&p, request, &empty_for(&c, &body), &ctx)
                 .unwrap()
                 .is_empty(),
             "{}",
@@ -216,7 +330,7 @@ fn check_layout(c: Case) {
         if let Some(title) = &c.expected_title {
             untitled = untitled.replace(title.as_str(), "");
         }
-        let no_title = p.extract(request, &untitled, &ctx);
+        let no_title = extract(&p, request, &untitled, &ctx);
         if let Some(fallback) = &c.missing_title {
             assert_eq!(no_title.unwrap()[0].title, *fallback, "{}", c.id);
         } else if let Ok(rows) = no_title {
@@ -242,7 +356,9 @@ async fn every_layout_runs_through_cookie_engine_cache_download_edit_and_restart
                 Err(_) => Some(name),
             }
         })
-        .buffer_unordered(8)
+        // As in the form harness: pinned delays make lifecycles long, and more parallel
+        // cases on a shared host push searches past their deadline.
+        .buffer_unordered(4)
         .filter_map(|r| async move { r })
         .collect()
         .await;
@@ -250,10 +366,11 @@ async fn every_layout_runs_through_cookie_engine_cache_download_edit_and_restart
 }
 async fn lifecycle(c: Case) {
     use axum::{
+        body::Bytes,
         extract::State,
-        http::{HeaderMap, StatusCode, Uri},
+        http::{HeaderMap, Method, StatusCode, Uri},
         response::{Html, IntoResponse},
-        routing::get,
+        routing::any,
         Router,
     };
     use rackett::{
@@ -279,6 +396,7 @@ async fn lifecycle(c: Case) {
     }
     struct Fixture {
         case: Case,
+        base: String,
         body: String,
         charset: Charset,
         mode: AtomicU8,
@@ -308,9 +426,21 @@ async fn lifecycle(c: Case) {
     }
     async fn respond(
         State(f): State<Arc<Fixture>>,
+        method: Method,
         uri: Uri,
         h: HeaderMap,
+        body: Bytes,
     ) -> axum::response::Response {
+        // The engine addresses the fixture as 127.0.0.1. Local port scanners on a shared
+        // machine (seen as `Host: localhost:<port>`, `user-agent: node`) are not
+        // engine requests and must not count as hits.
+        if !h
+            .get("host")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|host| host.starts_with("127.0.0.1:"))
+        {
+            return StatusCode::NOT_FOUND.into_response();
+        }
         let expected_agent = if !f.case.user_agent {
             "Rackett/0.1"
         } else if f.agent_changed.load(Ordering::SeqCst) == 0 {
@@ -324,11 +454,52 @@ async fn lifecycle(c: Case) {
             "{}: User-Agent",
             f.case.id
         );
-        let cookie = h.get("cookie").and_then(|v| v.to_str().ok()).unwrap_or("");
-        f.hits
-            .lock()
-            .unwrap()
-            .push((uri.to_string(), cookie.into()));
+        let target = f
+            .case
+            .detail
+            .as_ref()
+            .map_or(&f.case.download_path, |d| &d.resolved);
+        // Pinned BaseIndexer.Download sends the link as Referer (`BaseIndexer.cs:548`).
+        let referer = if uri.to_string() == *target {
+            Some(format!("{}{}", f.base.trim_end_matches('/'), uri))
+        } else if f.case.detail.is_some() && uri.to_string() == f.case.download_path {
+            None
+        } else {
+            f.case.referer.as_ref().map(|r| format!("{}{r}", f.base))
+        };
+        assert_eq!(
+            h.get("referer").and_then(|h| h.to_str().ok()),
+            referer.as_deref(),
+            "{}: Referer {uri}",
+            f.case.id
+        );
+        let mut cookie = h.get("cookie").and_then(|v| v.to_str().ok()).unwrap_or("");
+        if let Some(literal) = &f.case.literal_cookie {
+            cookie = cookie
+                .strip_prefix(literal.as_str())
+                .and_then(|c| c.strip_prefix("; "))
+                .unwrap_or_else(|| panic!("{}: literal Cookie first", f.case.id));
+        }
+        // POST search bodies are folded into the recorded query (`search_url`).
+        let hit = if method == Method::POST {
+            assert!(
+                f.case.search_post && uri.path() == f.case.search_path,
+                "{}: unexpected POST {uri}",
+                f.case.id
+            );
+            assert_eq!(
+                h.get("content-type").and_then(|v| v.to_str().ok()),
+                Some("application/x-www-form-urlencoded"),
+                "{}: search POST content type",
+                f.case.id
+            );
+            let url = search_url(&f.case, f.charset, &format!("http://fixture{uri}"), &body);
+            url[url::Position::BeforePath..].to_owned()
+        } else {
+            assert_eq!(method, Method::GET, "{}: method", f.case.id);
+            uri.to_string()
+        };
+        f.hits.lock().unwrap().push((hit, cookie.into()));
         if cookie != SEED && cookie != RENEWED {
             return StatusCode::UNAUTHORIZED.into_response();
         }
@@ -338,6 +509,12 @@ async fn lifecycle(c: Case) {
         }
         if mode == 4 {
             return (StatusCode::SERVICE_UNAVAILABLE, "fixture-private-error").into_response();
+        }
+        if mode == 5 {
+            let mut r = StatusCode::FOUND.into_response();
+            r.headers_mut()
+                .insert("location", "/fixture-login".parse().unwrap());
+            return r;
         }
         if let Some(detail) = &f.case.detail {
             if uri.to_string() == f.case.download_path {
@@ -373,18 +550,19 @@ async fn lifecycle(c: Case) {
         }
         response
     }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/", listener.local_addr().unwrap());
     let fixture = Arc::new(Fixture {
         case: c.clone(),
+        base: base.clone(),
         body: page(&c, true),
         charset,
         mode: AtomicU8::new(0),
         agent_changed: AtomicU8::new(0),
         hits: Default::default(),
     });
-    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-    let base = format!("http://{}/", listener.local_addr().unwrap());
     let app = Router::new()
-        .fallback(get(respond))
+        .fallback(any(respond))
         .with_state(fixture.clone());
     let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     let dir = tempfile::tempdir().unwrap();
@@ -460,27 +638,25 @@ async fn lifecycle(c: Case) {
     assert_eq!(r.size, Some(1 << 30), "{}", c.id);
     assert_eq!((r.seeders, r.peers), (Some(11), Some(15)), "{}", c.id);
     let hits = fixture.take();
-    assert_eq!(hits.len(), c.request_count * 2, "{}", c.id);
-    assert_eq!(hits[0], (c.login_path.clone(), SEED.into()), "{}", c.id);
-    assert_eq!(hits[1].1, RENEWED, "{}", c.id);
-    for pair in hits.as_chunks::<2>().0 {
-        assert_eq!(pair[0].0, c.login_path, "{}: positive preflight", c.id);
-        request_matches(
-            &c,
-            &url::Url::parse(&format!("{}{}", base.trim_end_matches('/'), pair[1].0)).unwrap(),
-        );
+    // One positive preflight validates the supplied cookie, unless the definition
+    // has no test; later pages trust it (docs/session-validation.md).
+    let preflight = usize::from(!c.no_test);
+    assert_eq!(hits.len(), preflight + c.request_count, "{}", c.id);
+    if c.no_test {
+        assert_eq!(hits[0].1, SEED, "{}", c.id);
+    } else {
+        assert_eq!(hits[0], (c.login_path.clone(), SEED.into()), "{}", c.id);
+        assert_eq!(hits[1].1, RENEWED, "{}", c.id);
     }
-    let mut actual_paths: Vec<_> = hits
-        .as_chunks::<2>()
-        .0
+    let searches: Vec<_> = hits[preflight..]
         .iter()
-        .map(|pair| {
-            url::Url::parse(&format!("{}{}", base.trim_end_matches('/'), pair[1].0))
-                .unwrap()
-                .path()
-                .to_owned()
+        .map(|(path, _)| {
+            let url = url::Url::parse(&format!("{}{}", base.trim_end_matches('/'), path)).unwrap();
+            request_matches(&c, &url);
+            url
         })
         .collect();
+    let mut actual_paths: Vec<_> = searches.iter().map(|url| url.path().to_owned()).collect();
     actual_paths.sort();
     actual_paths.dedup();
     let mut expected_paths = vec![c.search_path.clone()];
@@ -527,8 +703,8 @@ async fn lifecycle(c: Case) {
             assert_eq!(hits.last().unwrap().0, detail.resolved, "{}", c.id);
         }
     } else {
-        assert_eq!(hits.len(), 2, "{}", c.id);
-        assert_eq!(hits[1].0, c.download_path);
+        assert_eq!(hits.len(), if c.no_test { 1 } else { 2 }, "{}", c.id);
+        assert_eq!(hits.last().unwrap().0, c.download_path);
     }
     assert!(engine
         .download(&i.id, r.source_epoch, "https://other.invalid/file.torrent")
@@ -554,7 +730,13 @@ async fn lifecycle(c: Case) {
         restarted.errors
     );
     assert_eq!(restarted.results.len(), 1);
-    assert!(fixture.take().iter().all(|(_, cookie)| cookie == RENEWED));
+    let hits = fixture.take();
+    assert!(hits.iter().all(|(_, cookie)| cookie == RENEWED));
+    // Validation is in memory: the restored session is tested once, then trusted.
+    assert_eq!(hits.len(), preflight + c.request_count, "{}: restart", c.id);
+    if !c.no_test {
+        assert_eq!(hits[0].0, c.login_path, "{}: restart preflight", c.id);
+    }
     if c.user_agent {
         let epoch = restarted.results[0].source_epoch;
         fixture.agent_changed.store(1, Ordering::SeqCst);
@@ -570,16 +752,25 @@ async fn lifecycle(c: Case) {
             "{}: changed agent must isolate renewed cookies",
             c.id
         );
-        assert_eq!(hits[1].1, RENEWED);
+        assert_eq!(hits.len(), preflight + c.request_count, "{}", c.id);
+        assert_eq!(hits.last().unwrap().1, RENEWED);
     }
-    for mode in [1, 2, 3, 4] {
+    // Mode 5 redirects searches: without a test it is the only expiry signal.
+    let modes: &[u8] = if c.no_test {
+        &[1, 2, 3, 4, 5]
+    } else {
+        &[1, 2, 3, 4]
+    };
+    for &mode in modes {
         engine.clear_cache().await;
         fixture.mode.store(mode, Ordering::SeqCst);
         let result = engine.search(vec![i.id.clone()], q.clone()).await;
         assert!(result.results.is_empty(), "{} mode {mode}", c.id);
+        // Without a test a marker-less HTML page is an empty result, not expiry
+        // (pinned CheckIfLoginIsNeeded, `CardigannIndexer.cs:977-980`).
         assert_eq!(
             result.errors.is_empty(),
-            mode == 1,
+            mode == 1 || (mode == 2 && c.no_test && !c.json),
             "{} mode {mode}: {:?}",
             c.id,
             result.errors
@@ -588,7 +779,26 @@ async fn lifecycle(c: Case) {
         for secret in [SEED, RENEWED, "fixture-private-error"] {
             assert!(!text.contains(secret), "{}", c.id);
         }
-        assert!(!fixture.take().is_empty());
+        let hits = fixture.take();
+        assert!(!hits.is_empty());
+        assert!(
+            hits.iter().all(|(u, _)| u != "/fixture-login"),
+            "{}: search redirect followed",
+            c.id
+        );
+        if !c.no_test {
+            // Mode 1 pages trust the validated cookie. Mode 2's expired page clears
+            // that trust, so later searches send only their (failing) preflight.
+            match mode {
+                1 => assert_eq!(hits.len(), c.request_count, "{} mode 1", c.id),
+                2 => assert_ne!(hits[0].0, c.login_path, "{} mode 2: preflight", c.id),
+                _ => assert!(
+                    hits.iter().all(|(u, _)| *u == c.login_path),
+                    "{} mode {mode}: {hits:?}",
+                    c.id
+                ),
+            }
+        }
     }
     fixture.mode.store(0, Ordering::SeqCst);
     let recovered = engine.search(vec![i.id.clone()], q).await;
@@ -599,8 +809,15 @@ async fn lifecycle(c: Case) {
         recovered.errors
     );
     assert_eq!(recovered.results.len(), 1);
-    assert!(!fixture.take().is_empty());
-    server.abort();
+    assert_eq!(
+        fixture.take().len(),
+        preflight + c.request_count,
+        "{}",
+        c.id
+    );
+    // Stays bound until the test binary exits, so a dropped engine's late request
+    // cannot reach a later case's fixture on a reused port.
+    drop(server);
 }
 
 #[test]
@@ -629,7 +846,7 @@ fn source_settings_keep_query_filters_row_filters_and_seedbox_downloads_distinct
             _ => None,
         };
         for (n, request) in requests.iter().enumerate() {
-            let url = url::Url::parse(&request.url).unwrap();
+            let url = built_url(&c, &p, request);
             request_matches(&c, &url);
             if let Some((key, value)) = expected {
                 assert!(
@@ -644,7 +861,7 @@ fn source_settings_keep_query_filters_row_filters_and_seedbox_downloads_distinct
                     .any(|(k, v)| k == "page" && v == (n + 1).to_string()));
             }
             assert_eq!(
-                p.extract(request, &page(&c, true), &ctx).unwrap().len(),
+                extract(&p, request, &page(&c, true), &ctx).unwrap().len(),
                 1,
                 "{}",
                 c.id
@@ -659,7 +876,7 @@ fn source_settings_keep_query_filters_row_filters_and_seedbox_downloads_distinct
                 .contains(".Config.freeleech")
             {
                 assert!(
-                    p.extract(request, &page(&c, false), &ctx)
+                    extract(&p, request, &page(&c, false), &ctx)
                         .unwrap()
                         .is_empty(),
                     "{}: freeleech row filter",
@@ -674,7 +891,7 @@ fn source_settings_keep_query_filters_row_filters_and_seedbox_downloads_distinct
                 now,
             );
             let request = p.build_requests(&ctx).unwrap().remove(0);
-            let rows = p.extract(&request, &page(&c, false), &ctx).unwrap();
+            let rows = extract(&p, &request, &page(&c, false), &ctx).unwrap();
             let path = if c.id == "pwtorrents2fa" {
                 "/seeddownload.php?id=42"
             } else {
@@ -693,9 +910,8 @@ fn browser_cookie_layouts_keep_provider_specific_fields_and_alternative_branches
         let run = |body: String, settings: BTreeMap<String, serde_json::Value>| {
             let ctx = p.context(&settings, &query(&c), now);
             let request = p.build_requests(&ctx).unwrap().remove(0);
-            let rows = p
-                .extract(&request, &body, &ctx)
-                .unwrap_or_else(|e| panic!("{}: {e}", c.id));
+            let rows =
+                extract(&p, &request, &body, &ctx).unwrap_or_else(|e| panic!("{}: {e}", c.id));
             assert_eq!(rows.len(), 1, "{}", c.id);
             rows.into_iter().next().unwrap()
         };
@@ -893,6 +1109,60 @@ fn browser_cookie_layouts_keep_provider_specific_fields_and_alternative_branches
                     "Fixture Release 2026.10.28"
                 );
             }
+            "ex-torrenty" => {
+                // MULTi is replaced only with `multilang`, and only without a language
+                // tag after it; a standalone PL becomes POLISH.
+                let multi = normal.replace("Fixture Release", "Fixture Release MULTi");
+                assert_eq!(
+                    run(multi.clone(), BTreeMap::new()).title,
+                    "Fixture Release MULTi"
+                );
+                let multilang = BTreeMap::from([("multilang".into(), json!(true))]);
+                assert_eq!(
+                    run(multi.clone(), multilang.clone()).title,
+                    "Fixture Release POLISH"
+                );
+                assert_eq!(
+                    run(
+                        multi.clone(),
+                        BTreeMap::from([
+                            ("multilang".into(), json!(true)),
+                            ("multilanguage".into(), json!("MULTi POLISH")),
+                        ])
+                    )
+                    .title,
+                    "Fixture Release MULTi POLISH"
+                );
+                assert_eq!(
+                    run(
+                        normal.replace("Fixture Release", "Fixture Release MULTi PL"),
+                        multilang
+                    )
+                    .title,
+                    "Fixture Release MULTi POLISH"
+                );
+                // The ordered category case: "Filmy HD" is site category 17 (Movies/HD).
+                let hd = run(normal.replace(">Sport<", ">Filmy HD<"), BTreeMap::new());
+                assert!(hd.categories.contains(&2040), "{:?}", hd.categories);
+            }
+            "gaytorrentru" => {
+                // The download link is built from the id and the URL-encoded title.
+                let ampersand = run(
+                    normal.replace(">Fixture Release<", ">Fixture &amp; Release<"),
+                    BTreeMap::new(),
+                );
+                assert!(
+                    ampersand.link.ends_with(
+                        "/download.php?id=42&n=Fixture+%26+Release.torrent&p=dodownload"
+                    ),
+                    "{}",
+                    ampersand.link
+                );
+                // Seeder and leecher links are optional and default to zero.
+                let missing = normal.replace(">11<", "><").replace(">4<", "><");
+                let missing = run(missing, BTreeMap::new());
+                assert_eq!((missing.seeders, missing.peers), (Some(0), Some(0)));
+            }
             _ => unreachable!(),
         }
     }
@@ -912,12 +1182,25 @@ fn browser_cookie_queries_keep_category_routes_ids_sort_and_freeleech() {
             .unwrap();
         assert_eq!(requests.len(), c.request_count, "{}", c.id);
         for r in requests {
-            assert_eq!(r.headers, [("User-Agent".into(), AGENT.into())], "{}", c.id);
+            let mut expected = vec![("User-Agent".to_owned(), AGENT.to_owned())];
+            if let Some(suffix) = &c.referer {
+                // The plan renders the definition's first link as its site link.
+                let link = root(&c).get("links").unwrap().items().unwrap()[0]
+                    .text()
+                    .unwrap()
+                    .to_owned();
+                expected.push(("Referer".into(), format!("{link}{suffix}")));
+            }
+            let mut headers = r.headers.clone();
+            headers.sort();
+            expected.sort();
+            assert_eq!(headers, expected, "{}", c.id);
             request_matches(&c, &url::Url::parse(&r.url).unwrap());
             let key = match c.id.as_str() {
                 "hdtime" | "ptskit" | "pterclub" => Some(("spstate", "2")),
                 "matrix" => Some(("incldead", "3")),
                 "teamhd" => Some(("free", "1")),
+                "gaytorrentru" => Some(("infl", "1")),
                 _ => None,
             };
             if let Some((key, value)) = key {
