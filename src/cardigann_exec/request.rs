@@ -20,7 +20,10 @@ pub enum Charset {
     Windows1250,
     Windows1251,
     Windows1252,
+    Windows1255,
     Windows1256,
+    /// Code page 874, which .NET also resolves for the name "tis-620".
+    Windows874,
     Iso8859_2,
 }
 impl Charset {
@@ -38,7 +41,10 @@ impl Charset {
             "windows-1250" => Ok(Self::Windows1250),
             "windows-1251" => Ok(Self::Windows1251),
             "windows-1252" => Ok(Self::Windows1252),
+            "windows-1255" => Ok(Self::Windows1255),
             "windows-1256" => Ok(Self::Windows1256),
+            // EncodingTable.Data.cs (System.Text.Encoding.CodePages) maps both names to 874.
+            "windows-874" | "tis-620" => Ok(Self::Windows874),
             "iso-8859-2" => Ok(Self::Iso8859_2),
             _ => Err(format!("$.encoding: unsupported encoding {encoding}")),
         }
@@ -51,7 +57,9 @@ impl Charset {
             Self::Windows1250 => "windows-1250",
             Self::Windows1251 => "windows-1251",
             Self::Windows1252 => "windows-1252",
+            Self::Windows1255 => "windows-1255",
             Self::Windows1256 => "windows-1256",
+            Self::Windows874 => "windows-874",
             Self::Iso8859_2 => "ISO-8859-2",
         }
     }
@@ -62,28 +70,88 @@ impl Charset {
             Self::Windows1250 => Some(&WINDOWS_1250),
             Self::Windows1251 => Some(&WINDOWS_1251),
             Self::Windows1252 => Some(&WINDOWS_1252),
+            Self::Windows1255 => Some(&WINDOWS_1255),
             Self::Windows1256 => Some(&WINDOWS_1256),
+            Self::Windows874 => Some(&WINDOWS_874),
             Self::Iso8859_2 => Some(&ISO_8859_2),
+        }
+    }
+    /// Encoder best-fit characters (sorted) and their bytes: InternalEncoderBestFitFallback
+    /// for the code pages, EncoderLatin1BestFitFallback for Latin1Encoding.
+    fn best_fit(self) -> (&'static [char], &'static [u8]) {
+        use super::single_byte::*;
+        match self {
+            Self::Utf8 => (&[], &[]),
+            Self::Latin1 => (&LATIN1_BEST_FIT, &LATIN1_BEST_FIT_BYTES),
+            Self::Windows1250 => (&WINDOWS_1250_BEST_FIT, &WINDOWS_1250_BEST_FIT_BYTES),
+            Self::Windows1251 => (&WINDOWS_1251_BEST_FIT, &WINDOWS_1251_BEST_FIT_BYTES),
+            Self::Windows1252 => (&WINDOWS_1252_BEST_FIT, &WINDOWS_1252_BEST_FIT_BYTES),
+            Self::Windows1255 => (&WINDOWS_1255_BEST_FIT, &WINDOWS_1255_BEST_FIT_BYTES),
+            Self::Windows1256 => (&WINDOWS_1256_BEST_FIT, &WINDOWS_1256_BEST_FIT_BYTES),
+            Self::Windows874 => (&WINDOWS_874_BEST_FIT, &WINDOWS_874_BEST_FIT_BYTES),
+            Self::Iso8859_2 => (&ISO_8859_2_BEST_FIT, &ISO_8859_2_BEST_FIT_BYTES),
+        }
+    }
+    /// Encoding.GetBytes with the encoding's default fallback, which never fails: an
+    /// unrepresentable character becomes its best-fit byte, or '?' if it has none. A
+    /// character outside the BMP is a UTF-16 surrogate pair and becomes "??". Only the
+    /// urldecode filter uses this; queries and credentials reject such text instead.
+    pub(crate) fn encode_best_fit(self, value: &str) -> Vec<u8> {
+        if self == Self::Utf8 {
+            return value.as_bytes().to_vec();
+        }
+        let mut out = Vec::with_capacity(value.len());
+        for c in value.chars() {
+            match self.encode_char(c) {
+                Some(byte) => out.push(byte),
+                None if u32::from(c) > 0xFFFF => out.extend_from_slice(b"??"),
+                None => {
+                    let (chars, bytes) = self.best_fit();
+                    out.push(chars.binary_search(&c).map_or(b'?', |i| bytes[i]));
+                }
+            }
+        }
+        out
+    }
+    /// WebUtilityHelpers.UrlDecode(text, encoding), the urldecode filter:
+    /// `encoding.GetString(WebUtility.UrlDecodeToBytes(encoding.GetBytes(text)))`. GetBytes
+    /// uses the best-fit fallback; GetString is total for single-byte pages and replaces
+    /// invalid UTF-8 with U+FFFD.
+    pub(crate) fn url_decode(self, text: &str) -> String {
+        let bytes = self.encode_best_fit(text);
+        let mut out = Vec::with_capacity(bytes.len());
+        let mut i = 0;
+        while i < bytes.len() {
+            let mut b = bytes[i];
+            if b == b'+' {
+                b = b' ';
+            } else if b == b'%' && i + 2 < bytes.len() {
+                // UrlDecodeInternal: '%' needs two following hex digits, else it is literal.
+                let hex = |b: u8| char::from(b).to_digit(16);
+                if let (Some(h), Some(l)) = (hex(bytes[i + 1]), hex(bytes[i + 2])) {
+                    b = (h * 16 + l) as u8;
+                    i += 2;
+                }
+            }
+            out.push(b);
+            i += 1;
+        }
+        match self {
+            Self::Utf8 => String::from_utf8_lossy(&out).into_owned(),
+            _ => self.decode(out).expect("single-byte decoding is total"),
         }
     }
     /// Encoding.GetBytes for a single-byte charset. Unrepresentable text is None; .NET's
     /// best-fit or '?' replacement is never guessed.
     pub(crate) fn encode_single_byte(self, value: &str) -> Option<Vec<u8>> {
+        value.chars().map(|c| self.encode_char(c)).collect()
+    }
+    /// The exact byte of one character in a single-byte charset, if it has one.
+    fn encode_char(self, c: char) -> Option<u8> {
         match (self, self.high_half()) {
-            (Self::Latin1, _) => value
-                .chars()
-                .map(|c| u8::try_from(u32::from(c)).ok())
-                .collect(),
-            (_, Some(high)) => value
-                .chars()
-                .map(|c| {
-                    if c.is_ascii() {
-                        Some(c as u8)
-                    } else {
-                        high.iter().position(|&h| h == c).map(|i| 0x80 + i as u8)
-                    }
-                })
-                .collect(),
+            (Self::Latin1, _) => u8::try_from(u32::from(c)).ok(),
+            (_, Some(_)) if c.is_ascii() => Some(c as u8),
+            (_, Some(high)) => high.iter().position(|&h| h == c).map(|i| 0x80 + i as u8),
             _ => None,
         }
     }
@@ -740,7 +808,10 @@ mod tests {
             ("windows-1250", Charset::Windows1250),
             ("Windows-1251", Charset::Windows1251),
             ("WINDOWS-1252", Charset::Windows1252),
+            ("windows-1255", Charset::Windows1255),
             ("windows-1256", Charset::Windows1256),
+            ("windows-874", Charset::Windows874),
+            ("TIS-620", Charset::Windows874),
             ("ISO-8859-2", Charset::Iso8859_2),
         ] {
             assert_eq!(
@@ -788,6 +859,53 @@ mod tests {
         // ISO-8859-2 lacks the euro sign; windows-1250 has it at 0x80.
         assert!(Charset::Iso8859_2.url_encode("\u{20ac}").is_err());
         assert_eq!(Charset::Windows1250.url_encode("\u{20ac}").unwrap(), "%80");
+        // .NET's codepages.nlp (= bestfit1255.txt/bestfit874.txt MBTABLE): 0xCA and the
+        // bytes the Unicode vendor tables leave undefined decode to fixed code points.
+        assert_eq!(
+            Charset::Windows1255
+                .decode(vec![0xe0, 0xca, 0xd9, 0xff, 0x81, 0xfd])
+                .unwrap(),
+            "\u{5d0}\u{5ba}\u{f88d}\u{f896}\u{81}\u{200e}"
+        );
+        assert_eq!(
+            Charset::Windows874
+                .decode(vec![0xa1, 0xdb, 0xde, 0xfc, 0xff, 0x80, 0x82])
+                .unwrap(),
+            "\u{e01}\u{f8c1}\u{f8c4}\u{f8c5}\u{f8c8}\u{20ac}\u{82}"
+        );
+        assert_eq!(
+            Charset::Windows1255.url_encode("\u{5e9}\u{20aa}").unwrap(),
+            "%F9%A4"
+        );
+        assert!(Charset::Windows874.url_encode("\u{5d0}").is_err());
+    }
+    #[test]
+    fn best_fit_encoding_matches_dotnet_fallbacks() {
+        // EncoderLatin1BestFitFallback, then '?' for characters without a best fit and "??"
+        // for a UTF-16 surrogate pair.
+        assert_eq!(
+            Charset::Latin1.encode_best_fit("\u{e9}\u{100}\u{2013}\u{ff05}\u{4e2d}\u{1f600}"),
+            b"\xe9A-%???"
+        );
+        // InternalEncoderBestFitFallback over the codepages.nlp Unicode->bytes table.
+        assert_eq!(
+            Charset::Windows1252.encode_best_fit("\u{100}\u{20ac}\u{4e2d}"),
+            b"A\x80?"
+        );
+        assert_eq!(
+            Charset::Windows1255.encode_best_fit("\u{a4}\u{ff01}\u{5d0}"),
+            b"\xa4!\xe0"
+        );
+        assert_eq!(Charset::Utf8.encode_best_fit("\u{e9}"), "\u{e9}".as_bytes());
+        for charset in [
+            Charset::Windows1251,
+            Charset::Windows874,
+            Charset::Iso8859_2,
+        ] {
+            assert_eq!(charset.encode_best_fit("\u{ff21}\u{ff05}"), b"A%");
+        }
+        assert_eq!(Charset::Latin1.url_decode("\u{ff05}41%e9+"), "A\u{e9} ");
+        assert_eq!(Charset::Utf8.url_decode("%e9%C3%A9"), "\u{fffd}\u{e9}");
     }
     #[test]
     fn non_utf8_form_bodies_match_http_utility_url_encode() {
@@ -826,9 +944,7 @@ mod tests {
             "latin1",
             "ISO_8859-1",
             "iso-8859-15",
-            "windows-1255",
-            "windows-874",
-            "tis-620",
+            "iso-8859-11",
             "cp1251",
             "iso8859-1",
         ] {

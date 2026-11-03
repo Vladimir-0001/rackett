@@ -92,9 +92,27 @@ parse. A blank value selects the `else` branch (`IsNullOrWhiteSpace`).
 
 The Pirate Bay has no download field. Its releases use the infohash-to-magnet policy
 (`thepiratebay` was added to that list in `search_source`). Its count selector is
-`$[0].id`; `$.x` and `$[0].x` select from the token passed in, as Newtonsoft does. Upstream's no-results body is a single
+`$[0].id`, which `selector::parse_path` at `7b03438` rejects as `unsupported JSONPath
+character $`. Once `$.x` and `$[0].x` select from the token passed in, as Newtonsoft
+does, its case can be admitted (hand-off below). Upstream's no-results body is a single
 row with `id` `"0"`, which the count treats as empty. Its case is in
 `public-batches/batch16-thepiratebay.json`.
+
+### Hand-off (integrator-owned files)
+
+`src/builtin.rs`, `tests/public_layout_runtime.rs`, `tests/nexusphp_cookie_runtime.rs`
+and `tests/builtin_runtime.rs` were held by other tasks when this was written. Their
+changes are in two patches at the repository root:
+
+- `api-origin-handoff.patch`: `API_ORIGIN_IDS`, `api_origin`, the `Runtime::api_origin`
+  field, `READY_IDS` for `animetosho-xyz` and `yts`, the `animetosho-xyz` container, the
+  harness support above, and `batch16.json` in all three manifest lists. The branch does
+  not compile without it, because `src/builtin_runtime.rs` reads `rt.api_origin`.
+- `api-origin-thepiratebay.patch`: `READY_IDS` for `thepiratebay` and
+  `batch16-thepiratebay.json` in the manifest lists, plus its keywordless top-100 path
+  arm. Apply it only after the `$`-rooted JSON path fix (`ec62a32`, "Read rooted JSON
+  paths as Newtonsoft SelectToken does"). With that fix applied locally, the case
+  passed the full public harness.
 
 ## Left blocked
 
@@ -139,15 +157,18 @@ allowlist), and a third origin refused.
 `api_origins_come_from_listed_absolute_templates_and_settings_only` covers default and
 configured hosts, the site host, and port, credential, path and empty values.
 
-## Validation (2026-11-01)
+## Validation (2026-11-01, branch head plus both hand-off patches and `ec62a32`'s `selector.rs`)
 
 - `cargo test --lib`: 188 passed.
 - `cargo test --test cardigann_config_selectors`: 12 passed.
 - `cargo test --test public_layout_runtime`: 7 passed, 1 ignored (full run, 124 s),
   including the yts, animetosho-xyz and thepiratebay lifecycles over loopback TLS.
 - `cargo test --test cookie_auth`: 19 passed.
-- After integration, every test target passes, including `builtin_runtime` and
-  `nexusphp_cookie_runtime`.
+- `nexusphp_cookie_runtime` and `builtin_runtime` census tests: their only difference
+  is six IDs admitted at `7b03438` whose `public-batches/batch14.json` is in no census
+  list (catorrent, damagnet, limetorrents, magnetdownload, skidrowrepack,
+  torrentdownloads). The three IDs here appear on both sides. All other tests in those
+  targets pass.
 - `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` are clean.
 
 ## Limits

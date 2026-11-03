@@ -373,11 +373,14 @@ async fn lifecycle(case: Case) {
     assert!(fixture.take().is_empty());
     let release = &first.results[0];
     let mut presented = first.clone();
-    rackett::protocol::present_results(
-        &mut presented,
-        "management-placeholder",
-        "http://127.0.0.1:9117",
-    );
+    let links = engine
+        .links(
+            &presented.results,
+            "management-placeholder",
+            "http://127.0.0.1:9117",
+        )
+        .await;
+    rackett::protocol::present_results(&mut presented, &links);
     let public = serde_json::to_string(&presented).unwrap();
     for secret in [KEY, "fixture-session", "fixture-download-secret"] {
         assert!(!public.contains(secret), "{}", case.id);

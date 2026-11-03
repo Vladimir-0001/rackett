@@ -42,7 +42,7 @@ fn pinned_complete_schema_and_only_reviewed_cookie_preset_is_admitted() {
         SOURCE.replace("encoding: UTF-8", "encoding: [windows-1252]"),
         SOURCE.replace("encoding: UTF-8", "encoding: {name: windows-1252}"),
         SOURCE.replace("encoding: UTF-8", "encoding: ISO-8859-15"),
-        SOURCE.replace("encoding: UTF-8", "encoding: windows-874"),
+        SOURCE.replace("encoding: UTF-8", "encoding: koi8-r"),
         SOURCE.replace("method: cookie", "method: form"),
         SOURCE.replace("method: cookie", "method: post"),
         SOURCE.replace("method: cookie", "method: get"),
@@ -54,10 +54,10 @@ fn pinned_complete_schema_and_only_reviewed_cookie_preset_is_admitted() {
         SOURCE.replace("selector: a[href=\"logout.php\"]", "selector: '['"),
         SOURCE.replace("search:\n", "search:\n  headers: {User-Agent: [test]}\n"),
         SOURCE.replace("{{ .Config.cookie }}", "{{ .Config.password }}"),
-        format!("{SOURCE}\nfollowredirect: true\n"),
+        format!("{SOURCE}\nfollowredirect: sometimes\n"),
         format!("{SOURCE}\nlogin: {{method: form}}\n"),
         format!("{SOURCE}\nsearch: {{headers: {{X-Test: abc}}}}\n"),
-        format!("{SOURCE}\nencoding: windows-1255\n"),
+        format!("{SOURCE}\nencoding: shift_jis\n"),
         format!("{SOURCE}\ndownload: {{headers: {{X-Test: abc}}}}\n"),
         SOURCE.replace("  - name: cookie", "  - name: cookie\n    name: password"),
         SOURCE.replace("    type: text", "    type: text\n    type: info"),
@@ -73,6 +73,9 @@ fn pinned_complete_schema_and_only_reviewed_cookie_preset_is_admitted() {
     ] {
         assert!(plan(&yaml).is_err(), "Unexpected schema admission");
     }
+    // A root `followredirect` only matters after a cross-host redirect, which the
+    // session rejects anyway (docs/cookie-session-gaps.md).
+    assert!(plan(&format!("{SOURCE}\nfollowredirect: true\n")).is_ok());
     // Pinned TestLogin accepts an absent test or a test without a selector
     // (`CardigannIndexer.cs:896`, `:935`); see docs/login-without-test.md.
     for yaml in [
@@ -641,12 +644,16 @@ fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it
             without_test.push(*id);
             continue;
         };
-        assert_eq!(
-            rackett::cardigann_exec::query_selector_exists(
-                "<select><option>Filter</option></select>",
-                selector
+        // A select subtree never proves a login: positive local selectors skip it and
+        // other selectors (`:contains`, combinators, `:has`) fail closed on the page.
+        assert!(
+            !matches!(
+                rackett::cardigann_exec::query_selector_exists(
+                    "<select><option>Filter</option></select>",
+                    selector
+                ),
+                Ok(true)
             ),
-            Ok(false),
             "{id}"
         );
         checked.push(*id);
@@ -657,8 +664,25 @@ fn pinned_cookie_family_uses_positive_local_login_selectors_without_admitting_it
     // (krazyzone, leech24, thegeeks, theplace, theshow, torrent-turk); 121 with
     // runnable download blocks (boxingtorrents, fappaizuri2fa, hdarea, u2, xtorrenty);
     // 126 with session search headers (docs/session-search-headers.md): gaytorrentru
-    // and torrentbd (site-link Referer), hdgalaktik, rustorka and tormac (literal Cookie).
-    assert_eq!(checked.len(), 126, "{checked:?}");
+    // and torrentbd (site-link Referer), hdgalaktik, rustorka and tormac (literal Cookie);
+    // 136 with the cookie-session gaps (docs/cookie-session-gaps.md): engine CSS test
+    // selectors, followredirect, download POST and session download headers; 138 with
+    // windows-1255 and non-UTF-8 urldecode (fuzer, aftershock; docs/legacy-encodings.md).
+    assert_eq!(checked.len(), 138, "{checked:?}");
+    for id in [
+        "amigosshare",
+        "bjshare",
+        "hdsky",
+        "hdturk",
+        "myspleen",
+        "noname-clubl",
+        "pier720",
+        "pthome",
+        "ptsbao",
+        "teamos",
+    ] {
+        assert!(checked.contains(&id), "{id}: cookie-session gaps");
+    }
     for id in [
         "gaytorrentru",
         "hdgalaktik",

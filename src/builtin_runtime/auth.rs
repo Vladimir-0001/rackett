@@ -38,6 +38,11 @@ pub struct CookiePlan {
     pub(super) charset: Charset,
     /// Definition `certificates`, trusted only for the session's own origin host.
     pub(super) certificates: Option<crate::pinned_tls::Pins>,
+    /// Every search path declares `followredirect: true`: a search redirect is followed
+    /// as pinned `FollowIfRedirect` does (docs/cookie-session-gaps.md).
+    search_redirects: bool,
+    /// `download: {method: post}`: the release link is POSTed (`CardigannIndexer.cs:2109-2110`).
+    download_post: bool,
 }
 
 #[cfg(test)]
@@ -52,6 +57,45 @@ pub(crate) fn search_follows_redirects(root: &crate::cardigann::Node) -> bool {
                 .and_then(crate::cardigann::Node::items)
                 .is_some_and(|paths| paths.iter().any(|p| p.get("followredirect").is_some()))
     })
+}
+/// A `followredirect` flag: absent, `true` or `false`; anything else is unmodeled.
+fn redirect_flag(node: &Node) -> Option<bool> {
+    match node.get("followredirect").map(Node::text) {
+        None | Some(Some("false")) => Some(false),
+        Some(Some("true")) => Some(true),
+        _ => None,
+    }
+}
+/// Whether supplied-cookie searches follow redirects, or `None` when the definition's
+/// redirect flags are not modeled.
+///
+/// - The root flag (`Definition.Followredirect`) matters for a cookie login only when a
+///   test or search redirect leaves the site host: upstream then rewrites its site link
+///   and fails the request (`CardigannIndexer.cs:917-930`, `:955-969`). The session
+///   rejects every cross-origin redirect and never moves credentials to a host chosen
+///   by a redirect, so the request fails either way; the flag itself changes nothing.
+/// - `SearchPath.Followredirect` follows a search redirect (`:1609-1612`, `:1627-1630`,
+///   `:1808-1811`). The session sees one search target at a time, so every path must
+///   agree. The search-block flag and mixed paths stay unmodeled.
+fn search_redirect_policy(root: &Node) -> Option<bool> {
+    redirect_flag(root)?;
+    let search = root.get("search")?;
+    if search.get("followredirect").is_some() {
+        return None;
+    }
+    let paths = search
+        .get("paths")
+        .and_then(Node::items)
+        .unwrap_or_default();
+    let flags = paths
+        .iter()
+        .map(redirect_flag)
+        .collect::<Option<BTreeSet<_>>>()?;
+    match flags.len() {
+        0 => Some(false),
+        1 => flags.first().copied(),
+        _ => None,
+    }
 }
 fn exact_keys(node: &Node, expected: &[&str]) -> Result<()> {
     let pairs = node
@@ -120,10 +164,12 @@ impl CookiePlan {
                 || path.len() > 2048
                 || path.contains(['{', '}', '\\'])
                 || path.chars().any(char::is_control)
+                // The engine's CSS, as the page check itself (`query_selector_exists`):
+                // AngleSharp's `:contains` is part of the pinned dialect.
                 || selector.is_some_and(|selector| {
                     selector.is_empty()
                         || selector.len() > 1024
-                        || scraper::Selector::parse(selector).is_err()
+                        || crate::cardigann_exec::css::Css::parse(selector).is_err()
                 })
             {
                 bail!("Unsupported cookie test path or selector");
@@ -135,15 +181,15 @@ impl CookiePlan {
         } else {
             None
         };
-        if root.get("followredirect").is_some()
-            || search_follows_redirects(root)
-            || root
-                .get("download")
-                .and_then(|s| s.get("headers"))
-                .is_some()
-        {
+        let search_redirects = search_redirect_policy(root)
+            .ok_or_else(|| anyhow!("Cookie auth transport semantics are not modeled"))?;
+        let download = root.get("download");
+        if download.and_then(|s| s.get("headers")).is_some() {
             bail!("Cookie auth transport semantics are not modeled");
         }
+        // Upstream compares the literal with "post" (`CardigannIndexer.cs:2109`); which
+        // download blocks are admitted at all is DownloadSelectors' decision.
+        let download_post = download.and_then(|d| d.string("method")) == Some("post");
         let charset = Charset::from_definition(root)
             .map_err(|_| anyhow!("Cookie auth transport semantics are not modeled"))?;
         let settings = root
@@ -218,6 +264,8 @@ impl CookiePlan {
             headers: Vec::new(),
             certificates: crate::pinned_tls::Pins::compile(root)
                 .map_err(|_| anyhow!("Cookie auth transport semantics are not modeled"))?,
+            search_redirects,
+            download_post,
         })
     }
     /// Only the source-declared single header can be configured. No value is echoed.
@@ -529,11 +577,27 @@ struct SessionRequest<'a> {
     /// request (`BaseIndexer.cs:537-548`); it wins over a declared Referer.
     self_referer: bool,
     probe: bool,
+    /// A POST without content (`download: {method: post}`, `HttpWebClient2.cs:163-168`).
+    post: bool,
+    hops: Hops,
+}
+/// What a followed redirect hop carries.
+#[derive(Clone, Copy, PartialEq)]
+enum Hops {
+    /// The session cookies only: no declared header, no Referer.
+    Plain,
+    /// Pinned `FollowIfRedirect` without override cookies (`BaseIndexer.cs:688-743`): the
+    /// hop is a GET with an empty cookie string, no custom header and no Referer
+    /// (`:745-770`, `HttpWebClient2.cs:113-124`), and is sent outside
+    /// `RequestWithCookiesAsync`, so its `Set-Cookie` never reaches the session.
+    Bare,
+    /// `HandleRedirectableRequestAsync` (`CardigannIndexer.cs:2014-2028`): each hop goes
+    /// through `RequestWithCookiesAsync` with the same headers and no Referer.
+    Headed,
 }
 struct Received {
     bytes: Vec<u8>,
     content_type: String,
-    url: url::Url,
     unauthorized: bool,
     /// The probe ended on a redirect rather than HTTP 401.
     redirected: bool,
@@ -582,6 +646,8 @@ impl CookieSession {
             headers: Vec::new(),
             charset: form.plan.charset,
             certificates: form.plan.certificates.clone(),
+            search_redirects: false,
+            download_post: false,
         };
         let session = Self::create(plan, base, "", delay_ms, timeout_seconds, Some(form))?;
         session.target(&session.form.as_ref().unwrap().plan.path)?;
@@ -830,7 +896,6 @@ impl CookieSession {
         path: &str,
         redirects: usize,
         limit: usize,
-        self_referer: bool,
         state: OwnedMutexGuard<SessionState>,
     ) -> Result<(Vec<u8>, String, OwnedMutexGuard<SessionState>)> {
         let response = self
@@ -842,8 +907,10 @@ impl CookieSession {
                     fields: None,
                     body: None,
                     referer: None,
-                    self_referer,
+                    self_referer: false,
                     probe: false,
+                    post: false,
+                    hops: Hops::Plain,
                 },
                 state,
             )
@@ -859,8 +926,9 @@ impl CookieSession {
         let mut target = self.target(request.path)?;
         let mut fields = request.fields;
         let mut body = request.body;
+        let mut post = request.post;
         for n in 0..=request.redirects {
-            tokio::time::sleep_until(state.gate.into()).await;
+            crate::engine::wait_until(state.gate).await;
             state.gate = Instant::now() + self.delay;
             let mut outgoing = if let Some(fields) = fields {
                 if self.plan.charset == Charset::Utf8 {
@@ -882,14 +950,23 @@ impl CookieSession {
                     .post(target.clone())
                     .header(CONTENT_TYPE, "application/x-www-form-urlencoded")
                     .body(body.to_owned())
+            } else if post {
+                // .NET sends `Content-Length: 0` for a POST without content.
+                self.client
+                    .post(target.clone())
+                    .header(reqwest::header::CONTENT_LENGTH, "0")
             } else {
                 self.client.get(target.clone())
             };
             // Declared headers go with the first request only: pinned FollowIfRedirect
             // builds each hop without custom headers (`BaseIndexer.cs:745-770`).
-            let declared = n == 0;
-            let referer = if declared && request.self_referer {
+            // `HandleRedirectableRequestAsync` hops repeat them (`CardigannIndexer.cs:2023`).
+            let declared = n == 0 || request.hops == Hops::Headed;
+            let bare = n > 0 && request.hops == Hops::Bare;
+            let referer = if n == 0 && request.self_referer {
                 Some(target.as_str().to_owned())
+            } else if n > 0 && request.hops != Hops::Plain {
+                None
             } else {
                 request.referer.map(str::to_owned)
             };
@@ -907,12 +984,16 @@ impl CookieSession {
             if let Some(referer) = referer {
                 outgoing = outgoing.header(reqwest::header::REFERER, referer);
             }
-            let jar = state
-                .cookies
-                .header(&target, chrono::Utc::now().timestamp())?
-                .map(|h| h.to_str().map(str::to_owned))
-                .transpose()
-                .map_err(|_| anyhow!("Invalid session cookie header"))?;
+            let jar = if bare {
+                None
+            } else {
+                state
+                    .cookies
+                    .header(&target, chrono::Utc::now().timestamp())?
+                    .map(|h| h.to_str().map(str::to_owned))
+                    .transpose()
+                    .map_err(|_| anyhow!("Invalid session cookie header"))?
+            };
             if let Some(cookie) = self.cookie_header(declared, jar) {
                 outgoing = outgoing.header(COOKIE, cookie);
             }
@@ -920,12 +1001,14 @@ impl CookieSession {
                 .send()
                 .await
                 .map_err(|_| anyhow!("Cookie source transport failed"))?;
-            state.dirty |= state.cookies.update(
-                &target,
-                response.headers(),
-                chrono::Utc::now().timestamp(),
-            )?;
-            state = self.durable(state).await?;
+            if !bare {
+                state.dirty |= state.cookies.update(
+                    &target,
+                    response.headers(),
+                    chrono::Utc::now().timestamp(),
+                )?;
+                state = self.durable(state).await?;
+            }
             if response.headers().contains_key("refresh") {
                 bail!("Cookie source refresh redirect rejected");
             }
@@ -961,7 +1044,6 @@ impl CookieSession {
                     return Ok(Received {
                         bytes: Vec::new(),
                         content_type: String::new(),
-                        url: target,
                         unauthorized: true,
                         redirected: true,
                         state,
@@ -987,13 +1069,14 @@ impl CookieSession {
                     fields = None;
                     body = None;
                 }
+                // `DoFollowIfRedirect` builds a GET whatever the status (`BaseIndexer.cs:759-765`).
+                post = false;
                 continue;
             }
             if request.probe && response.status() == reqwest::StatusCode::UNAUTHORIZED {
                 return Ok(Received {
                     bytes: Vec::new(),
                     content_type: String::new(),
-                    url: target,
                     unauthorized: true,
                     redirected: false,
                     state,
@@ -1027,7 +1110,6 @@ impl CookieSession {
             return Ok(Received {
                 bytes,
                 content_type,
-                url: target,
                 unauthorized: false,
                 redirected: false,
                 state,
@@ -1132,9 +1214,7 @@ impl CookieSession {
         let mut state = if self.form.is_some() {
             self.validate_form(state, false).await?
         } else if let Some(test) = &self.plan.test {
-            let (bytes, ct, state) = self
-                .receive(&test.path, 1, 8 * 1024 * 1024, false, state)
-                .await?;
+            let (bytes, ct, state) = self.receive(&test.path, 1, 8 * 1024 * 1024, state).await?;
             self.html(bytes, &ct, false).await?;
             state
         } else {
@@ -1187,6 +1267,8 @@ impl CookieSession {
                         referer: None,
                         self_referer: false,
                         probe: true,
+                        post: false,
+                        hops: Hops::Plain,
                     },
                     state,
                 )
@@ -1216,23 +1298,30 @@ impl CookieSession {
                 state,
             )
         } else {
+            // Pinned DoLogin resolves the form action against, and posts with the Referer
+            // of, the declared login URL even after landing redirects (`:724`, `:804`).
+            let login_url = self.target(&form.plan.path)?;
             let landing = self
                 .receive_request(
                     SessionRequest {
                         path: &form.plan.path,
-                        redirects: 0,
+                        // Definition `followredirect`: up to five landing redirects with
+                        // accumulated cookies (`CardigannIndexer.cs:1032-1035`).
+                        redirects: if form.plan.follow_redirect { 5 } else { 0 },
                         limit: 8 * 1024 * 1024,
                         fields: None,
                         body: None,
                         referer: Some(self.base.as_str()),
                         self_referer: false,
                         probe: false,
+                        post: false,
+                        hops: Hops::Plain,
                     },
                     state,
                 )
                 .await?;
             let body = Self::decode_html(landing.bytes, &landing.content_type, self.plan.charset)?;
-            let landing_url = landing.url;
+            let landing_url = login_url;
             let permit = Self::parser_permit().await?;
             let prepared_form = form.clone();
             let prepared_url = landing_url.clone();
@@ -1256,6 +1345,8 @@ impl CookieSession {
                     referer: Some(landing_url.as_str()),
                     self_referer: false,
                     probe: false,
+                    post: false,
+                    hops: Hops::Plain,
                 },
                 state,
             )
@@ -1274,7 +1365,7 @@ impl CookieSession {
             return Ok(posted.state);
         };
         let (bytes, ct, state) = self
-            .receive(&test.path, 1, 8 * 1024 * 1024, false, posted.state)
+            .receive(&test.path, 1, 8 * 1024 * 1024, posted.state)
             .await?;
         self.html(bytes, &ct, false).await?;
         Ok(state)
@@ -1333,6 +1424,8 @@ impl CookieSession {
                                 referer: None,
                                 self_referer: false,
                                 probe: true,
+                                post: false,
+                                hops: Hops::Plain,
                             },
                             gate,
                         )
@@ -1363,19 +1456,23 @@ impl CookieSession {
                 unreachable!()
             }
             // Supplied cookies cannot reauthenticate: an expired session fails this
-            // search, and the next one tests the session again.
+            // search, and the next one tests the session again. A `followredirect`
+            // path follows at most five same-origin hops first (`BaseIndexer.cs:688`);
+            // a redirect left after them is expiry, as in `CheckIfLoginIsNeeded`.
             gate.validated = false;
             let response = self
                 .receive_request(
                     SessionRequest {
                         path,
-                        redirects: 0,
+                        redirects: if self.plan.search_redirects { 5 } else { 0 },
                         limit: 8 * 1024 * 1024,
                         fields: None,
                         body,
                         referer: None,
                         self_referer: false,
                         probe: false,
+                        post: false,
+                        hops: Hops::Bare,
                     },
                     gate,
                 )
@@ -1411,6 +1508,8 @@ impl CookieSession {
                     referer: Some(referer),
                     self_referer: false,
                     probe: false,
+                    post: false,
+                    hops: Hops::Plain,
                 },
                 gate,
             )
@@ -1420,14 +1519,68 @@ impl CookieSession {
         .await
         .map_err(|_| anyhow!("Cookie download deadline exceeded"))?
     }
+    /// A `download.selectors` detail page (`HandleRedirectableRequestAsync`,
+    /// `CardigannIndexer.cs:2014-2028`): the session's headers go with the request and
+    /// with each of at most five same-origin hops, without a Referer. Upstream checks no
+    /// login marker here. `headers` are the rendered `Download.Headers ?? Search.Headers`
+    /// (`:2094`, `:2144`) and must be the session's own set.
+    pub async fn fetch_page(&self, path: &str, headers: &[(String, String)]) -> Result<String> {
+        self.check_search_headers(headers)?;
+        self.target(path)?;
+        tokio::time::timeout(self.timeout, async {
+            let gate = self.state.clone().lock_owned().await;
+            let gate = if gate.validated {
+                gate
+            } else {
+                self.validate(gate).await?
+            };
+            let page = self
+                .receive_request(
+                    SessionRequest {
+                        path,
+                        redirects: 5,
+                        limit: 8 * 1024 * 1024,
+                        fields: None,
+                        body: None,
+                        referer: None,
+                        self_referer: false,
+                        probe: false,
+                        post: false,
+                        hops: Hops::Headed,
+                    },
+                    gate,
+                )
+                .await?;
+            Self::decode_html(page.bytes, &page.content_type, self.plan.charset)
+        })
+        .await
+        .map_err(|_| anyhow!("Cookie download deadline exceeded"))?
+    }
     /// Auth remains in the source session; callers expose only their opaque download ticket.
     /// Torrent validation belongs to the caller. No download resolver is implied.
+    /// `download: {method: post}` POSTs the link without content (`BaseIndexer.cs:537-548`).
     pub async fn fetch_download(&self, path: &str) -> Result<Vec<u8>> {
         self.target(path)?;
         tokio::time::timeout(self.timeout, async {
             let gate = self.validate(self.state.clone().lock_owned().await).await?;
-            let (bytes, _, _gate) = self.receive(path, 5, 32 * 1024 * 1024, true, gate).await?;
-            Ok(bytes)
+            let reply = self
+                .receive_request(
+                    SessionRequest {
+                        path,
+                        redirects: 5,
+                        limit: 32 * 1024 * 1024,
+                        fields: None,
+                        body: None,
+                        referer: None,
+                        self_referer: true,
+                        probe: false,
+                        post: self.plan.download_post,
+                        hops: Hops::Plain,
+                    },
+                    gate,
+                )
+                .await?;
+            Ok(reply.bytes)
         })
         .await
         .map_err(|_| anyhow!("Cookie download deadline exceeded"))?

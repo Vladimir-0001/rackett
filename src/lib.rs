@@ -9,6 +9,7 @@ pub mod models;
 pub mod pinned_tls;
 pub mod protocol;
 pub mod store;
+pub mod ticket;
 pub mod torrent;
 #[derive(Clone)]
 pub struct AppState {

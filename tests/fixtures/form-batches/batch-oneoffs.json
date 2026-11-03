@@ -1,0 +1,97 @@
+[
+ {
+  "id": "animelayer",
+  "sha256": "151fb1645c67ce181bf8df2508d313af3b29232bec25fb618893d15cb41e92a7",
+  "search_fixture": "form:animelayer",
+  "form_path": "/layer/login/",
+  "submit_path": "/layer/login/",
+  "form_id": "loginForm",
+  "expected_inputs": {
+   "login": "{{ .Config.username }}",
+   "password": "{{ .Config.password }}"
+  },
+  "public_settings": {
+   "category-id": "music"
+  },
+  "error_html": "<div class=\"error\">Неверный логин или пароль fixture-private-error</div>",
+  "category": 3000,
+  "request_count": 1,
+  "login_path": "/",
+  "search_path": "/torrents/music/",
+  "keyword": "q",
+  "keyword_value": "Fixture",
+  "download_path": "/torrent/42/download/",
+  "details_path": "/torrent/42/",
+  "published": "2026-10-28T13:30:00Z",
+  "free_markup": "",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1,
+  "normal_download": 0
+ },
+ {
+  "id": "ilcorsaroblu",
+  "direct_post": false,
+  "search_fixture": "form:ilcorsaroblu",
+  "form_path": "/index.php?page=login&returnto=index.php",
+  "submit_path": "/index.php?page=login",
+  "form_attributes": "name=\"login\" action=\"index.php?page=login\"",
+  "expected_inputs": {
+   "uid": "{{ .Config.username }}",
+   "pwd": "{{ .Config.password }}"
+  },
+  "error_html": "<span style=\"color:#FF0000;\">fixture-private-error</span>",
+  "category": 100017,
+  "category_input": [
+   "category",
+   "17;"
+  ],
+  "login_path": "/index.php",
+  "search_path": "/index.php",
+  "keyword": "search",
+  "download_path": "magnet",
+  "details_path": "/index.php?page=torrent-details&id=0123456789abcdef0123456789abcdef01234567",
+  "published": "2026-10-28T00:00:00Z",
+  "free_markup": "<img src=\"images/gold.gif\">",
+  "free_download": 0,
+  "sha256": "cb1894111d81e029d9c62d95e77de25d1ba0f95cfe272b16393b93e033fb707a",
+  "form_id": "",
+  "request_count": 1,
+  "keyword_value": "Fixture",
+  "normal_markup": "",
+  "free_upload": 1
+ },
+ {
+  "id": "tasmanit",
+  "sha256": "8adfd9690b8ee63c373308be44d27fa31970d11543075c89a1668b3de5c66d73",
+  "search_fixture": "form:tasmanit",
+  "search_post": true,
+  "direct_post": true,
+  "form_path": "/takelogin.php",
+  "submit_path": "/takelogin.php",
+  "form_id": "",
+  "expected_inputs": {
+   "username": "{{ .Config.username }}",
+   "password": "{{ .Config.password }}"
+  },
+  "error_html": "<div id=\"content\"><h2>Login Failed</h2>fixture-private-error</div>",
+  "category": 5000,
+  "request_count": 1,
+  "login_path": "/index.php",
+  "search_path": "/browse.php",
+  "keyword": "keywords",
+  "keyword_value": "Fixture",
+  "category_input": [
+   "category",
+   "0"
+  ],
+  "download_path": "/download.php?id=42",
+  "details_path": "/details.php?id=42",
+  "published": "2026-10-28T13:30:00Z",
+  "free_markup": "<img src=\"/pic/freedownload.gif\">",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1,
+  "normal_download": 1
+ }
+]

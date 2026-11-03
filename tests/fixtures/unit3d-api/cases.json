@@ -190,6 +190,16 @@
     "default_title": "Fixture Filename"
   },
   {
+    "id": "hawke-uno",
+    "sha256": "dbbeb940986cb996a4f8ef87de79d0e25fd7e722aa98e67b97b8bb9c7087f83c",
+    "tracker_category": 1,
+    "category": 2000,
+    "category_name": "Movie",
+    "offset": " +00:00",
+    "filename_setting": false,
+    "default_title": "Fixture Release"
+  },
+  {
     "id": "hd-unit3d-api",
     "sha256": "e63489ee6dbdfc976b90435d8f1b20a01420e39c0f62ba9d65a587150c25ab31",
     "tracker_category": 1,

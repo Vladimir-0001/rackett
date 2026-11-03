@@ -144,21 +144,52 @@ systemctl --user enable --now rackett
 - **Caching.** Results are cached per source. Once a result expires, Rackett serves
   it immediately and refreshes it in the background, for up to six hours by
   default. Both lifetimes can be changed in **Settings**.
-- **Downloads** go through short-lived Rackett links, so your site credentials are
-  never handed to other apps.
+- **Downloads** go through Rackett's own links, so your site credentials are never
+  handed to other apps. The links are encrypted and permanent: they survive restarts
+  and harmless edits, and stop working when you delete a source or change its
+  address or credentials. See [permanent download links](docs/permanent-download-links.md).
 
 ## Performance
 
-In a matched test against Jackett 0.24 (same site definition, same 20 results, both
-answering from cache), Rackett answered a repeat search in about 0.6–0.8 ms versus
-1.9–2.2 ms for Jackett: roughly **3× faster**, with a smaller response. A first,
-uncached search is limited by the site itself and the delay its definition asks for
-between requests, so it takes about as long in either program.
+Measured against Jackett 0.24 on the same machine, with the same site definitions
+(1337x and ACG.RIP), the same simulated site and the same results. Full method,
+raw data and caveats: [Speed against Jackett](docs/speed.md).
+
+| | Rackett | Jackett | Rackett is |
+| --- | ---: | ---: | ---: |
+| Repeat (cached) search, 20 results | 0.17 ms | 0.98 ms | 5.9× faster |
+| Repeat search, 100 results | 0.31 ms | 3.5 ms | 11× faster |
+| Repeat searches, 64 apps at once | 48,400 / s | 3,150 / s | 15× more |
+| Search across all sources (cached) | 0.23 ms | 1.7 ms | 7.3× faster |
+| CPU time per cached search | 44–133 µs | 1.0–5.7 ms | 17–73× less |
+| New (uncached) searches, 16 apps at once | 8,500 / s | 870 / s | 9.8× more |
+| Startup | 0.02–0.04 s | 3.4–7.8 s | over 80× faster |
+| Memory when idle | 20 MiB | 155 MiB | 7.8× less |
+| Memory after a heavy run | 48–50 MiB | 236–252 MiB | 4.7–5.3× less |
+
+**Where Rackett is not 5× faster:**
+
+- **A single new (uncached) search** is 2.4× faster for a one-result page, rising to
+  4.9× for 500 results, and uses 3.8–5.6× less CPU. Part of every such search is
+  fixed: the trip to the site, and waking idle programs on each side. That part costs
+  about the same in both programs. Parsing the page is the rest, about 14 µs per
+  result in Rackett against 80–95 µs in Jackett. Rackett builds the same full page
+  structure Jackett does, which keeps results identical. A lighter parser would be
+  faster but could change results.
+- **The sites set the pace of a first search.** Many definitions ask for a delay
+  between requests; 1337x asks for 3 seconds between its four result pages. Rackett
+  honours this exactly as Jackett does, so such a search takes about 9 seconds in
+  either program.
+- **Memory after heavy use** is about 5× lower, not more: most of it is buffers left
+  over from 64 simultaneous large responses.
+- Measured on one desktop (Intel i7-9700K) with a power-saving CPU governor, so
+  isolated timings vary. The table uses requests alternated between the two programs,
+  so both run under the same conditions.
 
 ## Current limitations
 
-- **Not every Jackett site works yet.** 526 of the 583 bundled definitions (about
-  90%) are ready. The rest are listed with the feature they still need, for example
+- **Not every Jackett site works yet.** 558 of the 583 bundled definitions (about
+  96%) are ready. The rest are listed with the feature they still need, for example
   CAPTCHA logins, unusual login forms or a few rare character sets.
 - **Fixture-tested, not live-tested.** Ready means the definition passes a complete
   automated test against a simulated copy of the site: login, search, caching,
@@ -193,8 +224,10 @@ features: [legacy character sets](docs/legacy-encodings.md),
 [logins without a test page](docs/login-without-test.md),
 [searches on a separate API host](docs/api-origins.md),
 [date header rows](docs/date-headers.md),
-[JSON row shapes](docs/json-row-shapes.md) and
-[CSS selector compatibility](docs/nested-has-selectors.md).
+[JSON row shapes](docs/json-row-shapes.md),
+[CSS selector compatibility](docs/nested-has-selectors.md),
+[permanent download links](docs/permanent-download-links.md) and
+[speed measurements](docs/speed.md).
 
 ## Acknowledgements
 

@@ -138,8 +138,10 @@ fn html_configuration_branch_changes_real_row_membership() {
 fn every_branch_validated_and_dynamic_or_excessive_selectors_rejected() {
     for (source, json) in [
         // A number is not a :contains argument token (AngleSharp ContainsFunctionState).
+        // An invalid non-default branch compiles (docs/nested-has-selectors.md); the
+        // default-settings branch must be valid.
         (
-            "article{{ if .Config.freeleech }}:contains(1){{ else }}{{ end }}",
+            "article{{ if .Config.freeleech }}.free{{ else }}:contains(1){{ end }}",
             false,
         ),
         ("data{{ if .Config.freeleech }}[*]{{ else }}{{ end }}", true),

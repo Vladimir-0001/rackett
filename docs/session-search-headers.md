@@ -48,11 +48,14 @@ kinds below match the pinned calls:
 | Form landing page | yes | site link (replaces declared) |
 | Form or credential POST | first request | login page or site link (replaces declared) |
 | `download.before` | first request | the release link (replaces declared) |
+| Download selector detail page (`fetch_page`) | every request and hop | none |
 | Download | first request | the download link itself, for every session |
-| Any redirect hop | no | unchanged from before this change |
+| Followed search redirect hop (`followredirect`) | no | none, and no cookie |
+| Any other redirect hop | no | unchanged from before this change |
 
 The `Cookie` header is the definition's literal, `"; "`, then the jar. Without a jar
-cookie it is sent alone. Redirect hops carry only the jar.
+cookie it is sent alone. Redirect hops carry only the jar, except followed search hops,
+which carry no cookie ([cookie-session gaps](cookie-session-gaps.md#followredirect)).
 
 The request plan renders search headers independently. Each session search
 compares the plan's rendered set with the session's own (header names
@@ -103,27 +106,16 @@ Fixtures: `tests/fixtures/cookie-batches/batch6.json`, with the harness options
 
 ## Not admitted
 
-- hdturk (`x-csrf-token: {{ .Config.csrf_token }}`) and pier720 (User-Agent): both
-  declare `download` blocks. `DownloadSelectors::compile` rejects any definition with
-  search headers (`src/builtin_runtime/download.rs`, "Download requests would carry
-  search headers"). That file belongs to the download work. The session side is
-  ready: `send_before` and `fetch_download` already send the declared headers.
-  Still needed:
-  1. Lift that check.
-  2. Send the selector detail page (`HandleRedirectableRequestAsync`,
-     `CardigannIndexer.cs:2014-2027`, headers on every hop) through the session
-     with its headers. Today it goes through `Transport::fetch` with a header-less
-     `BuiltRequest::html_get`, which the header check rejects.
-  3. For hdturk, have `builtin::cookie_session` call
-     `CookiePlan::with_settings(settings)` so `csrf_token` reaches the plan.
-- torrentbd (`Referer` plus User-Agent): the session supports it, but its
-  `timeago` dates and POST search body need cookie-harness support that does not
-  exist yet (a relative `published` check and POST body matching).
+- hdturk (`x-csrf-token: {{ .Config.csrf_token }}`), pier720 (User-Agent) and
+  torrentbd (`Referer` plus User-Agent) were admitted later with batch7: download
+  requests now carry the session's headers, the detail page goes through
+  `CookieSession::fetch_page`, and `builtin::cookie_session` calls
+  `CookiePlan::with_settings`. See [cookie-session gaps](cookie-session-gaps.md).
 - Form sources with search headers (infire `Referer`, tapochek literal `Cookie`,
   eztvl literal `cookie`): `FormPlan` now accepts the headers and unit tests cover
   them (`form_sessions_send_declared_headers_with_login_and_search_requests`).
   Admission needs form-harness fixtures, and eztvl and kinozal have other
-  blockers listed in docs/remaining-blockers.md.
+  blockers of their own.
 - Redirect hops still carry the session's bound User-Agent, while pinned
   `FollowIfRedirect` sends Jackett's default. This is unchanged.
 

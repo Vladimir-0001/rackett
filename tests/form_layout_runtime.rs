@@ -29,6 +29,11 @@ struct Case {
     /// `expected_inputs` under its input name.
     #[serde(default)]
     landing_html: Option<String>,
+    /// The declared login path, which answers 302 to `form_path` (definition
+    /// `followredirect`, lastfiles). The form action resolves against it, and the
+    /// credential POST carries it as Referer (`CardigannIndexer.cs:724`, `:804`).
+    #[serde(default)]
+    landing_redirect: Option<String>,
     /// A `login.cookies` seed (e.g. `JAVA=OK`) the landing request must carry.
     #[serde(default)]
     landing_cookie: Option<String>,
@@ -47,6 +52,9 @@ struct Case {
     /// The login identity setting is not called `username` (magnetz uses `email`).
     #[serde(default)]
     user_setting: Option<String>,
+    /// The login secret setting is not called `password` (Bittorrentfiles posts `pass`).
+    #[serde(default)]
+    password_setting: Option<String>,
     /// The definition declares no settings and logs in without credentials (comicat and
     /// miobt send a literal `visitor_test` input). The password-change step is skipped.
     #[serde(default)]
@@ -113,9 +121,12 @@ impl Case {
     fn user_key(&self) -> &str {
         self.user_setting.as_deref().unwrap_or("username")
     }
+    fn password_key(&self) -> &str {
+        self.password_setting.as_deref().unwrap_or("password")
+    }
 }
 /// Independently reviewed admission batches; each file uses the same `Case` schema.
-const FORM_BATCHES: [&str; 24] = [
+const FORM_BATCHES: [&str; 28] = [
     include_str!("fixtures/form-batches/batch1.json"),
     include_str!("fixtures/form-batches/batch2.json"),
     include_str!("fixtures/form-batches/batch3.json"),
@@ -140,6 +151,10 @@ const FORM_BATCHES: [&str; 24] = [
     include_str!("fixtures/form-batches/batch22.json"),
     include_str!("fixtures/form-batches/batch23.json"),
     include_str!("fixtures/form-batches/batch24.json"),
+    include_str!("fixtures/form-batches/batch25.json"),
+    include_str!("fixtures/form-batches/batch26.json"),
+    include_str!("fixtures/form-batches/batch27.json"),
+    include_str!("fixtures/form-batches/batch-oneoffs.json"),
 ];
 /// Whole-lifecycle budget: five times a case's declared minimum request timeout, at
 /// least 300 s. Slow pinned sources (multi-page searches with request delays) declare
@@ -169,7 +184,7 @@ fn credentials(c: &Case, user: &str, password: &str) -> serde_json::Value {
     settings.extend(c.configured_settings.clone());
     if !c.no_credentials {
         settings.insert(c.user_key().into(), user.into());
-        settings.insert("password".into(), password.into());
+        settings.insert(c.password_key().into(), password.into());
     }
     json!(settings)
 }
@@ -439,16 +454,10 @@ fn check_layout(c: Case) {
 
 #[test]
 fn deferred_form_layouts_remain_unadmitted_with_reproducible_blockers() {
-    let mut deferred: Vec<Case> =
+    let deferred: Vec<Case> =
         serde_json::from_str(include_str!("fixtures/form-layouts/deferred.json")).unwrap();
-    deferred.extend(
-        serde_json::from_str::<Vec<Case>>(include_str!(
-            "fixtures/form-layouts/deferred-animelayer.json"
-        ))
-        .unwrap(),
-    );
     for c in deferred {
-        assert!(["hdtorrents", "animelayer"].contains(&c.id.as_str()));
+        assert_eq!(c.id, "hdtorrents");
         assert!(!builtin::FORM_IDS.contains(&c.id.as_str()));
         let catalog = builtin::catalog();
         assert_eq!(
@@ -466,9 +475,7 @@ fn deferred_form_layouts_remain_unadmitted_with_reproducible_blockers() {
         request_matches(&c, &url::Url::parse(&request.url).unwrap());
         // hdtorrents: pinned layout is HH:mm:ss<two spaces>dd/MM/yyyy. HTML extraction
         // normalizes the text to one space; dateparse leaves it unchanged and the
-        // bounded fuzzy parser rejects it. animelayer: its month replacements yield
-        // `28 October 2026 13:30` with no dateparse, also outside the fuzzy subset.
-        // Keep the actual definitions intact.
+        // bounded fuzzy parser rejects it. Keep the actual definition intact.
         let error = p.extract(&request, &page(&c, false), &ctx).unwrap_err();
         assert_eq!(error.path, "$.search.fields.date");
         assert!(error.to_string().contains("unsupported fuzzy date syntax"));
@@ -622,7 +629,7 @@ fn form_admission_matches_the_fixture_manifest_and_keeps_secrets_private() {
         let identity: &[&str] = if c.no_credentials {
             &[]
         } else {
-            &[c.user_key(), "password"]
+            &[c.user_key(), c.password_key()]
         };
         for field in identity
             .iter()
@@ -661,7 +668,7 @@ fn form_admission_matches_the_fixture_manifest_and_keeps_secrets_private() {
             .to_string()
             .contains("fixture-password"));
         if !c.no_credentials {
-            i.definition.as_mut().unwrap()["settings"]["password"] = json!(false);
+            i.definition.as_mut().unwrap()["settings"][c.password_key()] = json!(false);
             assert!(builtin::Runtime::compile(&i).is_err(), "{}", c.id);
         }
         for key in c.configured_settings.keys().chain(c.public_settings.keys()) {
@@ -726,6 +733,8 @@ async fn lifecycle(c: Case) {
         Charset::Windows1251 => "fixture-юзер",
         Charset::Windows1250 | Charset::Iso8859_2 => "fixture-użytkownik",
         Charset::Windows1256 => "fixture-مستخدم",
+        Charset::Windows1255 => "fixture-משתמש",
+        Charset::Windows874 => "fixture-ผู้ใช้",
     };
     if charset != Charset::Utf8 {
         assert!(
@@ -813,6 +822,21 @@ async fn lifecycle(c: Case) {
         };
         let mut state = f.state.lock().unwrap();
         state.hits.push((uri.to_string(), cookie.into()));
+        let login_url = url::Url::parse(&f.base)
+            .unwrap()
+            .join(
+                f.case
+                    .landing_redirect
+                    .as_deref()
+                    .unwrap_or(&f.case.form_path),
+            )
+            .unwrap();
+        if method == Method::GET && f.case.landing_redirect.as_deref() == Some(uri.path()) {
+            let mut r = StatusCode::FOUND.into_response();
+            r.headers_mut()
+                .insert("location", f.case.form_path.parse().unwrap());
+            return r;
+        }
         let form_url = url::Url::parse(&f.base)
             .unwrap()
             .join(&f.case.form_path)
@@ -890,7 +914,7 @@ async fn lifecycle(c: Case) {
                 if f.case.direct_post {
                     f.base.as_str()
                 } else {
-                    form_url.as_str()
+                    login_url.as_str()
                 },
                 "{}: referer",
                 f.case.id
@@ -930,6 +954,11 @@ async fn lifecycle(c: Case) {
                             f.user.into()
                         }
                         "{{ .Config.password }}" => state.password.clone(),
+                        other
+                            if other == format!("{{{{ .Config.{} }}}}", f.case.password_key()) =>
+                        {
+                            state.password.clone()
+                        }
                         "{{ .Config.sitelink }}" => f.base.clone(),
                         "{{ .Config.passid }}" => "0".into(),
                         "{{ .Config.passan }}" => String::new(),
@@ -1135,7 +1164,7 @@ async fn lifecycle(c: Case) {
         if c.direct_post {
             &c.submit_path
         } else {
-            &c.form_path
+            c.landing_redirect.as_ref().unwrap_or(&c.form_path)
         }
         .as_str()
     );
@@ -1166,12 +1195,18 @@ async fn lifecycle(c: Case) {
     }
     // Relogin after a search shows expiry: landing (unless a credential POST),
     // submit and TestLogin (pinned Relogin, `CardigannIndexer.cs:874-890`).
-    let relogin = usize::from(!c.direct_post) + 1 + usize::from(!c.no_test);
+    let relogin = usize::from(!c.direct_post)
+        + usize::from(c.landing_redirect.is_some())
+        + 1
+        + usize::from(!c.no_test);
     if c.no_test {
         // Landing (unless a credential POST), submit and searches; no validation.
         assert_eq!(
             hits.len(),
-            usize::from(!c.direct_post) + 1 + c.request_count,
+            usize::from(!c.direct_post)
+                + usize::from(c.landing_redirect.is_some())
+                + 1
+                + c.request_count,
             "{}: {hits:?}",
             c.id
         );
@@ -1183,11 +1218,14 @@ async fn lifecycle(c: Case) {
     assert_eq!(cached.cached, 1);
     assert!(fixture.take().is_empty());
     let mut shown = first.clone();
-    rackett::protocol::present_results(
-        &mut shown,
-        "fixture-management-key",
-        "http://127.0.0.1:9117",
-    );
+    let links = engine
+        .links(
+            &shown.results,
+            "fixture-management-key",
+            "http://127.0.0.1:9117",
+        )
+        .await;
+    rackett::protocol::present_results(&mut shown, &links);
     // A release whose link is itself a magnet (`download_path: "magnet"`) needs no
     // ticket and sends no download request, as in the public harness.
     let magnet = c.download_path == "magnet";
@@ -1285,10 +1323,13 @@ async fn lifecycle(c: Case) {
     // A credential-less source has nothing to change.
     if !c.no_credentials {
         fixture.state.lock().unwrap().password = CHANGED.into();
+        // Non-secret settings are not retained by a patch, so resend them (animelayer).
+        let mut changed_settings = json!(c.public_settings);
+        changed_settings[c.password_key()] = json!(CHANGED);
         engine
             .patch_indexer(
                 &i.id,
-                json!({"definition":{"builtin_id":c.id,"settings":{"password":CHANGED}}}),
+                json!({"definition":{"builtin_id":c.id,"settings":changed_settings}}),
             )
             .await
             .unwrap();
@@ -1306,7 +1347,7 @@ async fn lifecycle(c: Case) {
         let password_input = c
             .expected_inputs
             .iter()
-            .find(|(_, v)| v.as_str() == "{{ .Config.password }}")
+            .find(|(_, v)| **v == format!("{{{{ .Config.{} }}}}", c.password_key()))
             .unwrap()
             .0;
         assert_eq!(

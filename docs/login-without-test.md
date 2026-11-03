@@ -70,8 +70,8 @@ form_login_without_test_relogs_only_after_a_search_redirect}` and
 - Form (`tests/fixtures/form-batches/batch17.json`): immortuos, zappateers (UNIT3D
   login with a `_token` selector input).
 
-Admission adds the IDs to `READY_IDS` plus `COOKIE_IDS` or `FORM_IDS` in
-`src/builtin.rs`; `python3 tools/admit_form_batches.py` regenerates the form lists.
+Allowlist admission (`READY_IDS`, `COOKIE_IDS`, `FORM_IDS` in `src/builtin.rs`) is left
+to the integrator; run `python3 tools/admit_form_batches.py` and add the cookie IDs.
 
 A scratch census (`CookiePlan`/`FormPlan::compile` over `builtin::catalog()`) found
 that these four, plus comicat and miobt, were the only non-`get` logins without a test. No bundled definition declares a test path without a selector. No other
@@ -87,11 +87,14 @@ the infohash allowlist in `src/builtin_runtime.rs` (`resolve_results`, next to `
 and `magnetcat`), and the harness' `download_path: "magnet"` case. Both are admitted in
 `tests/fixtures/form-batches/batch24.json`, with the two IDs added to that allowlist.
 
-Known difference: miobt's `今天`/`昨天` branch appends ` +08:00` before `fuzzytime`. Pinned
-`FromUnknown` parses `Yesterday 22:50 +08:00` through `DateTime.Parse`, which converts to the
-server's local time; Rackett's bounded parser rejects an offset there. The field is optional,
-so the release date falls back to `now`. The fixtures use miobt's `yyyy/MM/dd` form. comicat's
-`昨天` branch has no zone and is unaffected.
+miobt's `今天`/`昨天` branch appends ` +08:00` before `fuzzytime`. Pinned `FromUnknown`
+parses `Yesterday 22:50 +08:00` through `DateTime.Parse(time).TimeOfDay`, which converts to
+the server's local time. Until 2026-11-01 Rackett's bounded parser rejected the offset, and the
+optional field fell back to `now`. It now reads the clock in UTC, Rackett's convention for
+upstream's local time: `Yesterday 22:50 +08:00` is yesterday at 14:50 UTC (see
+[cardigann.md](cardigann.md#fuzzy-dates-day-month-year-and-relative-day-offsets-2026-11-01)).
+The fixtures use miobt's `yyyy/MM/dd` form. comicat's `昨天` branch has no zone and is
+unaffected.
 
 ## Validation (2026-10-30, host load average 20-30 on 8 cores)
 

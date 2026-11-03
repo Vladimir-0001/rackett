@@ -70,6 +70,20 @@
     "repository": "https://github.com/marshallpierce/rust-base64"
   },
   {
+    "name": "bit-set",
+    "version": "0.8.0",
+    "license": "Apache-2.0 OR MIT",
+    "license_file": null,
+    "repository": "https://github.com/contain-rs/bit-set"
+  },
+  {
+    "name": "bit-vec",
+    "version": "0.8.0",
+    "license": "Apache-2.0 OR MIT",
+    "license_file": null,
+    "repository": "https://github.com/contain-rs/bit-vec"
+  },
+  {
     "name": "bitflags",
     "version": "2.13.2",
     "license": "MIT OR Apache-2.0",
@@ -243,6 +257,13 @@
     "license": "MIT OR Apache-2.0",
     "license_file": null,
     "repository": "https://github.com/lambda-fairy/rust-errno"
+  },
+  {
+    "name": "fancy-regex",
+    "version": "0.20.0",
+    "license": "MIT",
+    "license_file": null,
+    "repository": "https://github.com/fancy-regex/fancy-regex"
   },
   {
     "name": "fastrand",
@@ -553,6 +574,13 @@
     "repository": "https://github.com/rust-lang/libc"
   },
   {
+    "name": "libmimalloc-sys",
+    "version": "0.1.49",
+    "license": "MIT",
+    "license_file": null,
+    "repository": "https://github.com/purpleprotocol/mimalloc_rust/tree/master/libmimalloc-sys"
+  },
+  {
     "name": "linux-raw-sys",
     "version": "0.12.1",
     "license": "Apache-2.0 WITH LLVM-exception OR Apache-2.0 OR MIT",
@@ -621,6 +649,13 @@
     "license": "Unlicense OR MIT",
     "license_file": null,
     "repository": "https://github.com/BurntSushi/memchr"
+  },
+  {
+    "name": "mimalloc",
+    "version": "0.1.52",
+    "license": "MIT",
+    "license_file": null,
+    "repository": "https://github.com/purpleprotocol/mimalloc_rust"
   },
   {
     "name": "mime",

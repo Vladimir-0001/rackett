@@ -44,40 +44,6 @@
     "from": "batch12.json"
   },
   {
-    "id": "ilcorsaroblu",
-    "direct_post": false,
-    "search_fixture": "form:ilcorsaroblu",
-    "form_path": "/index.php?page=login&returnto=index.php",
-    "submit_path": "/index.php?page=login",
-    "form_attributes": "name=\"login\" action=\"index.php?page=login\"",
-    "expected_inputs": {
-      "uid": "{{ .Config.username }}",
-      "pwd": "{{ .Config.password }}"
-    },
-    "error_html": "<span style=\"color:#FF0000;\">fixture-private-error</span>",
-    "category": 100017,
-    "category_input": [
-      "category",
-      "17;"
-    ],
-    "login_path": "/index.php",
-    "search_path": "/index.php",
-    "keyword": "search",
-    "download_path": "/download.php?id=0123456789abcdef0123456789abcdef01234567",
-    "details_path": "/index.php?page=torrent-details&id=0123456789abcdef0123456789abcdef01234567",
-    "published": "2026-10-28T00:00:00Z",
-    "free_markup": "<img src=\"images/gold.gif\">",
-    "free_download": 0,
-    "sha256": "cb1894111d81e029d9c62d95e77de25d1ba0f95cfe272b16393b93e033fb707a",
-    "form_id": "",
-    "request_count": 1,
-    "keyword_value": "Fixture",
-    "normal_markup": "",
-    "free_upload": 1,
-    "pending_reason": "Download is rewritten to https://itorrents.net/torrent/<INFOHASH>.torrent (foreign origin). The fixture (row with that download, the infohash field and a magnet) fails the offline link check and the lifecycle with 'Only same-origin HTTP downloads are supported'. Admission needs an engine policy in src/builtin_runtime.rs (prefer the row's magnet, as tokyotosho does); not a fixture problem.",
-    "from": "batch24.json"
-  },
-  {
     "id": "unionfansub",
     "direct_post": false,
     "search_fixture": "form:unionfansub",

@@ -23,7 +23,7 @@ fn stock(id: &str, url: &str) -> Indexer {
     }
 }
 /// Public layout cases: the original manifest plus independently merged batches.
-const PUBLIC_MANIFESTS: [&str; 19] = [
+const PUBLIC_MANIFESTS: [&str; 21] = [
     include_str!("fixtures/public-layouts/cases.json"),
     include_str!("fixtures/public-batches/batch1.json"),
     include_str!("fixtures/public-batches/batch2.json"),
@@ -43,9 +43,11 @@ const PUBLIC_MANIFESTS: [&str; 19] = [
     include_str!("fixtures/public-batches/batch16.json"),
     include_str!("fixtures/public-batches/batch16-thepiratebay.json"),
     include_str!("fixtures/public-batches/batch17.json"),
+    include_str!("fixtures/public-batches/batch18.json"),
+    include_str!("fixtures/public-batches/batch-oneoffs.json"),
 ];
 /// Cookie layout cases: the original manifest plus independently merged batches.
-const COOKIE_MANIFESTS: [&str; 7] = [
+const COOKIE_MANIFESTS: [&str; 9] = [
     include_str!("fixtures/cookie-layouts/cases.json"),
     include_str!("fixtures/cookie-batches/batch1.json"),
     include_str!("fixtures/cookie-batches/batch2.json"),
@@ -53,6 +55,8 @@ const COOKIE_MANIFESTS: [&str; 7] = [
     include_str!("fixtures/cookie-batches/batch4.json"),
     include_str!("fixtures/cookie-batches/batch5.json"),
     include_str!("fixtures/cookie-batches/batch6.json"),
+    include_str!("fixtures/cookie-batches/batch7.json"),
+    include_str!("fixtures/cookie-batches/batch8.json"),
 ];
 #[test]
 fn catalog_is_embedded_and_conservatively_gated() {
@@ -120,6 +124,10 @@ fn catalog_is_embedded_and_conservatively_gated() {
         include_str!("fixtures/form-batches/batch22.json"),
         include_str!("fixtures/form-batches/batch23.json"),
         include_str!("fixtures/form-batches/batch24.json"),
+        include_str!("fixtures/form-batches/batch25.json"),
+        include_str!("fixtures/form-batches/batch26.json"),
+        include_str!("fixtures/form-batches/batch27.json"),
+        include_str!("fixtures/form-batches/batch-oneoffs.json"),
     ]
     .iter()
     .map(|b| serde_json::from_str(b).unwrap())
@@ -189,7 +197,10 @@ async fn milkie_auth_persist_edit_cache_tickets_and_remove() {
     assert_eq!(out.results[0].indexer, i.name);
     assert_eq!(out.results[0].peers, Some(5));
     assert!(out.results[0].link.contains("key=fixture-token"));
-    rackett::protocol::present_results(&mut out, "localkey", "http://127.0.0.1:9117");
+    let links = e
+        .links(&out.results, "localkey", "http://127.0.0.1:9117")
+        .await;
+    rackett::protocol::present_results(&mut out, &links);
     assert!(!serde_json::to_string(&out)
         .unwrap()
         .contains("fixture-token"));
@@ -348,7 +359,7 @@ async fn management_stock_configuration_secret_contract() {
         &app,
         "POST",
         "/api/indexers",
-        serde_json::to_value(stock("torrentsome", "http://127.0.0.1:9/")).unwrap(),
+        serde_json::to_value(stock("polishtracker-api", "http://127.0.0.1:9/")).unwrap(),
     )
     .await;
     assert_eq!(status, axum::http::StatusCode::BAD_REQUEST);
@@ -545,7 +556,8 @@ async fn stock_ticket_is_one_private_same_origin_fetch_and_caps_are_exact() {
     let mut out = e.search(vec![], SearchQuery::default()).await;
     assert_eq!(out.results.len(), 1);
     let key = e.settings().await.api_key;
-    rackett::protocol::present_results(&mut out, &key, "http://127.0.0.1:9127");
+    let links = e.links(&out.results, &key, "http://127.0.0.1:9127").await;
+    rackett::protocol::present_results(&mut out, &links);
     let u = url::Url::parse(&out.results[0].link).unwrap();
     assert!(!u.as_str().contains("fixture-download-token"));
     let app = rackett::protocol::router().with_state(rackett::AppState { engine: e.clone() });

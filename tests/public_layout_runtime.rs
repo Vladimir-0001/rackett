@@ -36,6 +36,10 @@ struct Case {
     search_paths: Vec<String>,
     #[serde(default)]
     optional_size: bool,
+    /// The row selector drops a row whose size cell contains `-` (torrentsome), so the
+    /// malformed-size probe (`bad-size`) must yield no rows instead of an error.
+    #[serde(default)]
+    malformed_size_dropped: bool,
     query_pair: [String; 2],
     /// The definition searches with `method: post`; `query_pair` is matched in the
     /// form body, decoded with the definition charset, instead of the query string.
@@ -110,7 +114,7 @@ impl Case {
     }
 }
 /// Public layout cases: the original manifest plus independently merged batches.
-const PUBLIC_MANIFESTS: [&str; 19] = [
+const PUBLIC_MANIFESTS: [&str; 21] = [
     include_str!("fixtures/public-layouts/cases.json"),
     include_str!("fixtures/public-batches/batch1.json"),
     include_str!("fixtures/public-batches/batch2.json"),
@@ -130,6 +134,8 @@ const PUBLIC_MANIFESTS: [&str; 19] = [
     include_str!("fixtures/public-batches/batch16.json"),
     include_str!("fixtures/public-batches/batch16-thepiratebay.json"),
     include_str!("fixtures/public-batches/batch17.json"),
+    include_str!("fixtures/public-batches/batch18.json"),
+    include_str!("fixtures/public-batches/batch-oneoffs.json"),
 ];
 /// Whole-lifecycle budget: 180 s, or five times a case's `timeout_seconds`.
 fn lifecycle_budget(c: &Case) -> std::time::Duration {
@@ -419,6 +425,8 @@ fn every_pinned_public_layout_extracts_fields_and_empty_results() {
                     assert_eq!(malformed.unwrap()[0].size, Some(size), "{}", c.id);
                 } else if c.optional_size {
                     assert_eq!(malformed.unwrap()[0].size, None, "{}", c.id);
+                } else if c.malformed_size_dropped {
+                    assert!(malformed.unwrap().is_empty(), "{}", c.id);
                 } else {
                     assert!(
                         malformed.is_err(),
@@ -741,7 +749,10 @@ async fn lifecycle(c: Case) {
             .all(|(_, v)| v.is_empty()));
     }
     let mut presented = first.clone();
-    rackett::protocol::present_results(&mut presented, "fixture-key", "http://127.0.0.1:9117");
+    let links = engine
+        .links(&presented.results, "fixture-key", "http://127.0.0.1:9117")
+        .await;
+    rackett::protocol::present_results(&mut presented, &links);
     // Configured secrets (an API key) never reach presented results or errors.
     for secret in c.settings.values().filter_map(|v| v.as_str()) {
         assert!(

@@ -10,10 +10,16 @@
 //! every admitted search already carries its key. A source that relied on a session
 //! cookie would fail its searches visibly, not silently.
 //!
-//! Admitted subset: login keys `method`, `path`, `inputs` and `error` only; a literal
-//! path; inputs that are literals or a declared text/password setting; no `test`.
+//! Admitted subset: login keys `method`, `path`, `inputs`, `error` and `headers`; no
+//! `test`. The path is site-relative; after its `?` it may substitute declared
+//! text/password settings, rendered raw as upstream does (`applyGoTemplateText(Login.Path,
+//! variables)`, `:827`, no URL-encoding modifier). Such a value must consist of URL
+//! unreserved characters, so the raw and an encoded rendering agree and it cannot change
+//! the URL's structure. Inputs are literals or a declared text/password setting.
 //! Search headers (often the key, e.g. `Authorization: Bearer {{ .Config.apikey }}`)
-//! are rendered by the request plan and sent with the probe and with downloads.
+//! are rendered by the request plan and sent with the probe and with downloads; a
+//! `login.headers` block is admitted only when it equals the search headers, because
+//! upstream sends `Login.Headers ?? Search.Headers` (`:572`).
 use crate::cardigann::Node;
 use anyhow::{anyhow, bail, Result};
 use serde_json::Value;
@@ -25,7 +31,8 @@ enum Input {
 }
 
 pub struct GetLogin {
-    path: String,
+    /// Literal text and raw-rendered settings, in order (`:827`).
+    path: Vec<Input>,
     inputs: Vec<(String, Input)>,
     errors: Vec<String>,
 }
@@ -42,27 +49,69 @@ fn keys(node: &Node, allowed: &[&str]) -> Result<()> {
     Ok(())
 }
 
+/// Structural equality of two definition nodes, ignoring source locations and quoting.
+fn same(a: &Node, b: &Node) -> bool {
+    use crate::cardigann::Value as V;
+    match (&a.value, &b.value) {
+        (V::Scalar(x), V::Scalar(y)) => x.text == y.text,
+        (V::Sequence(x), V::Sequence(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(x, y)| same(x, y))
+        }
+        (V::Mapping(x), V::Mapping(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .zip(y)
+                    .all(|((xk, xv), (yk, yv))| same(xk, yk) && same(xv, yv))
+        }
+        _ => false,
+    }
+}
+/// A raw-rendered path setting: non-empty URL unreserved characters (RFC 3986), which
+/// `applyGoTemplateText` and `WebUtility.UrlEncode` would both leave unchanged.
+fn unreserved(v: &str) -> bool {
+    !v.is_empty()
+        && v.len() <= 1024
+        && v.bytes()
+            .all(|b| b.is_ascii_alphanumeric() || b"-._~".contains(&b))
+}
 impl GetLogin {
     pub fn compile(root: &Node) -> Result<Self> {
         let login = root.get("login").ok_or_else(|| anyhow!("No login"))?;
-        keys(login, &["method", "path", "inputs", "error"])?;
+        keys(login, &["method", "path", "inputs", "error", "headers"])?;
         if login.string("method") != Some("get") {
             bail!("Not a GET login");
         }
-        if root.get("followredirect").is_some() || super::auth::search_follows_redirects(root) {
+        // Definition-level `followredirect` matters upstream only to TestLogin (`:923`),
+        // which needs a `test`, to the form landing page (`:1032`), and to a search
+        // redirected to another domain (`CheckIfLoginIsNeeded`, `:951-969`), where it
+        // rewrites the stored site link and still fails the request. Rackett fails that
+        // request too (redirects are pinned to the origin) and never rewrites the URL.
+        if !matches!(root.string("followredirect"), None | Some("true" | "false"))
+            || super::auth::search_follows_redirects(root)
+        {
             bail!("GET login transport semantics are not modeled");
         }
-        let path = login
+        if let Some(headers) = login.get("headers") {
+            let search = root.get("search").and_then(|s| s.get("headers"));
+            if !search.is_some_and(|s| same(headers, s)) {
+                bail!("GET login headers must equal the search headers");
+            }
+        }
+        let raw = login
             .string("path")
             .filter(|p| {
                 !p.is_empty()
                     && p.len() <= 2048
-                    && !p.contains("{{")
-                    && !p.contains(['?', '#'])
+                    && !p.contains('#')
                     && !p.chars().any(char::is_control)
             })
-            .ok_or_else(|| anyhow!("Unsupported GET login path"))?
-            .to_owned();
+            .ok_or_else(|| anyhow!("Unsupported GET login path"))?;
+        let lower = raw.to_ascii_lowercase();
+        if lower.starts_with("http://") || lower.starts_with("https://") || raw.starts_with("//") {
+            // The probe, like the search, would carry the key to another host
+            // (docs/get-login-paths.md).
+            bail!("GET login on another host needs a credentialed API origin");
+        }
         let declared: BTreeMap<_, _> = root
             .get("settings")
             .and_then(Node::items)
@@ -73,6 +122,45 @@ impl GetLogin {
                     .map(|n| (n, s.string("type").unwrap_or("text")))
             })
             .collect();
+        let setting = |key: &str| match declared.get(key) {
+            Some(&"text" | &"password") => Ok(key.to_owned()),
+            _ => Err(anyhow!("GET login input requires a declared text setting")),
+        };
+        let literal = |l: &str| {
+            if l.contains(char::is_whitespace) {
+                bail!("Unsupported GET login path");
+            }
+            Ok(Input::Literal(l.to_owned()))
+        };
+        let mut path = Vec::new();
+        let mut rest = raw;
+        let mut query = false;
+        while let Some(start) = rest.find("{{") {
+            // Settings are substituted only into the query part.
+            query |= rest[..start].contains('?');
+            if !query {
+                bail!("Unsupported GET login path");
+            }
+            let end = rest[start..]
+                .find("}}")
+                .ok_or_else(|| anyhow!("Unsupported GET login path template"))?
+                + start;
+            let key = rest[start..end + 2]
+                .strip_prefix("{{ .Config.")
+                .and_then(|k| k.strip_suffix(" }}"))
+                .ok_or_else(|| anyhow!("Unsupported GET login path template"))?;
+            if start > 0 {
+                path.push(literal(&rest[..start])?);
+            }
+            path.push(Input::Setting(setting(key)?));
+            rest = &rest[end + 2..];
+        }
+        if rest.contains(['{', '}']) {
+            bail!("Unsupported GET login path template");
+        }
+        if !rest.is_empty() {
+            path.push(literal(rest)?);
+        }
         let mut inputs = Vec::new();
         for (name, value) in login
             .get("inputs")
@@ -90,10 +178,7 @@ impl GetLogin {
                 .strip_prefix("{{ .Config.")
                 .and_then(|v| v.strip_suffix(" }}"))
             {
-                Some(key) if matches!(declared.get(key), Some(&"text" | &"password")) => {
-                    Input::Setting(key.to_owned())
-                }
-                Some(_) => bail!("GET login input requires a declared text setting"),
+                Some(key) => Input::Setting(setting(key)?),
                 None if !value.contains(['{', '}']) && value.len() <= 8192 => {
                     Input::Literal(value.to_owned())
                 }
@@ -119,7 +204,13 @@ impl GetLogin {
                         .any(|v| v.text().is_some_and(|t| t.contains("{{ .Config.")))
                 })
             });
-        if !header_secret && !inputs.iter().any(|(_, i)| matches!(i, Input::Setting(_))) {
+        if !header_secret
+            && !inputs
+                .iter()
+                .map(|(_, i)| i)
+                .chain(&path)
+                .any(|i| matches!(i, Input::Setting(_)))
+        {
             // A probe without any secret would validate nothing.
             bail!("GET login declares no credential input");
         }
@@ -146,18 +237,30 @@ impl GetLogin {
             errors,
         })
     }
-    /// The probe URL: `resolvePath(path + "?" + GetQueryString())`, where each value is
-    /// `WebUtilityHelpers.UrlEncode(value, UTF8)` and keys are not encoded.
+    /// The probe URL: `resolvePath(path + "?" + GetQueryString())` (`:827`), where each
+    /// value is `WebUtilityHelpers.UrlEncode(value, UTF8)` and keys are not encoded. The
+    /// `?` is appended even when the path already has a query, as upstream does.
     pub fn url(&self, base: &url::Url, settings: &BTreeMap<String, Value>) -> Result<url::Url> {
+        let value = |input: &Input| match input {
+            Input::Literal(v) => Ok(v.clone()),
+            Input::Setting(k) => match settings.get(k) {
+                Some(Value::String(s)) if !s.trim().is_empty() => Ok(s.clone()),
+                _ => Err(anyhow!("This preset requires its {k} setting")),
+            },
+        };
+        let mut path = String::new();
+        for input in &self.path {
+            let v = value(input)?;
+            if let Input::Setting(k) = input {
+                if !unreserved(&v) {
+                    bail!("This preset's {k} setting may contain only letters, digits and - . _ ~");
+                }
+            }
+            path.push_str(&v);
+        }
         let mut query = String::new();
         for (name, input) in &self.inputs {
-            let value = match input {
-                Input::Literal(v) => v.clone(),
-                Input::Setting(k) => match settings.get(k) {
-                    Some(Value::String(s)) if !s.trim().is_empty() => s.clone(),
-                    _ => bail!("This preset requires its {k} setting"),
-                },
-            };
+            let value = value(input)?;
             if !query.is_empty() {
                 query.push('&');
             }
@@ -166,7 +269,7 @@ impl GetLogin {
             query.push_str(&crate::cardigann_exec::filters::url_encode(&value));
         }
         let target = base
-            .join(&format!("{}?{query}", self.path))
+            .join(&format!("{path}?{query}"))
             .map_err(|_| anyhow!("Invalid GET login path"))?;
         super::checked_url(target.as_str(), base)
     }
@@ -211,10 +314,73 @@ mod tests {
         for id in ["digitalcore-api", "flood", "alabala-api"] {
             assert!(GetLogin::compile(&root(id)).is_ok(), "{id}");
         }
-        // No GET login, or a templated login path.
-        for id in ["1337x", "chdbits", "scenetime-api", "v3x"] {
+        // A templated query in the path, and login headers equal to the search headers.
+        for id in ["scenetime-api", "hdforever-api"] {
+            assert!(GetLogin::compile(&root(id)).is_ok(), "{id}");
+        }
+        // No GET login, or a login on an API host.
+        for id in ["1337x", "chdbits", "abnormal-api", "v3x", "yggreborn-api"] {
             assert!(GetLogin::compile(&root(id)).is_err(), "{id}");
         }
+    }
+    fn compile(yaml: &str) -> Result<GetLogin> {
+        let raw = format!(
+            "settings:\n  - {{name: apikey, type: text}}\n  - {{name: sort, type: select}}\n{yaml}"
+        );
+        GetLogin::compile(&cardigann::parse(&raw, cardigann::Limits::default()).unwrap())
+    }
+    #[test]
+    fn templated_paths_render_raw_unreserved_settings_in_the_query_only() {
+        let login = GetLogin::compile(&root("scenetime-api")).unwrap();
+        let base = url::Url::parse("https://scenetime.test/").unwrap();
+        let key = |k: &str| BTreeMap::from([("apikey".to_owned(), Value::String(k.into()))]);
+        // `path + "?" + ""` (`:827`): upstream's extra `?` stays in the last value.
+        let url = login.url(&base, &key("Ab-1_2.3~")).unwrap();
+        assert_eq!(url.path(), "/rss.php");
+        assert_eq!(url.query(), Some("apikey=Ab-1_2.3~&view=html?"));
+        for bad in ["a&b", "a#b", "a b", "a/b", "a%41", "\u{e9}", " ", ""] {
+            let err = login.url(&base, &key(bad)).unwrap_err().to_string();
+            // Errors name the setting, never its value.
+            assert!(err.contains("apikey") && (bad.trim().is_empty() || !err.contains(bad)));
+        }
+        assert!(login.url(&base, &BTreeMap::new()).is_err());
+        assert!(compile("login: {method: get, path: \"a?k={{ .Config.apikey }}\"}\n").is_ok());
+        for path in [
+            "{{ .Config.apikey }}/a",
+            "a/{{ .Config.apikey }}?x=1",
+            "a?k={{ .Config.sort }}",
+            "a?k={{ .Config.missing }}",
+            "a?k={{ if .Config.apikey }}1{{ end }}",
+            "a?k={{.Config.apikey}}",
+            "a?k={{ .Config.apikey }",
+            "a?k={{ .Config.apikey }}#f",
+            "a?k={{ .Config.apikey }} x",
+            "https://{{ .Config.apikey }}/a",
+            "//api.test/a?k={{ .Config.apikey }}",
+        ] {
+            let yaml = format!("login: {{method: get, path: \"{path}\"}}\n");
+            assert!(compile(&yaml).is_err(), "{path}");
+        }
+    }
+    #[test]
+    fn login_headers_must_equal_the_search_headers_and_followredirect_is_inert() {
+        let login =
+            "login: {method: get, path: a, headers: {X-Api-Key: [\"{{ .Config.apikey }}\"]}}\n";
+        let same = "search: {headers: {X-Api-Key: ['{{ .Config.apikey }}']}}\n";
+        assert!(compile(&format!("{login}{same}")).is_ok());
+        for search in [
+            "",
+            "search: {headers: {X-Api-Key: [\"{{ .Config.sort }}\"]}}\n",
+            "search: {headers: {X-Other: [\"{{ .Config.apikey }}\"]}}\n",
+            "search: {headers: {X-Api-Key: [\"{{ .Config.apikey }}\", x]}}\n",
+        ] {
+            assert!(compile(&format!("{login}{search}")).is_err(), "{search}");
+        }
+        let path = "login: {method: get, path: \"a?k={{ .Config.apikey }}\"}\n";
+        assert!(compile(&format!("followredirect: true\n{path}")).is_ok());
+        assert!(compile(&format!("followredirect: maybe\n{path}")).is_err());
+        let search = "search: {paths: [{path: x, followredirect: true}]}\n";
+        assert!(compile(&format!("{path}{search}")).is_err());
     }
     #[test]
     fn probe_url_encodes_values_and_checks_errors() {

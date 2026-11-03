@@ -552,6 +552,61 @@ pub(super) fn scan(pattern: &str) -> Result<Normalized<'_>, String> {
     })
 }
 
+/// hawke-uno's title filter, the only pinned definition regex with a balancing group and a
+/// conditional. [`scan`] rejects both constructs in general; this one pattern is recognised
+/// verbatim and run by [`trailing_parentheses`] (docs/dotnet-regex-lookaround.md).
+pub(super) const TRAILING_PARENTHESES: &str =
+    r"\(((?>[^()]+|(?<o>)\(|(?<-o>)\))*(?(o)(?!)))(?<!\bHONE)(?<=\s*- [\w]+)\)$";
+
+/// The .NET match of [`TRAILING_PARENTHESES`] in `text`, as the byte spans of group 0 and
+/// group 1 (named group `o`, number 2, never takes part: the conditional `(?(o)(?!))` fails
+/// unless every `(?<o>)` capture was popped by `(?<-o>)`).
+///
+/// Reading of the pattern (RegexParser/RegexInterpreter, dotnet/runtime v9.0.0):
+/// - `\)$` with no options: the last `)` is the final character or precedes a final `\n`, so
+///   every match ends at the same position `p` (that `)`), and at most one match exists.
+/// - Both look-behinds are tested at `p` only. `(?<=\s*- [\w]+)` succeeds iff the text before
+///   `p` ends in `- ` and one or more word characters (`\s*` may be empty);
+///   `(?<!\bHONE)` fails iff it ends in `HONE` at a word boundary.
+/// - The loop eats `[^()]+` atomically, pushes `o` on `(` and pops it on `)`; a pop of an empty
+///   stack fails. So from a start `(` at `s` the loop can stop at `p` with an empty stack iff
+///   `text[s + 1..p]` is balanced: equal counts, and no prefix with more `)` than `(`.
+///   Backtracking only drops whole iterations, which ends the group at a position that is not
+///   followed by `\)$`, or with a non-empty stack.
+/// - Start positions are tried left to right, so the leftmost such `(` wins.
+///
+/// `\w` and `\b` use the `regex` crate's Unicode semantics, the compatibility level of every
+/// other definition regex (docs/cardigann.md).
+pub(super) fn trailing_parentheses(text: &str) -> Option<[(usize, usize); 2]> {
+    static GROUP_SUFFIX: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"- \w+$").unwrap());
+    static HONE_SUFFIX: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| regex::Regex::new(r"\bHONE$").unwrap());
+    let (p, end) = if let Some(head) = text.strip_suffix(")\n") {
+        (head.len(), head.len() + 1)
+    } else {
+        let head = text.strip_suffix(')')?;
+        (head.len(), head.len() + 1)
+    };
+    let before = &text[..p];
+    if !GROUP_SUFFIX.is_match(before) || HONE_SUFFIX.is_match(before) {
+        return None;
+    }
+    // Right to left, `depth` counts `)` minus `(` in `text[i..p]`. Every suffix of a balanced
+    // content has depth >= 0, so the scan stops at the first `(` that leaves depth 0: that is
+    // the only, and so the leftmost, valid start.
+    let mut depth = 0usize;
+    for (i, c) in before.char_indices().rev() {
+        match c {
+            ')' => depth += 1,
+            '(' if depth == 0 => return Some([(i, end), (i + 1, p)]),
+            '(' => depth -= 1,
+            _ => {}
+        }
+    }
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::super::filters::{bounded_regex, definition_regex, replace_regex, Filter};
@@ -1419,9 +1474,9 @@ mod tests {
     #[test]
     fn backtracking_rejects_what_it_cannot_run_as_dotnet() {
         for (pattern, why) in [
-            // hawke-uno: .NET balancing groups and a group conditional.
+            // Balancing groups and conditionals other than hawke-uno's verbatim filter.
             (
-                r"\(((?>[^()]+|(?<o>)\(|(?<-o>)\))*(?(o)(?!)))(?<!\bHONE)(?<=\s*- [\w]+)\)$",
+                r"\(((?>[^()]+|(?<o>)\(|(?<-o>)\))*(?(o)(?!)))\)$",
                 "balancing group",
             ),
             ("(?<a-b>x)", "balancing group"),
@@ -1472,6 +1527,128 @@ mod tests {
         assert!(definition_regex(r"(?-i)(a)\1").is_ok());
         assert!(definition_regex(r"\Ax\b\B(?=y)\z").is_ok());
         assert!(definition_regex(r"(a)(b)(c)(d)(e)(f)(g)(h)(i)(j)\10").is_ok());
+    }
+
+    /// A literal backtracking reading of [`TRAILING_PARENTHESES`], independent of the
+    /// right-to-left scan: every start, every loop length the `*` can give back, then the
+    /// conditional, both look-behinds and `\)$` at the loop's end.
+    fn trailing_parentheses_reference(
+        text: &str,
+        word: &regex::Regex,
+        group: &regex::Regex,
+    ) -> Option<(usize, usize, usize)> {
+        let chars = text.char_indices().collect::<Vec<_>>();
+        let at = |k: usize| chars.get(k).map_or(text.len(), |c| c.0);
+        let is_word = |k: usize| word.is_match(&chars[k].1.to_string());
+        for s in 0..chars.len() {
+            if chars[s].1 != '(' {
+                continue;
+            }
+            // (end, stack) after each iteration count, most iterations first (greedy `*`).
+            let (mut ends, mut k, mut stack) = (vec![(s + 1, 0usize)], s + 1, 0usize);
+            while k < chars.len() {
+                match chars[k].1 {
+                    '(' => stack += 1,
+                    ')' if stack > 0 => stack -= 1,
+                    ')' => break,
+                    // The atomic `[^()]+` keeps its longest run.
+                    _ => {
+                        while k + 1 < chars.len() && !matches!(chars[k + 1].1, '(' | ')') {
+                            k += 1;
+                        }
+                    }
+                }
+                k += 1;
+                ends.push((k, stack));
+            }
+            for &(end, stack) in ends.iter().rev() {
+                let close = chars.get(end).is_some_and(|c| c.1 == ')')
+                    && (end + 1 == chars.len()
+                        || (end + 2 == chars.len() && chars[end + 1].1 == '\n'));
+                if stack != 0 || !close {
+                    continue;
+                }
+                let hone = text[..at(end)].ends_with("HONE") && (end == 4 || !is_word(end - 5));
+                let lookbehind = (0..=end).any(|j| group.is_match(&text[at(j)..at(end)]));
+                if !hone && lookbehind {
+                    return Some((at(s), at(end), at(end + 1)));
+                }
+            }
+        }
+        None
+    }
+
+    #[test]
+    fn hawke_uno_balancing_group_filter_follows_dotnet() {
+        let re = definition_regex(TRAILING_PARENTHESES).unwrap();
+        assert_eq!(re.captures_len(), 3);
+        for (input, want) in [
+            ("Movie (2020) (1080p - GROUP)", "Movie (2020) 1080p - GROUP"),
+            ("Show (a (b) c - GRP)", "Show a (b) c - GRP"),
+            ("A (B - C)(D - E)", "A (B - C)D - E"),
+            ("A ((B - C)", "A (B - C"),
+            ("A (B - C)\n", "A B - C\n"),
+            ("A (B - xHONE)", "A B - xHONE"),
+            ("Été (1080p - Gé)", "Été 1080p - Gé"),
+            // The look-behind only needs `- word` before the final `)`.
+            ("(- C)", "- C"),
+            // No match: HONE at a word boundary, unbalanced, not `- word)` at the end.
+            ("Show (Remux - HONE)", "Show (Remux - HONE)"),
+            ("Show (Remux - x.HONE)", "Show (Remux - x.HONE)"),
+            ("Show (x) - GRP)", "Show (x) - GRP)"),
+            ("A (B -  C)", "A (B -  C)"),
+            ("A (B - C D)", "A (B - C D)"),
+            ("A (B - C) ", "A (B - C) "),
+            ("A (B - C)\n\n", "A (B - C)\n\n"),
+        ] {
+            assert_eq!(replace_regex(&re, input, "$1").unwrap(), want, "{input:?}");
+            // The pinned second filter then joins the group.
+        }
+        let second = definition_regex(r"\s*-\s+(\w+)$").unwrap();
+        let first = replace_regex(&re, "Movie (1080p BluRay - GROUP)", "$1").unwrap();
+        assert_eq!(
+            replace_regex(&second, &first, "-$1").unwrap(),
+            "Movie 1080p BluRay-GROUP"
+        );
+        // `o` never takes part in a match; `$2`/`${o}` expand to nothing, as in .NET.
+        assert_eq!(replace_regex(&re, "(a - b)", "[$2${o}]").unwrap(), "[]");
+        let caps = re.captures("x (y - z)").unwrap().unwrap();
+        assert_eq!(
+            (caps.get(0), caps.get(1), caps.get(2)),
+            (Some("(y - z)"), Some("y - z"), None)
+        );
+        // Exhaustive agreement with the literal backtracking reading on short inputs.
+        let word = regex::Regex::new(r"^\w$").unwrap();
+        let group = regex::Regex::new(r"^\s*- \w+$").unwrap();
+        let reference = |text: &str| trailing_parentheses_reference(text, &word, &group);
+        let alphabet = ['(', ')', 'a', ' ', '-', '\n', 'É'];
+        let mut checked = 0;
+        for len in 0..=6u32 {
+            for n in 0..alphabet.len().pow(len) {
+                let mut x = n;
+                let text = (0..len)
+                    .map(|_| {
+                        let c = alphabet[x % alphabet.len()];
+                        x /= alphabet.len();
+                        c
+                    })
+                    .collect::<String>();
+                let got = trailing_parentheses(&text).map(|[w, i]| (w.0, i.1, w.1));
+                assert_eq!(got, reference(&text), "{text:?}");
+                checked += 1;
+            }
+        }
+        assert!(checked > 130_000);
+        for text in [
+            "x (HONE)",
+            "x (a - HONE)",
+            "x (a -HONE)",
+            "HONE (a - HONE)",
+            "(a - éHONE)",
+        ] {
+            let got = trailing_parentheses(text).map(|[w, i]| (w.0, i.1, w.1));
+            assert_eq!(got, reference(text), "{text:?}");
+        }
     }
 
     #[test]

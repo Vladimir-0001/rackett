@@ -24,12 +24,34 @@ Everything else is left unchanged and stays rejected:
 
 Unit tests are `nested_has_tests` in `src/cardigann_exec/css.rs`.
 
-tasmanit's selector fails for a different reason: a CSS-escaped quote in an
-attribute value (`img[src$=\"/freedownload.gif\"]`). AngleSharp rejects that too
-(`OnAttributeEnd` sets `_valid = false`), but only in the `freeleech` branch of its
-row-selector template. Rackett requires every template branch to compile, so tasmanit
-stays blocked. Accepting it would need the default-settings branch to compile, plus a
-settings check that refuses `freeleech` with a clear error.
+## Invalid literal row-selector branches (tasmanit)
+
+tasmanit's row selector is
+`table#sortabletable > tbody > tr:has(a[href]){{ if .Config.freeleech }}:has(img[src$=\"/freedownload.gif\"]){{ else }}{{ end }}`,
+in a plain YAML scalar, so the backslashes stay in the selector. AngleSharp v1.8.6 reads
+`\"` as an escaped identifier character, then meets `/` where it expects `]`:
+`OnAttributeEnd` sets `_valid = false` (`CssSelectorConstructor.cs:326-360`).
+`QuerySelectorAll` then throws `DomException(Syntax)` (`QueryExtensions.cs:454`), and the
+search fails through `OnParseError` (`CardigannIndexer.cs:1828-1829, 1958-1961`). So upstream
+searches work with `freeleech` off and always fail with it on.
+
+Rackett used to require every template branch to compile, which blocked tasmanit. Now
+(`Plan::compile`, `probe_row_selector`):
+
+- A row-selector branch that is not a valid HTML selector is allowed only when the
+  template substitutes no configuration values and the response is HTML or XML. Branches
+  with substituted values and JSON rows selectors stay strict, as before.
+- The selector rendered with the definition's default settings must still compile.
+  Otherwise compilation fails with the original selector error.
+- Such a plan checks the rendered selector before use. `Plan::check_settings` (so source
+  creation and edits), `build_requests` and extraction refuse settings that select the
+  invalid branch with `$.search.rows.selector: The configured settings select an invalid
+  row selector`. The message never contains the selector or a setting value. No request
+  is sent, where upstream fails after the search request.
+
+Tests: `an_invalid_literal_branch_is_refused_only_when_settings_select_it` in
+`tests/cardigann_config_selectors.rs`. tasmanit is admitted with a credential-POST
+fixture (`tests/fixtures/form-batches/batch-oneoffs.json`).
 
 ## `:scope`
 

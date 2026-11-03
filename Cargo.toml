@@ -22,11 +22,15 @@ rustls = { version = "=0.23.46", default-features = false, features = ["ring", "
 webpki-roots = "=1.0.11"
 roxmltree = "0.20"
 scraper = "0.23"
+# Already used through scraper; named directly for node ids during row extraction.
+ego-tree = "0.10"
 selectors = "0.26"
 cssparser = "0.34"
 html5ever = "0.29"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["float_roundtrip"] }
+ring = "0.17"
+mimalloc = { version = "0.1", default-features = false, features = ["no_thp"] }
 sha2 = "0.10"
 tokio = { version = "1", features = ["full"] }
 url = "2"

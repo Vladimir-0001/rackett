@@ -26,17 +26,21 @@ pub const READY_IDS: &[&str] = &[
     "4thd",
     "52bt",
     "52pt",
+    "Bittorrentfiles",
     "abtorrents",
     "acgrip",
     "acrossthetasman",
+    "aftershock",
     "agsvpt",
     "aidoruonline",
     "aither-api",
     "alabala-api",
     "alingpt",
     "alingpt-api",
+    "amigosshare",
     "anibt",
     "animebybelka",
+    "animelayer",
     "animetorrentsro",
     "animetosho-xyz",
     "animeworld-api",
@@ -74,6 +78,7 @@ pub const READY_IDS: &[&str] = &[
     "bitmagnet",
     "bitporn",
     "bitturk",
+    "bjshare",
     "blueroms",
     "bluetorrents",
     "bluraytracker",
@@ -154,6 +159,7 @@ pub const READY_IDS: &[&str] = &[
     "exkinoray",
     "explosiv-world",
     "extratorrent-st",
+    "extremebits",
     "eztv",
     "eztvl",
     "f1carreras-api",
@@ -172,6 +178,7 @@ pub const READY_IDS: &[&str] = &[
     "freejavtorrent",
     "funzone-api",
     "futuretorrent",
+    "fuzer",
     "g3minitr4ck3r-api",
     "gay-torrents",
     "gaytorrentru",
@@ -183,6 +190,7 @@ pub const READY_IDS: &[&str] = &[
     "haitang",
     "happyfappy",
     "happyfappy2fa",
+    "hawke-uno",
     "hd-club",
     "hd-unit3d-api",
     "hdarea",
@@ -191,21 +199,25 @@ pub const READY_IDS: &[&str] = &[
     "hdc",
     "hddolby",
     "hdfans",
+    "hdforever-api",
     "hdgalaktik",
     "hdhome",
     "hdkylin",
     "hdolimpo-api",
     "hdonly-api",
     "hdroute",
+    "hdsky",
     "hdspace",
     "hdspacecookie",
     "hdtime",
     "hdtorrents",
     "hdtorrentsit",
+    "hdturk",
     "hdu",
     "hdvideo-api",
     "hdzero",
     "hebits",
+    "hellashut",
     "hellashut-api",
     "hellenic-hd-api",
     "helltorrents",
@@ -216,6 +228,7 @@ pub const READY_IDS: &[&str] = &[
     "hudbt",
     "huntorrent",
     "hxpt",
+    "ilcorsaroblu",
     "immortuos",
     "indietorrents",
     "infinityhd-api",
@@ -240,6 +253,7 @@ pub const READY_IDS: &[&str] = &[
     "lajidui",
     "lajidui-api",
     "lastdigitalunderground",
+    "lastfiles",
     "lat-team-api",
     "learnflakes",
     "leech24",
@@ -295,6 +309,7 @@ pub const READY_IDS: &[&str] = &[
     "mvgroupforum",
     "mvgroupmain",
     "mypornclub",
+    "myspleen",
     "nanyangpt",
     "ncore",
     "nekobt",
@@ -311,6 +326,7 @@ pub const READY_IDS: &[&str] = &[
     "njtupt",
     "nobs",
     "noname-club",
+    "noname-clubl",
     "nordicbytes",
     "nordicquality",
     "nostradamus",
@@ -340,6 +356,7 @@ pub const READY_IDS: &[&str] = &[
     "phoenixproject",
     "phoenixpt",
     "phoenixpt-api",
+    "pier720",
     "pignetwork",
     "pixelcove",
     "pixelcove2fa",
@@ -347,11 +364,13 @@ pub const READY_IDS: &[&str] = &[
     "plugintorrent",
     "podzemlje",
     "polishtorrent",
+    "pornolab",
     "pornorip",
     "pornotorrent",
     "pornrips",
     "pornxlab",
     "portugas-api",
+    "postman",
     "postman-api",
     "proaudiotorrents",
     "proporno",
@@ -363,8 +382,10 @@ pub const READY_IDS: &[&str] = &[
     "ptfiles",
     "ptgtk",
     "ptgtk-api",
+    "pthome",
     "ptitzmx",
     "ptlgs",
+    "ptsbao",
     "ptskit",
     "ptskit-api",
     "pttey",
@@ -394,6 +415,7 @@ pub const READY_IDS: &[&str] = &[
     "riperam",
     "rockethd",
     "rousi-pro",
+    "rudub",
     "rustorka",
     "rutor",
     "rutracker-ru",
@@ -401,6 +423,7 @@ pub const READY_IDS: &[&str] = &[
     "sapibr",
     "sbpt",
     "scenerush",
+    "scenetime-api",
     "seedcore-api",
     "seedfile",
     "seedpool-api",
@@ -411,6 +434,7 @@ pub const READY_IDS: &[&str] = &[
     "shanaproject",
     "shareisland-api",
     "showrss",
+    "siambit",
     "siqi",
     "skidrowrepack",
     "skipthecommercials-api",
@@ -420,6 +444,8 @@ pub const READY_IDS: &[&str] = &[
     "sosulki",
     "soulvoice",
     "soulvoice-api",
+    "speedmasterhd",
+    "spiritofrevolution",
     "sportscora",
     "sportscult",
     "springsunday",
@@ -428,8 +454,11 @@ pub const READY_IDS: &[&str] = &[
     "superbits",
     "swarmazon-api",
     "tangpt",
+    "tapochek",
+    "tasmanit",
     "teamflix",
     "teamhd",
+    "teamos",
     "thebrothers",
     "thecrazyones",
     "theempire",
@@ -459,6 +488,7 @@ pub const READY_IDS: &[&str] = &[
     "torrent-pirat",
     "torrent-turk",
     "torrent9",
+    "torrentbd",
     "torrentby",
     "torrentbyte",
     "torrentccf",
@@ -477,6 +507,7 @@ pub const READY_IDS: &[&str] = &[
     "torrentlt",
     "torrentmasters",
     "torrentproject2",
+    "torrentsome",
     "torrenttip",
     "torrenttrader",
     "totheglory",
@@ -500,6 +531,7 @@ pub const READY_IDS: &[&str] = &[
     "ultrahd",
     "ultrahd-api",
     "unbreakable",
+    "unlimitz",
     "uploadcx",
     "upscalevault",
     "utopia",
@@ -553,9 +585,11 @@ pub const COOKIE_IDS: &[&str] = &[
     "13city",
     "1ptbar",
     "abtorrents",
+    "aftershock",
     "agsvpt",
     "aidoruonline",
     "alingpt",
+    "amigosshare",
     "animebybelka",
     "asiandvdclub",
     "audiences",
@@ -565,6 +599,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "bigcore",
     "bitbazis",
     "bithumen",
+    "bjshare",
     "boxingtorrents",
     "byrbt",
     "cangbaoge",
@@ -583,6 +618,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "exitorrent-org",
     "fappaizuri2fa",
     "freefarm",
+    "fuzer",
     "gaytorrentru",
     "ggpt",
     "happyfappy2fa",
@@ -592,8 +628,10 @@ pub const COOKIE_IDS: &[&str] = &[
     "hdgalaktik",
     "hdhome",
     "hdkylin",
+    "hdsky",
     "hdspacecookie",
     "hdtime",
+    "hdturk",
     "hebits",
     "herobit",
     "hqmusic",
@@ -617,9 +655,11 @@ pub const COOKIE_IDS: &[&str] = &[
     "momentpt",
     "musopia",
     "muxuege",
+    "myspleen",
     "nanyangpt",
     "newheaven",
     "nicept",
+    "noname-clubl",
     "novahd",
     "okpt",
     "opencd",
@@ -627,6 +667,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "ourbits",
     "panda",
     "phoenixpt",
+    "pier720",
     "pignetwork",
     "pixelcove2fa",
     "playletpt",
@@ -635,6 +676,8 @@ pub const COOKIE_IDS: &[&str] = &[
     "ptcc",
     "pterclub",
     "ptfans",
+    "pthome",
+    "ptsbao",
     "ptskit",
     "pttey",
     "ptzone",
@@ -648,6 +691,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "superbits",
     "tangpt",
     "teamhd",
+    "teamos",
     "theempire",
     "thegeeks",
     "thekitchen",
@@ -658,6 +702,7 @@ pub const COOKIE_IDS: &[&str] = &[
     "tjupt",
     "tormac",
     "torrent-turk",
+    "torrentbd",
     "torrentccf",
     "torrenting",
     "torrentmasters",
@@ -706,13 +751,19 @@ pub(crate) fn cookie_session(
             120,
         )?));
     }
-    let plan = crate::builtin_runtime::auth::CookiePlan::compile(&r)?.with_user_agent(
-        i.definition
-            .as_ref()
-            .and_then(|d| d.get("settings"))
-            .and_then(|s| s.get("useragent"))
-            .and_then(Value::as_str),
-    )?;
+    let settings = i
+        .definition
+        .as_ref()
+        .and_then(|d| d.get("settings"))
+        .and_then(Value::as_object);
+    // Text settings that declared search headers render (hdturk's `csrf_token`).
+    let plan = crate::builtin_runtime::auth::CookiePlan::compile(&r)?
+        .with_user_agent(
+            settings
+                .and_then(|s| s.get("useragent"))
+                .and_then(Value::as_str),
+        )?
+        .with_settings(settings.unwrap_or(&serde_json::Map::new()))?;
     let cookie = i
         .definition
         .as_ref()
@@ -732,6 +783,7 @@ pub(crate) fn cookie_session(
 pub const FORM_IDS: &[&str] = &[
     "4thd",
     "52pt",
+    "animelayer",
     "animetorrentsro",
     "arabp2p",
     "aussierules",
@@ -753,6 +805,7 @@ pub const FORM_IDS: &[&str] = &[
     "dreamingtree",
     "empornium",
     "explosiv-world",
+    "extremebits",
     "femdomcult",
     "file-tracker",
     "finelite",
@@ -764,12 +817,15 @@ pub const FORM_IDS: &[&str] = &[
     "hdfans",
     "hdtorrents",
     "hdu",
+    "hellashut",
     "helltorrents",
     "hudbt",
+    "ilcorsaroblu",
     "immortuos",
     "indietorrents",
     "infire",
     "kufirc",
+    "lastfiles",
     "lemonhd-net",
     "lesaloon",
     "longpt",
@@ -790,6 +846,8 @@ pub const FORM_IDS: &[&str] = &[
     "p2pbg",
     "peeratiko",
     "pixelcove",
+    "pornolab",
+    "postman",
     "proporno",
     "ptcafe",
     "ptfiles",
@@ -806,6 +864,9 @@ pub const FORM_IDS: &[&str] = &[
     "sktorrent",
     "snowpt",
     "soulvoice",
+    "speedmasterhd",
+    "spiritofrevolution",
+    "tapochek",
     "thebrothers",
     "thecrazyones",
     "thefallingangels",
@@ -820,6 +881,7 @@ pub const FORM_IDS: &[&str] = &[
     "totheglory",
     "uatorrent",
     "unbreakable",
+    "unlimitz",
     "uztracker",
     "wihd",
     "wintersakura",
@@ -847,6 +909,7 @@ pub const GET_IDS: &[&str] = &[
     "flood",
     "g3minitr4ck3r-api",
     "generationfree-api",
+    "hdforever-api",
     "hdolimpo-api",
     "hdonly-api",
     "hellashut-api",
@@ -856,6 +919,7 @@ pub const GET_IDS: &[&str] = &[
     "polishtorrent",
     "postman-api",
     "retrotoon",
+    "scenetime-api",
     "shadowbit",
     "sportscora",
     "stellarwinds",
@@ -892,6 +956,7 @@ pub(crate) fn get_login(
 }
 pub const POST_IDS: &[&str] = &[
     "0daykiev",
+    "Bittorrentfiles",
     "acrossthetasman",
     "arabafenice",
     "arabscene",
@@ -954,10 +1019,13 @@ pub const POST_IDS: &[&str] = &[
     "racingforme",
     "redstartorrent",
     "rintor",
+    "rudub",
     "scenerush",
     "seedfile",
+    "siambit",
     "sktorrent-org",
     "sportscult",
+    "tasmanit",
     "themixingbowl",
     "thenewfun",
     "torrentdd",
@@ -1011,6 +1079,7 @@ pub const API_IDS: &[&str] = &[
     "emuwarez",
     "f1carreras-api",
     "funzone-api",
+    "hawke-uno",
     "hd-unit3d-api",
     "hdtorrentsit",
     "hdzero",
@@ -1691,6 +1760,7 @@ impl Runtime {
                 "periodical" => Some("channel".into()),
                 "retrotoon" => Some("channel".into()),
                 "shadowbit" => Some("channel".into()),
+                "scenetime-api" => Some("channel".into()),
                 "world-of-tomorrow-api" => Some("channel".into()),
                 // RSS-shaped XML API (`rows: item`).
                 "dasunerwartete-api" => Some("channel".into()),
@@ -1701,6 +1771,7 @@ impl Runtime {
                 "torrentgalaxyclone" => Some("div.tgxtable".into()),
                 "torrent9" => Some("table.table-striped".into()),
                 "torrenttip" => Some("ul.page-list".into()),
+                "torrentsome" => Some("div.topic-list".into()),
                 "vsthouse" => Some("div#content".into()),
                 "vstorrent" => Some("main".into()),
                 "vsttorrents" => Some("main".into()),
@@ -1768,17 +1839,25 @@ pub fn source_categories(i: &Indexer) -> Vec<u32> {
     if i.kind != "cardigann" {
         return i.categories.clone();
     }
-    id(i)
+    // The catalog entry's categories, computed for this one definition: building the
+    // whole catalog compiles all 583 definitions, which once delayed the first search.
+    static CATEGORIES: OnceLock<Vec<OnceLock<Vec<u32>>>> = OnceLock::new();
+    let Some(n) = id(i)
         .ok()
-        .and_then(|id| catalog().iter().find(|entry| entry["id"] == id))
-        .and_then(|entry| entry["categories"].as_array())
-        .map(|categories| {
-            categories
-                .iter()
-                .filter_map(|v| v.as_u64().and_then(|n| u32::try_from(n).ok()))
-                .collect()
+        .and_then(|id| SOURCES.binary_search_by_key(&id, |(id, _)| *id).ok())
+    else {
+        return Vec::new();
+    };
+    let cells = CATEGORIES.get_or_init(|| SOURCES.iter().map(|_| OnceLock::new()).collect());
+    cells[n]
+        .get_or_init(|| {
+            root(SOURCES[n].0)
+                .ok()
+                .and_then(|r| ready(&r).ok())
+                .map(|p| p.supported_categories())
+                .unwrap_or_default()
         })
-        .unwrap_or_default()
+        .clone()
 }
 // Capabilities belong to the immutable embedded definition, not the configured
 // mirror, credentials or result cache. Parse each requested definition once;
@@ -1916,9 +1995,9 @@ mod tests {
             .find(|e| e["id"] == "limetorrents")
             .unwrap()["blocked_reason"]
             .is_null());
-        assert!(eligible(&root("torrentsome").unwrap()).is_ok());
+        assert!(eligible(&root("polishtracker-api").unwrap()).is_ok());
         assert_eq!(
-            reason("torrentsome"),
+            reason("polishtracker-api"),
             "Runtime integration has not been fixture-validated for this definition"
         );
         assert!(eligible(&root("1337x").unwrap()).is_ok());
@@ -2056,11 +2135,10 @@ mod tests {
         );
         assert!(plan.blockers().is_empty());
         assert!(eligible(&r).is_ok());
-        // Non-UTF-8 definitions with other blockers: urldecode, windows-1255/874 and
-        // TIS-620. Non-UTF-8 POST searches (file-tracker) are encoded since 2026-11-01.
+        // windows-1255, windows-874/TIS-620 and Latin-1 urldecode are fixture-admitted
+        // since 2026-11-01 (docs/legacy-encodings.md).
         for id in ["aftershock", "fuzer", "siambit", "unlimitz"] {
-            assert!(eligible(&root(id).unwrap()).is_err(), "{id}");
-            assert!(ready(&root(id).unwrap()).is_err(), "{id}");
+            assert!(ready(&root(id).unwrap()).is_ok(), "{id}");
         }
     }
 }

@@ -1,0 +1,50 @@
+[
+  {
+    "id": "scenetime-api",
+    "sha256": "c20e0e083211076937c18ed045f15b59b1b9011feb5df18bb474aab6ff687411",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 3000,
+    "json": false,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 2000,
+    "search_path": "/rss.php",
+    "query_pair": ["q", "Fixture"],
+    "download_path": "/dl/42.torrent",
+    "details_path": "/details/42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": "channel",
+    "probe": "/rss.php?apikey=fixture-source-key&view=html?"
+  },
+  {
+    "id": "hdforever-api",
+    "sha256": "51e64b7ffd3385689ea04ee07b32c82eae4838b0be62dd093091b143de0d81e5",
+    "peers": 3,
+    "seeders": 1,
+    "delay_ms": 10000,
+    "timeout_seconds": 60,
+    "json": true,
+    "request_count": 1,
+    "settings": {
+      "apikey": "fixture-source-key"
+    },
+    "category": 2000,
+    "search_path": "/api.php",
+    "query_pair": ["searchstr", "Fixture"],
+    "download_path": "/torrents.php?action=download&id=42",
+    "details_path": "/torrents.php?id=7&torrentid=42",
+    "published": "2026-10-24T07:29:31Z",
+    "title": "Fixture Release",
+    "container": null,
+    "expected_headers": {
+      "x-api-key": "fixture-source-key"
+    },
+    "probe": "/api.php?endpoint=self",
+    "empty_body": "{\"status\":\"success\",\"response\":{\"results\":[]}}",
+    "error_body": "<html><body>fixture-private-error</body></html>"
+  }
+]

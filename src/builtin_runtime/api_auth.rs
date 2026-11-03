@@ -229,7 +229,7 @@ impl ApiSession {
             8 * 1024 * 1024
         };
         for hop in 0..=hops {
-            tokio::time::sleep_until((*gate).into()).await;
+            crate::engine::wait_until(*gate).await;
             *gate = Instant::now() + Duration::from_millis(delay_ms);
             let mut request = client
                 .get(url.clone())

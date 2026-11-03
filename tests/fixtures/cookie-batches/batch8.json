@@ -1,0 +1,55 @@
+[
+ {
+  "id": "aftershock",
+  "sha256": "2849bcfaadc23765865152d3d7730f463904955420f05cb64f621ec42494f964",
+  "category": 2040,
+  "custom_category": 100033,
+  "request_count": 1,
+  "login_path": "/",
+  "search_path": "/browse.php",
+  "keyword": "search",
+  "keyword_value": "Fixture",
+  "category_input": [
+   "c33",
+   "1"
+  ],
+  "download_path": "/download.php?id=42&name=%C9t%E9+Fixture%20Release",
+  "details_path": "/details.php?id=42",
+  "published": "2026-10-29T11:00:00Z",
+  "free_markup": "<span class=\"icon_gift\"></span>",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1,
+  "normal_download": 1,
+  "normal_upload": 1,
+  "user_agent": true,
+  "missing_title": null,
+  "expected_title": "Été Fixture Release"
+ },
+ {
+  "id": "fuzer",
+  "sha256": "b82d1d810d0f847918798d8b9c43c0a0b9325febf4bc68883c37e3fa025fb822",
+  "category": 2040,
+  "custom_category": 100009,
+  "request_count": 1,
+  "login_path": "/index.php",
+  "search_path": "/browse.php",
+  "keyword": "query",
+  "keyword_value": "Fixture",
+  "category_input": [
+   "c[]",
+   "9"
+  ],
+  "download_path": "/attachment.php?attachmentid=42",
+  "details_path": "/showthread.php?t=42",
+  "published": "2026-10-29T12:00:00Z",
+  "free_markup": "<a href=\"/browse.php?freeleech=1\">פריליץ</a>",
+  "normal_markup": "",
+  "free_download": 0,
+  "free_upload": 1,
+  "normal_download": 1,
+  "normal_upload": 1,
+  "missing_title": null,
+  "expected_title": "Fixture גרסה מיוחדת"
+ }
+]

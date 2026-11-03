@@ -9,10 +9,12 @@
 //! `infohash` (`:2112-2140`) instead selects a hash and a title on the page and returns
 //! `MagnetUtil.InfoHashToPublicMagnet(hash, title)`.
 //!
-//! Admitted subset: an optional `before` and at most one of `selectors` or `infohash`.
-//! Selector text may hold templates (`MatchSelector`, `:2050`). Search headers are sent
-//! with every download request of a public source (`:2094`). `method` blocks,
-//! `pathselector` and per-selector `usebeforeresponse` stay blocked.
+//! Admitted subset: an optional `before` and at most one of `selectors` or `infohash`,
+//! or `method` alone on a supplied-cookie source (`:2109-2110`, the release link is
+//! POSTed by the session). Selector text may hold templates (`MatchSelector`, `:2050`).
+//! Search headers are sent with every download request (`:2094`): by the plain
+//! transport for a public source, by the session for cookie, form and credential-POST
+//! logins. `pathselector` and per-selector `usebeforeresponse` stay blocked.
 use crate::{
     cardigann::Node,
     cardigann_exec::{
@@ -276,8 +278,8 @@ impl DownloadSelectors {
     pub fn selects_before_response(&self) -> bool {
         self.before_page
     }
-    /// The rendered search headers for every download request (`:2094`). Only public
-    /// definitions declare them here; login sessions never send custom headers.
+    /// The rendered search headers for every download request (`:2094`). A session
+    /// source's set must equal the session's own (`CookieSession::fetch_page`).
     pub fn headers(&self, ctx: &Context) -> Result<Vec<(String, String)>, String> {
         let mut out = Vec::new();
         for (name, template) in &self.headers {
@@ -323,7 +325,19 @@ impl DownloadSelectors {
             .ok_or_else(|| anyhow!("No download block"))?;
         let mut mode = keys(download)?;
         mode.sort_unstable();
-        if ![
+        let login = root
+            .get("login")
+            .map(|l| l.string("method").unwrap_or_default());
+        if mode == ["method"] {
+            // `Download.Method` changes only the final `base.Download` (`:2109-2110`,
+            // `:2189`). Alone, that is the release link itself, which the supplied-cookie
+            // session POSTs (CookiePlan); other transports would send a GET.
+            match download.string("method") {
+                Some("get") => {}
+                Some("post") if login == Some("cookie") => {}
+                _ => bail!("Download POST is modeled only for cookie sessions"),
+            }
+        } else if ![
             &["selectors"][..],
             &["infohash"],
             &["before", "selectors"],
@@ -335,10 +349,12 @@ impl DownloadSelectors {
             bail!("Only download before, selectors or infohash are supported");
         }
         // Public sources send download requests through the plain transport, which carries
-        // headers and returns the `before` response. Login sessions do neither.
-        let public = root.get("login").is_none();
+        // headers and returns the `before` response. Cookie, form and credential-POST
+        // sessions send their own rendered search headers with every download request
+        // (CookieSession), but never return the `before` response.
+        let public = login.is_none();
         let headers = compile_headers(root)?;
-        if !headers.is_empty() && !public {
+        if !headers.is_empty() && !public && !matches!(login, Some("cookie" | "form" | "post")) {
             bail!("Download requests would carry search headers");
         }
         let charset = Charset::from_definition(root).map_err(|e| anyhow!(e))?;
@@ -494,10 +510,46 @@ mod tests {
         ] {
             assert!(DownloadSelectors::compile(&root(id)).is_ok(), "{id}");
         }
-        // pathselector and method blocks; search headers on a login source.
-        for id in ["ildragonero", "hdsky", "acgrip"] {
+        // pathselector blocks.
+        for id in ["ildragonero", "acgrip"] {
             assert!(DownloadSelectors::compile(&root(id)).is_err(), "{id}");
         }
+        // Session search headers, and a cookie session's POSTed release link.
+        for id in ["hdturk", "pier720", "hdsky"] {
+            assert!(DownloadSelectors::compile(&root(id)).is_ok(), "{id}");
+        }
+        let hdsky = DownloadSelectors::compile(&root("hdsky")).unwrap();
+        assert!(!hdsky.selects() && hdsky.before.is_none());
+    }
+    #[test]
+    fn download_post_needs_a_cookie_session_and_stays_alone() {
+        let hdsky = builtin::SOURCES
+            .iter()
+            .find(|(i, _)| *i == "hdsky")
+            .unwrap()
+            .1;
+        let compile = |src: &str| {
+            DownloadSelectors::compile(
+                &cardigann::parse(src, cardigann::Limits::default()).unwrap(),
+            )
+        };
+        assert!(compile(hdsky).is_ok());
+        // Other logins would download the link with GET.
+        for login in ["form", "post", "get"] {
+            let src = hdsky.replace("  method: cookie\n", &format!("  method: {login}\n"));
+            assert!(compile(&src).is_err(), "{login}");
+        }
+        assert!(
+            compile(&hdsky.replace("\ndownload:\n", "\ndownload:\n  before: {path: x}\n")).is_err()
+        );
+        // Upstream compares the literal "post"; other spellings are not guessed at.
+        assert!(
+            compile(&hdsky.replace("  method: post\n\nsearch", "  method: POST\n\nsearch"))
+                .is_err()
+        );
+        assert!(
+            compile(&hdsky.replace("  method: post\n\nsearch", "  method: get\n\nsearch")).is_ok()
+        );
     }
     #[test]
     fn templated_selectors_render_settings_and_failures_try_the_next() {
@@ -540,15 +592,25 @@ mod tests {
             .headers(&c)
             .unwrap()
             .is_empty());
-        // A login source would need its session to send them: still blocked.
+        // A session sends its own rendered set; logins without a session stay blocked.
         let src = builtin::SOURCES
             .iter()
             .find(|(i, _)| *i == "catorrent")
             .unwrap()
-            .1
-            .replace("\nsearch:\n", "\nlogin:\n  method: cookie\n\nsearch:\n");
-        let r = cardigann::parse(&src, cardigann::Limits::default()).unwrap();
-        assert!(DownloadSelectors::compile(&r).is_err());
+            .1;
+        for (login, ok) in [
+            ("cookie", true),
+            ("form", true),
+            ("post", true),
+            ("get", false),
+        ] {
+            let src = src.replace(
+                "\nsearch:\n",
+                &format!("\nlogin:\n  method: {login}\n\nsearch:\n"),
+            );
+            let r = cardigann::parse(&src, cardigann::Limits::default()).unwrap();
+            assert_eq!(DownloadSelectors::compile(&r).is_ok(), ok, "{login}");
+        }
     }
     #[test]
     fn infohash_reads_the_public_before_response() {

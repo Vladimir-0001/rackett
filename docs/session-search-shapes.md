@@ -47,9 +47,10 @@ runtime, before its first search, with the same checks. An edit or restart creat
 new runtime and probes again. Difference from upstream: probe response cookies are
 not kept. A site that needed them would fail its searches visibly.
 
-Admitted shape: login keys `method`, `path`, `inputs`, `error`; a literal path;
-inputs that are literals or a declared text/password setting; no `followredirect` or
-`test`. The credential may be a login input or a templated search header (for example
+Admitted shape: login keys `method`, `path`, `inputs`, `error` and `headers` (equal to
+the search headers); a site-relative path, which may substitute text/password settings
+raw after its `?` ([get-login-paths.md](get-login-paths.md)); inputs that are literals or
+a declared text/password setting; no `test` and no search-level `followredirect`. The credential may be a login input or a templated search header (for example
 `Authorization: Bearer {{ .Config.apikey }}`). As upstream sends
 `Login.Headers ?? Search.Headers` with the login and `Download.Headers ?? Search.Headers`
 with downloads, the plan's rendered search headers go with the probe and with this
@@ -61,7 +62,9 @@ shadowbit, stellarwinds, swarmazon-api, ultrabits-api, world-of-tomorrow-api.
 Header-key candidates: abnormal-api, alabala-api, desitorrents-api, digitalcore-api,
 dirtybytes-api, flood, g3minitr4ck3r-api, generationfree-api, hdolimpo-api,
 polishtorrent, postman-api, teamflix, theoldschool-api, torrentclaw, trackerzero.
-Templated login paths (scenetime-api, v3x, yggreborn-api) stay blocked.
+Templated query paths and equal login headers admitted scenetime-api and hdforever-api.
+Logins on an API host (abnormal-api, v3x, yggreborn-api) stay blocked; see
+[get-login-paths.md](get-login-paths.md#why-the-three-api-host-definitions-stay-blocked).
 
 Harness (public): `"settings": {"apikey": "fixture-source-key"}` (anything but
 `fixture-key`, which is Rackett's own Torznab key in the harness) and

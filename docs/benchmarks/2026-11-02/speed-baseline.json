@@ -1,0 +1,814 @@
+{
+  "method": "Multi-metric Rackett versus Jackett speed comparison on synthetic fixtures.\n\nMeasures, for both engines against the same pinned definitions and the same\nsynthetic upstream (`examples/loadgen.rs serve`):\n\n* startup to the first answered capabilities request, and resident memory;\n* warm-cache searches (1337x, 20 rows; ACG.RIP, 100 rows with .torrent links;\n  the two-source aggregate) sequentially and with 64 concurrent clients;\n* uncached searches (every request a new ACG.RIP query, 20 and 500 rows), which\n  exercise fetch, HTML parsing and serialization, sequentially and concurrently;\n* capabilities requests.\n\nEvery response is checked for the exact item count; errors fail the run. Engines\ntake turns per scenario (R J J R) so drift on a shared host hits both. No real\ntrackers, accounts, downloads or production configuration are used, no image is\npulled, and the disposable Jackett container is removed afterwards.",
+  "jackett_image": "sha256:f31a572728006696f75a233b309bd32123e1fcea56d775c8a2a6f7bec83e4171",
+  "definitions": [
+    "1337x.yml",
+    "acgrip.yml"
+  ],
+  "host_load": [
+    1.10205078125,
+    1.919921875,
+    1.5595703125
+  ],
+  "scenarios": [
+    {
+      "scenario": "caps",
+      "concurrency": 1,
+      "items": 0,
+      "rackett": {
+        "p50_ms": 0.06532450000000001,
+        "p95_ms": 0.081893,
+        "p99_ms": 0.11239350000000001,
+        "rps": 14756.795009878508,
+        "response_bytes": 1808,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 0.12578799999999998,
+            "mean_ms": 0.06787291333333337,
+            "p50_ms": 0.06658,
+            "p90_ms": 0.069268,
+            "p95_ms": 0.071502,
+            "p99_ms": 0.110566,
+            "requests": 900,
+            "response_bytes": 1808,
+            "rps": 14691.458317574024,
+            "seconds": 0.061260086
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 0.162299,
+            "mean_ms": 0.06725220000000001,
+            "p50_ms": 0.064069,
+            "p90_ms": 0.06888799999999999,
+            "p95_ms": 0.092284,
+            "p99_ms": 0.114221,
+            "requests": 900,
+            "response_bytes": 1808,
+            "rps": 14822.131702182993,
+            "seconds": 0.060720011
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 0.7183710000000001,
+        "p95_ms": 0.7973825,
+        "p99_ms": 1.281269,
+        "rps": 1353.7802760363577,
+        "response_bytes": 6129,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 1.334052,
+            "mean_ms": 0.7205464222222224,
+            "p50_ms": 0.695671,
+            "p90_ms": 0.74682,
+            "p95_ms": 0.780667,
+            "p99_ms": 1.256962,
+            "requests": 900,
+            "response_bytes": 6129,
+            "rps": 1387.1645448880358,
+            "seconds": 0.64880551
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 1.407272,
+            "mean_ms": 0.7570367722222222,
+            "p50_ms": 0.741071,
+            "p90_ms": 0.78724,
+            "p95_ms": 0.814098,
+            "p99_ms": 1.3055759999999998,
+            "requests": 900,
+            "response_bytes": 6129,
+            "rps": 1320.3960071846795,
+            "seconds": 0.681613694
+          }
+        ]
+      },
+      "speedup_p50": 10.99696132385246,
+      "speedup_p99": 11.399849635432654,
+      "speedup_rps": 10.900435817460671
+    },
+    {
+      "scenario": "warm 1337x 20 rows, 1 client",
+      "concurrency": 1,
+      "items": 20,
+      "rackett": {
+        "p50_ms": 0.45539949999999996,
+        "p95_ms": 0.492198,
+        "p99_ms": 0.5216385,
+        "rps": 2175.314021308376,
+        "response_bytes": 30635,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 0.590383,
+            "mean_ms": 0.45320616888888887,
+            "p50_ms": 0.448679,
+            "p90_ms": 0.469711,
+            "p95_ms": 0.481025,
+            "p99_ms": 0.508252,
+            "requests": 900,
+            "response_bytes": 30635,
+            "rps": 2205.015851969211,
+            "seconds": 0.408160331
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 0.633215,
+            "mean_ms": 0.4657467344444448,
+            "p50_ms": 0.46212,
+            "p90_ms": 0.484041,
+            "p95_ms": 0.503371,
+            "p99_ms": 0.535025,
+            "requests": 900,
+            "response_bytes": 30635,
+            "rps": 2145.6121906475414,
+            "seconds": 0.419460704
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 1.2361715000000002,
+        "p95_ms": 1.6642679999999999,
+        "p99_ms": 1.917933,
+        "rps": 793.9344837849618,
+        "response_bytes": 34823,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 3.300001,
+            "mean_ms": 1.4172925455555578,
+            "p50_ms": 1.3557720000000002,
+            "p90_ms": 1.669643,
+            "p95_ms": 1.8408229999999999,
+            "p99_ms": 2.062033,
+            "requests": 900,
+            "response_bytes": 34823,
+            "rps": 705.3891785755477,
+            "seconds": 1.2758914190000001
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 1.838511,
+            "mean_ms": 1.132777947777777,
+            "p50_ms": 1.116571,
+            "p90_ms": 1.318079,
+            "p95_ms": 1.487713,
+            "p99_ms": 1.773833,
+            "requests": 900,
+            "response_bytes": 34823,
+            "rps": 882.4797889943759,
+            "seconds": 1.019853385
+          }
+        ]
+      },
+      "speedup_p50": 2.7144770690349906,
+      "speedup_p99": 3.676747402655287,
+      "speedup_rps": 2.7399162849532592
+    },
+    {
+      "scenario": "warm 1337x 20 rows, 64 clients",
+      "concurrency": 64,
+      "items": 20,
+      "rackett": {
+        "p50_ms": 18.1974835,
+        "p95_ms": 23.415913500000002,
+        "p99_ms": 23.617684,
+        "rps": 3439.9914060883048,
+        "response_bytes": 30635,
+        "runs": [
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 29.009136,
+            "mean_ms": 20.094027405166592,
+            "p50_ms": 18.301732,
+            "p90_ms": 28.23577,
+            "p95_ms": 28.446691,
+            "p99_ms": 28.754606,
+            "requests": 12000,
+            "response_bytes": 30635,
+            "rps": 3176.539564549675,
+            "seconds": 3.777695746
+          },
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 18.707506,
+            "mean_ms": 17.230133032916637,
+            "p50_ms": 18.093235,
+            "p90_ms": 18.320119,
+            "p95_ms": 18.385136,
+            "p99_ms": 18.480762000000002,
+            "requests": 12000,
+            "response_bytes": 30635,
+            "rps": 3703.443247626934,
+            "seconds": 3.240227863
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 17.902301,
+        "p95_ms": 28.3330415,
+        "p99_ms": 33.7788095,
+        "rps": 3355.8698112155225,
+        "response_bytes": 34823,
+        "runs": [
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 47.40821,
+            "mean_ms": 19.96429332500004,
+            "p50_ms": 18.399254,
+            "p90_ms": 27.051724,
+            "p95_ms": 30.505668999999997,
+            "p99_ms": 36.720535,
+            "requests": 12000,
+            "response_bytes": 34823,
+            "rps": 3202.0025580158035,
+            "seconds": 3.74765472
+          },
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 39.346385999999995,
+            "mean_ms": 18.206147319833313,
+            "p50_ms": 17.405348,
+            "p90_ms": 23.222472,
+            "p95_ms": 26.160414,
+            "p99_ms": 30.837084,
+            "requests": 12000,
+            "response_bytes": 34823,
+            "rps": 3509.7370644152415,
+            "seconds": 3.419059542
+          }
+        ]
+      },
+      "speedup_p50": 0.9837789384449779,
+      "speedup_p99": 1.4302337816019555,
+      "speedup_rps": 1.0250670018817902
+    },
+    {
+      "scenario": "warm ACG.RIP 100 rows, 1 client",
+      "concurrency": 1,
+      "items": 100,
+      "rackett": {
+        "p50_ms": 1.610039,
+        "p95_ms": 1.6997529999999998,
+        "p99_ms": 1.7562820000000001,
+        "rps": 618.299833293891,
+        "response_bytes": 135996,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 2.039333,
+            "mean_ms": 1.6022371700000004,
+            "p50_ms": 1.600306,
+            "p90_ms": 1.641993,
+            "p95_ms": 1.665619,
+            "p99_ms": 1.696121,
+            "requests": 600,
+            "response_bytes": 135996,
+            "rps": 623.9868715158991,
+            "seconds": 0.961558692
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 1.9825720000000002,
+            "mean_ms": 1.6319376350000006,
+            "p50_ms": 1.619772,
+            "p90_ms": 1.694332,
+            "p95_ms": 1.733887,
+            "p99_ms": 1.816443,
+            "requests": 600,
+            "response_bytes": 135996,
+            "rps": 612.6127950718829,
+            "seconds": 0.979411473
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 3.5466154999999997,
+        "p95_ms": 5.7154799999999994,
+        "p99_ms": 7.5109005,
+        "rps": 259.0756544307096,
+        "response_bytes": 149008,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 8.366675,
+            "mean_ms": 3.886358113333338,
+            "p50_ms": 3.635986,
+            "p90_ms": 5.036187999999999,
+            "p95_ms": 5.661383,
+            "p99_ms": 7.376249,
+            "requests": 600,
+            "response_bytes": 149008,
+            "rps": 257.27054437308766,
+            "seconds": 2.332175265
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 10.028618,
+            "mean_ms": 3.832636056666669,
+            "p50_ms": 3.457245,
+            "p90_ms": 4.741815,
+            "p95_ms": 5.769577,
+            "p99_ms": 7.645552,
+            "requests": 600,
+            "response_bytes": 149008,
+            "rps": 260.8807644883315,
+            "seconds": 2.299901264
+          }
+        ]
+      },
+      "speedup_p50": 2.2028134101099415,
+      "speedup_p99": 4.276591401608625,
+      "speedup_rps": 2.3865609242695425
+    },
+    {
+      "scenario": "warm ACG.RIP 100 rows, 64 clients",
+      "concurrency": 64,
+      "items": 100,
+      "rackett": {
+        "p50_ms": 44.212149499999995,
+        "p95_ms": 70.300032,
+        "p99_ms": 70.693989,
+        "rps": 1394.3715633907623,
+        "response_bytes": 135996,
+        "runs": [
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 71.650123,
+            "mean_ms": 39.85037991066677,
+            "p50_ms": 18.924962,
+            "p90_ms": 69.816053,
+            "p95_ms": 70.018392,
+            "p99_ms": 70.419334,
+            "requests": 6000,
+            "response_bytes": 135996,
+            "rps": 1590.6443145460553,
+            "seconds": 3.772056358
+          },
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 71.186499,
+            "mean_ms": 53.04613827783334,
+            "p50_ms": 69.499337,
+            "p90_ms": 70.37387000000001,
+            "p95_ms": 70.581672,
+            "p99_ms": 70.968644,
+            "requests": 6000,
+            "response_bytes": 135996,
+            "rps": 1198.098812235469,
+            "seconds": 5.007934186
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 91.90412699999999,
+        "p95_ms": 114.09549849999999,
+        "p99_ms": 179.15864749999997,
+        "rps": 673.1209464681992,
+        "response_bytes": 149008,
+        "runs": [
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 198.353032,
+            "mean_ms": 94.53977788016641,
+            "p50_ms": 91.66977299999999,
+            "p90_ms": 101.35848,
+            "p95_ms": 107.558746,
+            "p99_ms": 177.766922,
+            "requests": 6000,
+            "response_bytes": 149008,
+            "rps": 676.4478504952626,
+            "seconds": 8.869863354
+          },
+          {
+            "concurrency": 64,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 201.34751400000002,
+            "mean_ms": 95.2753400733333,
+            "p50_ms": 92.138481,
+            "p90_ms": 103.62946000000001,
+            "p95_ms": 120.632251,
+            "p99_ms": 180.55037299999998,
+            "requests": 6000,
+            "response_bytes": 149008,
+            "rps": 669.7940424411358,
+            "seconds": 8.957977557
+          }
+        ]
+      },
+      "speedup_p50": 2.078707505501401,
+      "speedup_p99": 2.53428403226758,
+      "speedup_rps": 2.0715022622708377
+    },
+    {
+      "scenario": "warm aggregate 2 sources, 1 client",
+      "concurrency": 1,
+      "items": 40,
+      "rackett": {
+        "p50_ms": 1.52618,
+        "p95_ms": 3.4980070000000003,
+        "p99_ms": 3.5375794999999997,
+        "rps": 495.3342260137864,
+        "response_bytes": 57725,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 4.0631520000000005,
+            "mean_ms": 1.8465994816666664,
+            "p50_ms": 1.205186,
+            "p90_ms": 3.9178879999999996,
+            "p95_ms": 3.946181,
+            "p99_ms": 3.988696,
+            "requests": 600,
+            "response_bytes": 57725,
+            "rps": 541.3074244233227,
+            "seconds": 1.108427435
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 3.189332,
+            "mean_ms": 2.2245288899999993,
+            "p50_ms": 1.847174,
+            "p90_ms": 3.024033,
+            "p95_ms": 3.049833,
+            "p99_ms": 3.0864629999999997,
+            "requests": 600,
+            "response_bytes": 57725,
+            "rps": 449.3610276042502,
+            "seconds": 1.335229277
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 1.6145995,
+        "p95_ms": 2.2680350000000002,
+        "p99_ms": 3.9103744999999996,
+        "rps": 572.2883489077436,
+        "response_bytes": 64478,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 4.659122,
+            "mean_ms": 1.7607849550000003,
+            "p50_ms": 1.61916,
+            "p90_ms": 2.1181360000000002,
+            "p95_ms": 2.281568,
+            "p99_ms": 3.9078009999999996,
+            "requests": 600,
+            "response_bytes": 64478,
+            "rps": 567.7965026570633,
+            "seconds": 1.056716618
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 5.055594,
+            "mean_ms": 1.733283449999999,
+            "p50_ms": 1.610039,
+            "p90_ms": 2.0804769999999997,
+            "p95_ms": 2.254502,
+            "p99_ms": 3.912948,
+            "requests": 600,
+            "response_bytes": 64478,
+            "rps": 576.7801951584239,
+            "seconds": 1.040257632
+          }
+        ]
+      },
+      "speedup_p50": 1.0579351714738758,
+      "speedup_p99": 1.1053813772948424,
+      "speedup_rps": 0.8655326060004016
+    },
+    {
+      "scenario": "cold ACG.RIP 20 rows, 1 client",
+      "concurrency": 1,
+      "items": 20,
+      "rackett": {
+        "p50_ms": 2.312365,
+        "p95_ms": 5.9081295,
+        "p99_ms": 6.002747500000001,
+        "rps": 353.8739515223717,
+        "response_bytes": 27575,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 9.292446,
+            "mean_ms": 3.7817069733333337,
+            "p50_ms": 2.5410179999999998,
+            "p90_ms": 8.539323,
+            "p95_ms": 8.597834,
+            "p99_ms": 8.773637,
+            "requests": 300,
+            "response_bytes": 27575,
+            "rps": 264.2677827980063,
+            "seconds": 1.135212158
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 3.3341030000000003,
+            "mean_ms": 2.253527930000001,
+            "p50_ms": 2.0837120000000002,
+            "p90_ms": 3.164012,
+            "p95_ms": 3.218425,
+            "p99_ms": 3.2318580000000003,
+            "requests": 300,
+            "response_bytes": 27575,
+            "rps": 443.4801202467372,
+            "seconds": 0.676467752
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 2.0199465,
+        "p95_ms": 3.32966,
+        "p99_ms": 4.130812499999999,
+        "rps": 445.170718653794,
+        "response_bytes": 30328,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 4.76131,
+            "mean_ms": 2.3198452699999996,
+            "p50_ms": 2.098552,
+            "p90_ms": 3.2478670000000003,
+            "p95_ms": 3.42176,
+            "p99_ms": 4.228064,
+            "requests": 300,
+            "response_bytes": 30328,
+            "rps": 430.8535570739004,
+            "seconds": 0.696292267
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 4.97656,
+            "mean_ms": 2.1752925299999997,
+            "p50_ms": 1.941341,
+            "p90_ms": 3.047724,
+            "p95_ms": 3.23756,
+            "p99_ms": 4.033561,
+            "requests": 300,
+            "response_bytes": 30328,
+            "rps": 459.4878802336876,
+            "seconds": 0.65290079
+          }
+        ]
+      },
+      "speedup_p50": 0.873541374307257,
+      "speedup_p99": 0.68815363298223,
+      "speedup_rps": 0.7949174029066743
+    },
+    {
+      "scenario": "cold ACG.RIP 20 rows, 16 clients",
+      "concurrency": 16,
+      "items": 20,
+      "rackett": {
+        "p50_ms": 35.956635,
+        "p95_ms": 52.709486,
+        "p99_ms": 74.71093350000001,
+        "rps": 417.18868842564575,
+        "response_bytes": 27655,
+        "runs": [
+          {
+            "concurrency": 16,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 88.991553,
+            "mean_ms": 40.92840485333336,
+            "p50_ms": 39.524848,
+            "p90_ms": 47.962739,
+            "p95_ms": 48.041720000000005,
+            "p99_ms": 73.590993,
+            "requests": 1200,
+            "response_bytes": 27655,
+            "rps": 388.98768549398056,
+            "seconds": 3.084930564
+          },
+          {
+            "concurrency": 16,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 97.072248,
+            "mean_ms": 35.72074226166663,
+            "p50_ms": 32.388422,
+            "p90_ms": 40.050304000000004,
+            "p95_ms": 57.377252,
+            "p99_ms": 75.83087400000001,
+            "requests": 1200,
+            "response_bytes": 27655,
+            "rps": 445.3896913573109,
+            "seconds": 2.694269812
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 16.175738,
+        "p95_ms": 25.221213,
+        "p99_ms": 29.454471,
+        "rps": 939.9974486926902,
+        "response_bytes": 30388,
+        "runs": [
+          {
+            "concurrency": 16,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 36.422491,
+            "mean_ms": 16.73268364500001,
+            "p50_ms": 16.072364,
+            "p90_ms": 22.068575,
+            "p95_ms": 24.88276,
+            "p99_ms": 29.572876,
+            "requests": 1200,
+            "response_bytes": 30388,
+            "rps": 953.2132187291118,
+            "seconds": 1.258899873
+          },
+          {
+            "concurrency": 16,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 39.336888,
+            "mean_ms": 17.203349799999994,
+            "p50_ms": 16.279111999999998,
+            "p90_ms": 22.707003999999998,
+            "p95_ms": 25.559666,
+            "p99_ms": 29.336066000000002,
+            "requests": 1200,
+            "response_bytes": 30388,
+            "rps": 926.7816786562687,
+            "seconds": 1.294803326
+          }
+        ]
+      },
+      "speedup_p50": 0.44986795900116905,
+      "speedup_p99": 0.3942457900087676,
+      "speedup_rps": 0.44381895823850864
+    },
+    {
+      "scenario": "cold ACG.RIP 500 rows, 1 client",
+      "concurrency": 1,
+      "items": 500,
+      "rackett": {
+        "p50_ms": 30.403575499999995,
+        "p95_ms": 31.096643999999998,
+        "p99_ms": 31.895249500000002,
+        "rps": 32.79696652812237,
+        "response_bytes": 683816,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 32.349450000000004,
+            "mean_ms": 30.407503749999986,
+            "p50_ms": 30.300227999999997,
+            "p90_ms": 30.944715000000002,
+            "p95_ms": 31.131426,
+            "p99_ms": 32.349450000000004,
+            "requests": 60,
+            "response_bytes": 683816,
+            "rps": 32.88276697409171,
+            "seconds": 1.8246639660000001
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 31.441049,
+            "mean_ms": 30.566738533333332,
+            "p50_ms": 30.506922999999997,
+            "p90_ms": 30.963674,
+            "p95_ms": 31.061861999999998,
+            "p99_ms": 31.441049,
+            "requests": 60,
+            "response_bytes": 683816,
+            "rps": 32.71116608215302,
+            "seconds": 1.834236048
+          }
+        ]
+      },
+      "jackett": {
+        "p50_ms": 45.804482500000006,
+        "p95_ms": 60.982273000000006,
+        "p99_ms": 64.93482399999999,
+        "rps": 21.050849781082825,
+        "response_bytes": 746808,
+        "runs": [
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 67.104983,
+            "mean_ms": 47.32719146666667,
+            "p50_ms": 45.900326,
+            "p90_ms": 51.589554,
+            "p95_ms": 60.469002,
+            "p99_ms": 67.104983,
+            "requests": 60,
+            "response_bytes": 746808,
+            "rps": 21.127998225149554,
+            "seconds": 2.8398336349999997
+          },
+          {
+            "concurrency": 1,
+            "errors": 0,
+            "first_error": null,
+            "max_ms": 62.764664999999994,
+            "mean_ms": 47.674666283333316,
+            "p50_ms": 45.708639000000005,
+            "p90_ms": 56.908917,
+            "p95_ms": 61.495544,
+            "p99_ms": 62.764664999999994,
+            "requests": 60,
+            "response_bytes": 746808,
+            "rps": 20.973701337016095,
+            "seconds": 2.860725393
+          }
+        ]
+      },
+      "speedup_p50": 1.506549205043335,
+      "speedup_p99": 2.035877599891482,
+      "speedup_rps": 1.557987771001772
+    }
+  ],
+  "engines": {
+    "rackett": {
+      "startup_s": 0.81,
+      "idle_memory": {
+        "rss_mib": 28.5,
+        "peak_rss_mib": 28.5
+      },
+      "loaded_memory": {
+        "rss_mib": 119.1,
+        "peak_rss_mib": 121.2
+      }
+    },
+    "jackett": {
+      "startup_s": 3.461,
+      "idle_memory": {
+        "rss_mib": 154.8,
+        "peak_rss_mib": 154.8
+      },
+      "loaded_memory": {
+        "rss_mib": 236.5,
+        "peak_rss_mib": 275.7
+      }
+    }
+  },
+  "upstream_pages": 6756
+}

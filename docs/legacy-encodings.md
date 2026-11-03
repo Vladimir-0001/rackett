@@ -1,7 +1,8 @@
 # Legacy single-byte encodings
 
-42 of the 583 pinned Jackett definitions declare a non-UTF-8 `encoding`. Rackett now
-runs the single-byte code pages whose .NET behaviour is modelled exactly:
+42 of the 583 pinned Jackett definitions declare a non-UTF-8 `encoding`. Rackett
+supports every label they use, with tables taken from the data .NET 9 itself uses.
+Admission still depends on each definition's other features.
 
 | Label (case-insensitive) | Definitions | Table source |
 | --- | --- | --- |
@@ -11,11 +12,55 @@ runs the single-byte code pages whose .NET behaviour is modelled exactly:
 | `windows-1252` | 3 | Generated |
 | `windows-1250` | 2 | Generated |
 | `windows-1256` | 1 | Generated |
+| `windows-1255` | 1 (fuzer) | Generated |
+| `windows-874` | 1 (unlimitz) | Generated |
+| `tis-620` | 1 (siambit) | Code page 874, as in .NET |
 
-`windows-1255`, `windows-874` and `tis-620` are still rejected at compile time.
-Their undefined bytes are decoded by Windows into private-use code points that have
-not been verified against .NET. Aliases such as `latin1` or `cp1251` are also
-rejected; no pinned definition uses them.
+Aliases such as `latin1`, `cp1251` or `iso-8859-11` are still rejected; no pinned
+definition uses them.
+
+## .NET mapping evidence (2026-11-01)
+
+Jackett targets `net9.0` and calls `Encoding.GetEncoding(Definition.Encoding)`
+(`CardigannIndexer.cs:126`). For the code pages that resolves through
+`CodePagesEncodingProvider`, whose tables are the binary `codepages.nlp` in
+`dotnet/runtime` at `v9.0.0`
+(`src/libraries/System.Text.Encoding.CodePages/src/Data/codepages.nlp`, SHA-256
+`0cad998c…33e9fb`). `tools/gen_single_byte_tables.py` now reads that file directly,
+following `BaseCodePageEncoding.cs` (file, index and code-page headers) and
+`SBCSCodePageEncoding.cs` (`LoadManagedCodePage`, `ReadBestFitTable`):
+
+- **Names.** `EncodingTable.Data.cs` maps `windows-1255` to 1255 and both
+  `windows-874` and `tis-620` (and `dos-874`, `iso-8859-11`) to 874.
+- **Decoding.** Every SBCS page in the file has 256 distinct non-`U+FFFD`
+  entries and an empty bytes-to-Unicode best-fit list, so `GetString` is total and
+  never produces `?`. The bytes the Unicode vendor tables
+  (`MAPPINGS/VENDORS/MICSFT/WINDOWS/CP1255.TXT`, `CP874.TXT`) leave undefined decode as:
+  - windows-1255: C1 controls for `0x81 0x8A 0x8C-0x90 0x9A 0x9C-0x9F`, `0xCA` to
+    U+05BA, `0xD9-0xDF` to U+F88D-U+F893, `0xFB 0xFC` to U+F894-U+F895 and `0xFF` to
+    U+F896.
+  - windows-874: C1 controls for `0x81-0x84 0x86-0x90 0x98-0x9F`, `0xDB-0xDE` to
+    U+F8C1-U+F8C4 and `0xFC-0xFF` to U+F8C5-U+F8C8.
+- **Cross-checks.** All 256 entries of both pages equal the `MBTABLE` of Microsoft's
+  `WindowsBestFit/bestfit1255.txt` and `bestfit874.txt` on unicode.org. Their
+  Unicode-to-bytes best-fit lists (96 and 138 entries) equal those files' `WCTABLE`
+  entries beyond the exact mappings. Every byte that CPython's `cp1255`/`cp874` codecs
+  (the vendor tables) define agrees; the generator asserts this. The five pages
+  admitted earlier regenerate byte for byte from the `.nlp` file, which confirms their
+  CPython-derived tables.
+- **Encoding.** `BaseCodePageEncoding` installs `InternalEncoderBestFitFallback`:
+  a character without an exact byte becomes its best-fit byte, else `?`; a surrogate
+  pair becomes `??` (`EncoderBestFitFallback.cs:81-115`). `Latin1Encoding` uses
+  `EncoderLatin1BestFitFallback` (`Latin1Encoding.cs:29-33`, data in
+  `EncoderLatin1BestFitFallback.Data.cs`). Rackett keeps rejecting such text in queries,
+  credentials and request bodies, and uses best fit only for `urldecode` (below).
+
+Regenerate with the two `v9.0.0` source files:
+
+```sh
+python3 -I tools/gen_single_byte_tables.py codepages.nlp \
+    EncoderLatin1BestFitFallback.Data.cs > src/cardigann_exec/single_byte.rs
+```
 
 ## Behaviour (pinned Jackett `fe8876d2`)
 
@@ -36,8 +81,36 @@ rejected; no pinned definition uses them.
   sent to a windows-1250 site, is an error. .NET would substitute a best-fit or `?` byte;
   Rackett refuses to guess.
 - **FlareSolverr** returns already-decoded browser text, so challenge solving stays
-  limited to UTF-8 definitions. The `urlencode` and `urldecode` filters remain
-  rejected for non-UTF-8 definitions.
+  limited to UTF-8 definitions. The `urlencode` filter stays rejected for non-UTF-8
+  definitions; no pinned one uses it.
+
+## `urldecode`
+
+Upstream's filter is `WebUtilityHelpers.UrlDecode(Data, Encoding)`
+(`CardigannIndexer.cs:1198-1199`), with the definition encoding:
+`encoding.GetString(WebUtility.UrlDecodeToBytes(encoding.GetBytes(text)))`
+(`WebUtilityHelpers.cs`). `Charset::url_decode` does the same:
+
+1. `GetBytes` with the encoding's default best-fit fallback. Page text decoded with
+   the same charset always round-trips; other characters (from entities, for example)
+   take their best-fit byte, `?`, or `??` for a non-BMP character.
+2. `WebUtility.UrlDecodeInternal` (`WebUtility.cs:510-550`): `+` becomes a space, and
+   `%` followed by two hex digits (either case) becomes that byte; any other `%` is
+   literal.
+3. `GetString`, which is total for single-byte pages. UTF-8 replaces invalid
+   sequences with U+FFFD, as before.
+
+AfterShock (ISO-8859-1) runs `querystring name` and then `urldecode` on its download
+links, so a doubly escaped `%25C9t%25E9` title becomes `Été`.
+
+Known divergence, not in this module: upstream `querystring` uses
+`QueryHelpers.ParseQuery` from Microsoft.AspNetCore.WebUtilities 2.3.13, which calls
+`Uri.UnescapeDataString(value.Replace('+', ' '))` (`QueryHelpers.cs:165-166`, aspnetcore
+`release/2.3`). `UnescapeDataString` is documented to leave escapes that are not valid
+UTF-8 (such as a single `%E9`) as text. Rackett's `querystring` decodes them to U+FFFD.
+The AfterShock fixture therefore uses `%25`-escaped bytes; a link with a bare `%E9`
+would title `?` here and `é` upstream. Fixing it means changing `querystring` in
+`filters.rs`.
 
 ## Search POST bodies
 
@@ -101,6 +174,14 @@ charset. For a non-UTF-8 definition they:
 | ISO-8859-2 | bestcore, libranet, party-tracker, redstartorrent, whiteangel |
 | windows-1252 | xwtorrents |
 | windows-1250 | trezzor, trezzorcookie (cookie) |
+| ISO-8859-1 (`urldecode`) | aftershock (cookie) |
+| windows-1255 | fuzer (cookie) |
+| windows-874 / TIS-620 | unlimitz (form, image CAPTCHA absent), siambit (credential POST, `download.before` GET) |
+
+The Thai row selectors use unquoted numeric attribute values (`[border=1]`), which
+AngleSharp 1.8.6 accepts as number tokens (`CssSelectorConstructor.cs:309-317`).
+`css.rs` (`rewrite_numeric_values`) quotes digit-only values before the selectors crate
+parses them. Signs, decimals, exponents and dimensions stay rejected.
 
 DeildU was the first: its title `Fixture Íslensk Útgáfa` and Latin-1 username pass
 the full lifecycle.
@@ -120,4 +201,9 @@ the full lifecycle.
   windows-1251 text).
 
 The remaining non-UTF-8 definitions have other blockers: .NET regex features,
-`followredirect`, `urldecode`, CAPTCHA or download resolution.
+`followredirect`, CAPTCHA or download resolution. No encoding blocker is left.
+
+Fixtures: `tests/fixtures/cookie-batches/batch8.json` (aftershock, fuzer) and
+`tests/fixtures/form-batches/batch26.json` (siambit, unlimitz). Pages are served in the
+code page, with a misleading `charset=utf-8` header. Logins use `fixture-משתמש` and
+`fixture-ผู้ใช้`.

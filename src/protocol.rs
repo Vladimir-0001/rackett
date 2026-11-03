@@ -11,11 +11,7 @@ use axum::{
     Router,
 };
 use serde_json::json;
-use std::{
-    collections::{BTreeMap, HashMap, VecDeque},
-    sync::{Mutex, OnceLock},
-    time::{Duration, Instant},
-};
+use std::collections::{BTreeMap, HashMap};
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -29,28 +25,82 @@ pub fn router() -> Router<AppState> {
         .route("/dl/{ticket}", get(download))
 }
 
-fn xml(text: &str) -> String {
-    text.chars()
-        .filter(|c| {
-            matches!(*c, '\t' | '\n' | '\r') || (*c >= ' ' && *c != '\u{fffe}' && *c != '\u{ffff}')
-        })
-        .collect::<String>()
-        .replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+/// Appends `text` as XML text or attribute content in one pass: characters XML 1.0
+/// cannot carry (C0 controls other than tab, LF and CR; U+FFFE; U+FFFF) are dropped
+/// and the five markup characters are escaped. Everything to escape or drop starts
+/// with an ASCII byte or 0xEF, so the scan is bytewise and slices on char boundaries.
+fn push_xml(out: &mut String, text: &str) {
+    // Bytes that may need escaping or dropping; everything else is copied as is.
+    const SPECIAL: [bool; 256] = {
+        let mut table = [false; 256];
+        let mut b = 0;
+        while b < 0x20 {
+            table[b] = !matches!(b as u8, b'\t' | b'\n' | b'\r');
+            b += 1;
+        }
+        table[b'&' as usize] = true;
+        table[b'<' as usize] = true;
+        table[b'>' as usize] = true;
+        table[b'"' as usize] = true;
+        table[b'\'' as usize] = true;
+        table[0xef] = true;
+        table
+    };
+    let bytes = text.as_bytes();
+    let (mut start, mut i) = (0, 0);
+    while i < bytes.len() {
+        if !SPECIAL[usize::from(bytes[i])] {
+            i += 1;
+            continue;
+        }
+        let (escaped, width) = match bytes[i] {
+            b'&' => ("&amp;", 1),
+            b'<' => ("&lt;", 1),
+            b'>' => ("&gt;", 1),
+            b'"' => ("&quot;", 1),
+            b'\'' => ("&apos;", 1),
+            b'\t' | b'\n' | b'\r' => {
+                i += 1;
+                continue;
+            }
+            0..=0x1f => ("", 1),
+            0xef if bytes.get(i + 1) == Some(&0xbf)
+                && matches!(bytes.get(i + 2), Some(0xbe | 0xbf)) =>
+            {
+                ("", 3)
+            }
+            _ => {
+                i += 1;
+                continue;
+            }
+        };
+        out.push_str(&text[start..i]);
+        out.push_str(escaped);
+        i += width;
+        start = i;
+    }
+    out.push_str(&text[start..]);
 }
-fn document(body: String, status: StatusCode) -> Response {
+fn xml(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    push_xml(&mut out, text);
+    out
+}
+const DECLARATION: &str = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>";
+/// An XML response whose body already starts with [`DECLARATION`].
+fn declared(body: String, status: StatusCode) -> Response {
     (
         status,
         [
             ("content-type", "application/xml; charset=utf-8"),
             ("cache-control", "no-store"),
         ],
-        format!("<?xml version=\"1.0\" encoding=\"UTF-8\"?>{body}"),
+        body,
     )
         .into_response()
+}
+fn document(body: String, status: StatusCode) -> Response {
+    declared(DECLARATION.to_owned() + &body, status)
 }
 fn error(status: StatusCode, code: u32, description: &str) -> Response {
     document(
@@ -200,8 +250,37 @@ fn public_guid(release: &Release) -> String {
     hash.update(release.indexer_id.as_bytes());
     hash.update([0]);
     hash.update(release.guid.as_bytes());
-    format!("urn:rackett:{:x}", hash.finalize())
+    "urn:rackett:".to_owned() + &crate::ticket::hex(&hash.finalize())
 }
+/// Attributes a client may see; the rest can carry source internals.
+const PUBLIC_ATTRIBUTES: [&str; 26] = [
+    "imdb",
+    "imdbid",
+    "tmdbid",
+    "tvdbid",
+    "tvmazeid",
+    "rageid",
+    "traktid",
+    "doubanid",
+    "infohash",
+    "minimumratio",
+    "minimumseedtime",
+    "downloadvolumefactor",
+    "uploadvolumefactor",
+    "files",
+    "grabs",
+    "year",
+    "genre",
+    "language",
+    "subs",
+    "author",
+    "booktitle",
+    "publisher",
+    "artist",
+    "album",
+    "label",
+    "track",
+];
 fn public_details(value: Option<&str>) -> Option<String> {
     let url = url::Url::parse(value?).ok()?;
     (matches!(url.scheme(), "http" | "https")
@@ -210,50 +289,21 @@ fn public_details(value: Option<&str>) -> Option<String> {
         && url.password().is_none())
     .then(|| url.to_string())
 }
-fn public_release(release: &Release, key: &str, base_url: &str) -> Release {
+fn public_release(release: &Release, links: &Links) -> Release {
     let mut out = release.clone();
     out.guid = public_guid(release);
-    out.link = ticket_link(release, key, base_url);
+    out.link = ticket_link(release, links);
     out.details = public_details(release.details.as_deref());
-    out.attributes.retain(|k, _| {
-        [
-            "imdb",
-            "imdbid",
-            "tmdbid",
-            "tvdbid",
-            "tvmazeid",
-            "rageid",
-            "traktid",
-            "doubanid",
-            "infohash",
-            "minimumratio",
-            "minimumseedtime",
-            "downloadvolumefactor",
-            "uploadvolumefactor",
-            "files",
-            "grabs",
-            "year",
-            "genre",
-            "language",
-            "subs",
-            "author",
-            "booktitle",
-            "publisher",
-            "artist",
-            "album",
-            "label",
-            "track",
-        ]
-        .contains(&k.as_str())
-    });
+    out.attributes
+        .retain(|k, _| PUBLIC_ATTRIBUTES.contains(&k.as_str()));
     out
 }
 /// Produce client-facing links without mutating internal/cache records.
-pub fn present_results(response: &mut crate::models::SearchResponse, key: &str, base: &str) {
+pub fn present_results(response: &mut crate::models::SearchResponse, links: &Links) {
     response.results = response
         .results
         .iter()
-        .map(|r| public_release(r, key, base))
+        .map(|r| public_release(r, links))
         .collect();
 }
 
@@ -376,155 +426,269 @@ async fn torznab(
         "limit".into(),
         offset.saturating_add(limit).min(1000).to_string(),
     );
-    let response = state
+    let (response, results) = state
         .engine
-        .search_selected(
+        .search_shared(
             selected.iter().map(|x| x.id.clone()).collect(),
             SearchQuery { params },
             id == "all",
         )
         .await;
-    if response.results.is_empty() && !response.errors.is_empty() && response.pending.is_empty() {
+    if results.is_empty() && !response.errors.is_empty() && response.pending.is_empty() {
         return error(
             StatusCode::BAD_GATEWAY,
             900,
             "All selected indexers failed; inspect Activity for source status",
         );
     }
-    let total = response.results.len();
+    let total = results.len();
+    let shown = &results[offset.min(total)..offset.saturating_add(limit).min(total)];
+    let links = state
+        .engine
+        .links(
+            shown.iter().map(|r| &**r),
+            &settings.api_key,
+            &settings.base_url(),
+        )
+        .await;
+    let mut out = feed_start(offset, total, 1024 + shown.len() * 1536);
     // Sources still searching when `maxwait` elapsed; a client may poll again for them.
-    let pending = response
-        .pending
-        .iter()
-        .map(|p| {
-            format!(
-                "<rackett:pending id=\"{}\" name=\"{}\"/>",
-                xml(&p.indexer_id),
-                xml(&p.indexer)
-            )
-        })
-        .collect::<String>();
-    let body = response
-        .results
-        .iter()
-        .skip(offset)
-        .take(limit)
-        .map(|r| release_xml(r, &settings.api_key, &settings.base_url()))
-        .collect::<String>();
-    feed(offset, total, pending + &body)
+    for p in &response.pending {
+        out.push_str("<rackett:pending id=\"");
+        push_xml(&mut out, &p.indexer_id);
+        out.push_str("\" name=\"");
+        push_xml(&mut out, &p.indexer);
+        out.push_str("\"/>");
+    }
+    for r in shown {
+        push_shared_xml(&mut out, r, &links);
+    }
+    for r in shown {
+        r.mark_presented();
+    }
+    feed_end(out)
+}
+fn feed_start(offset: usize, total: usize, capacity: usize) -> String {
+    use std::fmt::Write;
+    let mut out = String::with_capacity(capacity);
+    out.push_str(DECLARATION);
+    let _ = write!(out, "<rss version=\"2.0\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\" xmlns:rackett=\"urn:rackett:feed\"><channel><title>Rackett</title><description>Native indexer search</description><newznab:response offset=\"{offset}\" total=\"{total}\"/>");
+    out
+}
+fn feed_end(mut out: String) -> Response {
+    out.push_str("</channel></rss>");
+    declared(out, StatusCode::OK)
 }
 fn feed(offset: usize, total: usize, body: String) -> Response {
-    document(format!("<rss version=\"2.0\" xmlns:torznab=\"http://torznab.com/schemas/2015/feed\" xmlns:newznab=\"http://www.newznab.com/DTD/2010/feeds/attributes/\" xmlns:rackett=\"urn:rackett:feed\"><channel><title>Rackett</title><description>Native indexer search</description><newznab:response offset=\"{offset}\" total=\"{total}\"/>{body}</channel></rss>"),StatusCode::OK)
+    let mut out = feed_start(offset, total, body.len() + 1024);
+    out.push_str(&body);
+    feed_end(out)
 }
 
-struct Ticket {
-    indexer: String,
-    /// Runtime identity of the producing source; downloads reject any other runtime.
-    epoch: u64,
-    url: String,
-    name: String,
-    created: Instant,
+/// Issues client-facing download links for one presentation (see [`Engine::links`]).
+///
+/// [`Engine::links`]: crate::engine::Engine::links
+pub struct Links {
+    key: std::sync::Arc<crate::ticket::TicketKey>,
+    /// By runtime epoch, which is process-unique: the source ID and its fingerprint.
+    fingerprints: HashMap<u64, (String, [u8; 32])>,
+    api_key: String,
+    base_url: String,
+    /// SHA-256 prefix of the API key and base URL, the rest of a rendered item's context.
+    context: [u8; 16],
 }
-const TICKET_TTL: Duration = Duration::from_secs(7200);
-const TICKET_CAPACITY: usize = 4096;
-
-/// Tickets are immutable and created under one lock in monotonic time order.
-/// Keep that order explicitly: issuing a cached feed must not scan the entire
-/// table for each release. Each queued token is removed at most once.
-#[derive(Default)]
-struct TicketStore {
-    entries: HashMap<String, Ticket>,
-    order: VecDeque<String>,
-}
-impl TicketStore {
-    fn issue(&mut self, ticket: Ticket) -> String {
-        while let Some(oldest) = self.order.front() {
-            if self.entries.len() < TICKET_CAPACITY
-                && ticket.created.duration_since(self.entries[oldest].created) < TICKET_TTL
-            {
-                break;
-            }
-            let oldest = self.order.pop_front().expect("front exists");
-            self.entries.remove(&oldest);
+impl Links {
+    pub fn new(
+        key: std::sync::Arc<crate::ticket::TicketKey>,
+        fingerprints: HashMap<(String, u64), [u8; 32]>,
+        api_key: &str,
+        base_url: &str,
+    ) -> Self {
+        use sha2::{Digest, Sha256};
+        let digest =
+            Sha256::digest(serde_json::to_vec(&(api_key, base_url)).expect("strings serialize"));
+        let mut context = [0; 16];
+        context.copy_from_slice(&digest[..16]);
+        Self {
+            key,
+            fingerprints: fingerprints
+                .into_iter()
+                .map(|((id, epoch), fingerprint)| (epoch, (id, fingerprint)))
+                .collect(),
+            api_key: api_key.into(),
+            base_url: base_url.into(),
+            context,
         }
-        // Never replace an existing token, even in the event of an RNG collision.
-        let token = loop {
-            let token = crate::store::random_key();
-            if !self.entries.contains_key(&token) {
-                break token;
-            }
-        };
-        self.order.push_back(token.clone());
-        self.entries.insert(token.clone(), ticket);
-        token
     }
-
-    fn get(&self, token: &str, now: Instant) -> Option<&Ticket> {
-        self.entries
-            .get(token)
-            .filter(|ticket| now.duration_since(ticket.created) < TICKET_TTL)
+    /// The credential fingerprint a link to `release` is issued under; a release from a
+    /// runtime replaced before presentation gets one that never matches.
+    fn fingerprint(&self, release: &Release) -> [u8; 32] {
+        self.fingerprints
+            .get(&release.source_epoch)
+            .filter(|(id, _)| *id == release.indexer_id)
+            .map(|(_, fingerprint)| *fingerprint)
+            .unwrap_or([0; 32])
     }
 }
-static TICKETS: OnceLock<Mutex<TicketStore>> = OnceLock::new();
-fn ticket_link(release: &Release, key: &str, base_url: &str) -> String {
+/// A cached release's rendered Torznab item and the exact context it was rendered in:
+/// the API key and base URL digest and the credential fingerprint behind its link.
+pub(crate) type Rendered = std::sync::OnceLock<([u8; 16], [u8; 32], Box<str>)>;
+/// Magnets are returned as they are. Other links become permanent `/dl/` tokens; a
+/// release from a runtime replaced before presentation gets a fingerprint that never
+/// matches, and a link too long to seal gets no download URL.
+fn ticket_link(release: &Release, links: &Links) -> String {
     if release.link.starts_with("magnet:?") {
         return release.link.clone();
     }
-    let mut tickets = TICKETS
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    let token = tickets.issue(Ticket {
+    let fingerprint = links.fingerprint(release);
+    let token = links.key.seal(&crate::ticket::Ticket {
         indexer: release.indexer_id.clone(),
-        epoch: release.source_epoch,
+        fingerprint,
         url: release.link.clone(),
         name: release.title.clone(),
-        created: Instant::now(),
     });
-    // Never derive feed URLs from untrusted Host or forwarded headers.
-    format!("{base_url}/dl/{token}?apikey={key}")
-}
-fn release_xml(release: &Release, key: &str, base_url: &str) -> String {
-    let public = public_release(release, key, base_url);
-    let release = &public;
-    let link = &release.link;
-    let mut attrs = String::new();
-    let mut attr = |k: &str, v: &str| {
-        attrs.push_str(&format!(
-            "<torznab:attr name=\"{}\" value=\"{}\"/>",
-            xml(k),
-            xml(v)
-        ))
+    let Some(token) = token else {
+        return String::new();
     };
-    if let Some(v) = release.seeders {
-        attr("seeders", &v.to_string());
-    }
-    if let Some(v) = release.peers {
-        attr("peers", &v.to_string());
-    }
-    if let Some(v) = release.size {
-        attr("size", &v.to_string());
-    }
-    for cat in &release.categories {
-        attr("category", &cat.to_string());
-    }
-    for (k, v) in &release.attributes {
-        if !["seeders", "peers", "size", "category"].contains(&k.as_str()) {
-            attr(k, v);
+    // Never derive feed URLs from untrusted Host or forwarded headers.
+    format!("{}/dl/{token}?apikey={}", links.base_url, links.api_key)
+}
+#[cfg(test)]
+fn release_xml(release: &Release, links: &Links) -> String {
+    let mut out = String::with_capacity(1024);
+    push_release_xml(&mut out, release, links);
+    out
+}
+/// Appends one release as a Torznab item. From its result set's second showing on, the
+/// item is rendered at most once per presentation context and then reused.
+fn push_shared_xml(out: &mut String, shared: &crate::engine::Shared, links: &Links) {
+    let fingerprint = links.fingerprint(shared);
+    let slot = shared.rendered();
+    if let Some((context, fp, item)) = slot.get() {
+        if *context == links.context && *fp == fingerprint {
+            out.push_str(item);
+            return;
         }
     }
-    let date = release
+    let start = out.len();
+    push_release_xml(out, shared, links);
+    if shared.presented() {
+        let _ = slot.set((links.context, fingerprint, out[start..].into()));
+    }
+}
+/// `date.to_rfc2822()` written in place. Chrono formats through its generic strftime
+/// machinery, which was a visible share of rendering an uncached feed.
+fn push_rfc2822(out: &mut String, date: &chrono::DateTime<chrono::FixedOffset>) {
+    use chrono::{Datelike, Timelike};
+    use std::fmt::Write;
+    const DAYS: [&str; 7] = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const MONTHS: [&str; 12] = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+    let year = date.year();
+    if !(0..=9999).contains(&year) {
+        // Outside RFC 2822's four-digit years; keep chrono's own behaviour.
+        out.push_str(&date.to_rfc2822());
+        return;
+    }
+    let offset = date.offset().local_minus_utc();
+    let (sign, offset) = if offset < 0 {
+        ('-', -offset)
+    } else {
+        ('+', offset)
+    };
+    let _ = write!(
+        out,
+        "{}, {} {} {:04} {:02}:{:02}:{:02} {}{:02}{:02}",
+        DAYS[date.weekday().num_days_from_monday() as usize],
+        date.day(),
+        MONTHS[date.month0() as usize],
+        year,
+        date.hour(),
+        date.minute(),
+        // A leap second (nanosecond >= 1e9) prints as :60, as chrono does.
+        date.second() + date.nanosecond() / 1_000_000_000,
+        sign,
+        offset / 3600,
+        offset / 60 % 60,
+    );
+}
+/// Decimal formatting into a reused buffer.
+struct Digits(String);
+fn itoa_buffer() -> Digits {
+    Digits(String::with_capacity(20))
+}
+impl Digits {
+    fn format(&mut self, n: u64) -> &str {
+        use std::fmt::Write;
+        self.0.clear();
+        let _ = write!(self.0, "{n}");
+        &self.0
+    }
+}
+fn push_release_xml(out: &mut String, release: &Release, links: &Links) {
+    use std::fmt::Write;
+    let link = ticket_link(release, links);
+    out.push_str("<item><title>");
+    push_xml(out, &release.title);
+    out.push_str("</title><guid isPermaLink=\"false\">");
+    out.push_str(&public_guid(release));
+    out.push_str("</guid><link>");
+    push_xml(out, &link);
+    out.push_str("</link><enclosure url=\"");
+    push_xml(out, &link);
+    let _ = write!(
+        out,
+        "\" length=\"{}\" type=\"application/x-bittorrent\"/>",
+        release.size.unwrap_or(0)
+    );
+    if let Some(date) = release
         .published
         .as_ref()
         .and_then(|x| chrono::DateTime::parse_from_rfc3339(x).ok())
-        .map(|x| format!("<pubDate>{}</pubDate>", x.to_rfc2822()))
-        .unwrap_or_default();
-    let details = release
-        .details
-        .as_ref()
-        .map(|x| format!("<comments>{}</comments>", xml(x)))
-        .unwrap_or_default();
-    format!("<item><title>{}</title><guid isPermaLink=\"false\">{}</guid><link>{}</link><enclosure url=\"{}\" length=\"{}\" type=\"application/x-bittorrent\"/>{date}{details}<jackettindexer id=\"{}\">{}</jackettindexer>{attrs}</item>",xml(&release.title),xml(&release.guid),xml(link),xml(link),release.size.unwrap_or(0),xml(&release.indexer_id),xml(&release.indexer))
+    {
+        out.push_str("<pubDate>");
+        push_rfc2822(out, &date);
+        out.push_str("</pubDate>");
+    }
+    if let Some(details) = public_details(release.details.as_deref()) {
+        out.push_str("<comments>");
+        push_xml(out, &details);
+        out.push_str("</comments>");
+    }
+    out.push_str("<jackettindexer id=\"");
+    push_xml(out, &release.indexer_id);
+    out.push_str("\">");
+    push_xml(out, &release.indexer);
+    out.push_str("</jackettindexer>");
+    let mut attr = |k: &str, v: &str| {
+        out.push_str("<torznab:attr name=\"");
+        push_xml(out, k);
+        out.push_str("\" value=\"");
+        push_xml(out, v);
+        out.push_str("\"/>");
+    };
+    let mut number = itoa_buffer();
+    if let Some(v) = release.seeders {
+        attr("seeders", number.format(v));
+    }
+    if let Some(v) = release.peers {
+        attr("peers", number.format(v));
+    }
+    if let Some(v) = release.size {
+        attr("size", number.format(v));
+    }
+    for cat in &release.categories {
+        attr("category", number.format(u64::from(*cat)));
+    }
+    for (k, v) in &release.attributes {
+        if PUBLIC_ATTRIBUTES.contains(&k.as_str())
+            && !["seeders", "peers", "size", "category"].contains(&k.as_str())
+        {
+            attr(k, v);
+        }
+    }
+    out.push_str("</item>");
 }
 
 async fn potato(
@@ -555,7 +719,11 @@ async fn potato(
     params.remove("passkey");
     params.insert("t".into(), "movie".into());
     let response = state.engine.search(vec![id], SearchQuery { params }).await;
-    let movies=response.results.iter().map(|r|json!({"release_name":format!("{} [{}]",r.title,r.indexer),"torrent_id":public_guid(r),"details_url":public_details(r.details.as_deref()),"download_url":ticket_link(r,&settings.api_key,&settings.base_url()),"size":r.size.map(|s|s/1024/1024).unwrap_or(0),"seeders":r.seeders.map(|x|x as i64).unwrap_or(-1),"leechers":r.peers.zip(r.seeders).map(|(p,s)|p.saturating_sub(s) as i64).unwrap_or(-1),"publish_date":r.published})).collect::<Vec<_>>();
+    let links = state
+        .engine
+        .links(&response.results, &settings.api_key, &settings.base_url())
+        .await;
+    let movies=response.results.iter().map(|r|json!({"release_name":format!("{} [{}]",r.title,r.indexer),"torrent_id":public_guid(r),"details_url":public_details(r.details.as_deref()),"download_url":ticket_link(r,&links),"size":r.size.map(|s|s/1024/1024).unwrap_or(0),"seeders":r.seeders.map(|x|x as i64).unwrap_or(-1),"leechers":r.peers.zip(r.seeders).map(|(p,s)|p.saturating_sub(s) as i64).unwrap_or(-1),"publish_date":r.published})).collect::<Vec<_>>();
     axum::Json(json!({"results":movies,"errors":response.errors})).into_response()
 }
 
@@ -568,16 +736,11 @@ async fn download(
     if !authorized(&params, &headers, &state.engine.settings().await.api_key) {
         return error(StatusCode::UNAUTHORIZED, 100, "Invalid API key");
     }
-    let found = TICKETS
-        .get_or_init(Default::default)
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .get(&ticket, Instant::now())
-        .map(|t| (t.indexer.clone(), t.epoch, t.url.clone(), t.name.clone()));
-    let Some((id, epoch, url, name)) = found else {
-        return error(StatusCode::NOT_FOUND, 201, "Download expired; search again");
+    let Ok(ticket) = state.engine.ticket_key().open(&ticket) else {
+        return error(StatusCode::NOT_FOUND, 201, "Unknown download link");
     };
-    match state.engine.download(&id, epoch, &url).await {
+    let name = ticket.name.clone();
+    match state.engine.download_link(&ticket).await {
         Ok(crate::engine::Download::Magnet(magnet)) => match magnet.parse::<HeaderValue>() {
             Ok(location) => (
                 StatusCode::FOUND,
@@ -624,9 +787,11 @@ async fn download(
             )
                 .into_response()
         }
-        Err(e) if e.is::<crate::engine::DownloadExpired>() => {
-            error(StatusCode::NOT_FOUND, 201, "Download expired; search again")
-        }
+        Err(e) if e.is::<crate::engine::DownloadExpired>() => error(
+            StatusCode::NOT_FOUND,
+            201,
+            "Download link retired: the source was removed, disabled or changed; search again",
+        ),
         Err(e) if e.is::<crate::builtin_runtime::DetailFailure>() => error(
             StatusCode::BAD_GATEWAY,
             900,
@@ -646,124 +811,93 @@ async fn download(
 mod tests {
     use super::*;
 
-    fn fixture_ticket(created: Instant, n: usize) -> Ticket {
-        Ticket {
-            indexer: "fixture-source".into(),
-            epoch: 42,
-            url: format!("https://fixture.invalid/download/{n}"),
-            name: format!("Fixture release {n}"),
-            created,
-        }
+    fn links() -> Links {
+        Links::new(
+            std::sync::Arc::new(crate::ticket::TicketKey::from_bytes(&[3; 32])),
+            HashMap::from([(("custom-1".into(), 7), [9; 32])]),
+            "secret",
+            "http://127.0.0.1:9117",
+        )
     }
-
     #[test]
-    fn tickets_expire_without_needing_another_search() {
-        let mut store = TicketStore::default();
-        let start = Instant::now();
-        let first = store.issue(fixture_ticket(start, 1));
-        let second = store.issue(fixture_ticket(start + Duration::from_secs(1), 2));
-        assert!(store
-            .get(&first, start + TICKET_TTL - Duration::from_nanos(1))
-            .is_some());
-        assert!(store.get(&first, start + TICKET_TTL).is_none());
-        assert!(store.get(&second, start + TICKET_TTL).is_some());
-        let third = store.issue(fixture_ticket(start + TICKET_TTL, 3));
-        assert!(!store.entries.contains_key(&first));
-        assert_eq!(store.order.iter().collect::<Vec<_>>(), [&second, &third]);
-        // An idle period can expire the entire queue. Both indexes remain bounded.
-        let fourth = store.issue(fixture_ticket(start + TICKET_TTL * 2, 4));
-        assert_eq!(store.entries.len(), 1);
-        assert_eq!(store.order.len(), 1);
-        assert!(store.get(&fourth, start + TICKET_TTL * 2).is_some());
-    }
-
-    #[test]
-    fn tickets_evict_oldest_and_preserve_opaque_runtime_bound_targets() {
-        let mut store = TicketStore::default();
-        let start = Instant::now();
-        let tokens: Vec<_> = (0..TICKET_CAPACITY)
-            .map(|n| store.issue(fixture_ticket(start + Duration::from_nanos(n as u64), n)))
-            .collect();
-        for (n, token) in tokens.iter().enumerate() {
-            let ticket = store.get(token, start + Duration::from_secs(1)).unwrap();
-            assert_eq!(ticket.indexer, "fixture-source");
-            assert_eq!(ticket.epoch, 42);
-            assert_eq!(ticket.url, format!("https://fixture.invalid/download/{n}"));
-            assert_eq!(ticket.name, format!("Fixture release {n}"));
-            assert_eq!(token.len(), 64);
-            assert!(token.bytes().all(|b| b.is_ascii_hexdigit()));
-        }
-        let newest = store.issue(fixture_ticket(start + Duration::from_secs(1), 0));
-        assert!(!tokens.contains(&newest));
-        assert!(store
-            .get(&tokens[0], start + Duration::from_secs(1))
-            .is_none());
-        assert!(store
-            .get(&tokens[1], start + Duration::from_secs(1))
-            .is_some());
-        assert_eq!(store.entries.len(), TICKET_CAPACITY);
-        assert_eq!(store.order.len(), TICKET_CAPACITY);
-        assert_eq!(store.order.back(), Some(&newest));
-    }
-
-    #[test]
-    #[ignore = "Manual timing comparison; no tracker or service traffic"]
-    fn ticket_issuance_benchmark() {
-        use std::hint::black_box;
-        // The previous production algorithm, including its per-entry clock reads.
-        fn legacy_issue(entries: &mut HashMap<String, Ticket>, n: usize) {
-            entries.retain(|_, ticket| ticket.created.elapsed() < TICKET_TTL);
-            if entries.len() >= TICKET_CAPACITY {
-                let oldest = entries
-                    .iter()
-                    .min_by_key(|(_, ticket)| ticket.created)
-                    .map(|(key, _)| key.clone())
-                    .unwrap();
-                entries.remove(&oldest);
-            }
-            entries.insert(
-                crate::store::random_key(),
-                fixture_ticket(Instant::now(), n),
-            );
-        }
-        let mut old_samples = Vec::new();
-        let mut new_samples = Vec::new();
-        for round in 0..6 {
-            let mut old = HashMap::new();
-            let mut new = TicketStore::default();
-            for n in 0..TICKET_CAPACITY {
-                old.insert(
-                    crate::store::random_key(),
-                    fixture_ticket(Instant::now(), n),
-                );
-                new.issue(fixture_ticket(Instant::now(), n));
-            }
-            // Alternate order; 100 cached feeds with 20 HTTP links apiece.
-            for candidate in [round % 2 == 0, round % 2 != 0] {
-                let start = Instant::now();
-                for n in 0..2000 {
-                    if candidate {
-                        black_box(new.issue(fixture_ticket(Instant::now(), n)));
-                    } else {
-                        legacy_issue(&mut old, n);
-                    }
-                }
-                let per_feed_us = start.elapsed().as_secs_f64() * 1e6 / 100.0;
-                if candidate {
-                    new_samples.push(per_feed_us);
-                } else {
-                    old_samples.push(per_feed_us);
-                }
-            }
-            assert_eq!(old.len(), TICKET_CAPACITY);
-            assert_eq!(new.entries.len(), TICKET_CAPACITY);
-            assert_eq!(new.order.len(), TICKET_CAPACITY);
-        }
-        println!("ticket benchmark: microseconds per 20-link feed; previous={old_samples:?}; candidate={new_samples:?}");
+    fn links_are_sealed_permanent_and_keep_magnets() {
+        let links = links();
+        let release = Release {
+            indexer_id: "custom-1".into(),
+            source_epoch: 7,
+            link: "https://tracker.example/dl.php?id=1&passkey=SECRETPASSKEY".into(),
+            title: "Fixture".into(),
+            ..Default::default()
+        };
+        let link = ticket_link(&release, &links);
+        assert!(link.starts_with("http://127.0.0.1:9117/dl/"), "{link}");
+        assert!(link.ends_with("?apikey=secret"));
+        assert!(!link.contains("SECRETPASSKEY") && !link.contains("tracker"));
+        let token = &link["http://127.0.0.1:9117/dl/".len()..link.find('?').unwrap()];
+        let ticket = links.key.open(token).unwrap();
+        assert_eq!(ticket.fingerprint, [9; 32]);
+        assert_eq!(ticket.url, release.link);
+        // A runtime replaced before presentation gets a fingerprint that never matches.
+        let stale = Release {
+            source_epoch: 6,
+            ..release.clone()
+        };
+        let link = ticket_link(&stale, &links);
+        let token = &link["http://127.0.0.1:9117/dl/".len()..link.find('?').unwrap()];
+        assert_eq!(links.key.open(token).unwrap().fingerprint, [0; 32]);
+        let magnet = Release {
+            link: "magnet:?xt=urn:btih:123".into(),
+            ..release
+        };
+        assert_eq!(ticket_link(&magnet, &links), "magnet:?xt=urn:btih:123");
     }
     #[test]
     fn escapes_xml_and_removes_illegal_controls() {
         assert_eq!(xml("a\u{0}&\"<é>"), "a&amp;&quot;&lt;é&gt;");
+        assert_eq!(
+            xml("\t\n\r'\u{1f}\u{fffe}\u{ffff}\u{fffd}\u{efbf}"),
+            "\t\n\r&apos;\u{fffd}\u{efbf}"
+        );
+        // The previous char-by-char filter, for every char class the scan treats apart.
+        let reference = |t: &str| {
+            t.chars()
+                .filter(|c| {
+                    matches!(*c, '\t' | '\n' | '\r')
+                        || (*c >= ' ' && *c != '\u{fffe}' && *c != '\u{ffff}')
+                })
+                .collect::<String>()
+                .replace('&', "&amp;")
+                .replace('<', "&lt;")
+                .replace('>', "&gt;")
+                .replace('"', "&quot;")
+                .replace('\'', "&apos;")
+        };
+        let sample: String = (0u32..0x300)
+            .chain(0xfff0..0x10010)
+            .filter_map(char::from_u32)
+            .collect();
+        assert_eq!(xml(&sample), reference(&sample));
+    }
+    #[test]
+    fn rfc2822_matches_chrono() {
+        let mut stamp = -62_135_596_800i64; // 0001-01-01
+        let mut offsets = [0, 3600, -18000, 19800, -34200, 50400, -43200]
+            .into_iter()
+            .cycle();
+        while stamp < 253_402_300_799 {
+            let offset = chrono::FixedOffset::east_opt(offsets.next().unwrap()).unwrap();
+            let date = chrono::DateTime::from_timestamp(stamp, 0)
+                .unwrap()
+                .with_timezone(&offset);
+            let mut out = String::new();
+            push_rfc2822(&mut out, &date);
+            assert_eq!(out, date.to_rfc2822(), "{stamp}");
+            stamp += 7_654_321;
+        }
+        let leap = chrono::DateTime::parse_from_rfc3339("2016-12-31T23:59:60+01:00").unwrap();
+        let mut out = String::new();
+        push_rfc2822(&mut out, &leap);
+        assert_eq!(out, leap.to_rfc2822());
     }
     #[test]
     fn malformed_numbers_are_errors() {
@@ -792,7 +926,7 @@ mod tests {
             ..Default::default()
         };
         let before = r.link.clone();
-        let rendered = release_xml(&r, "secret", "http://127.0.0.1:9117");
+        let rendered = release_xml(&r, &links());
         assert!(rendered.contains("A &amp; B"));
         assert_eq!(r.link, before);
         assert!(!rendered.contains("<pubDate>"));

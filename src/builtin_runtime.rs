@@ -90,7 +90,7 @@ async fn send(
     let mut target = checked_url(&request.url, base)?;
     // Counted per followed hop: a redirect back to the original URL is still a redirect.
     for redirects in 0..=5 {
-        tokio::time::sleep_until((*gate).into()).await;
+        crate::engine::wait_until(*gate).await;
         *gate = Instant::now() + Duration::from_millis(delay_ms);
         let method = reqwest::Method::from_bytes(request.method.as_bytes())
             .map_err(|_| anyhow!("Invalid method"))?;
@@ -172,6 +172,10 @@ async fn send(
     }
     unreachable!("Bounded redirect loop returns")
 }
+/// Responses up to this size are extracted on the search task itself. A typical listing
+/// page parses in well under a millisecond, which is less than handing it to the
+/// blocking pool and back costs; larger ones still move off the async workers.
+const INLINE_PARSE_BYTES: usize = 32 * 1024;
 /// Bounds concurrent blocking HTML/JSON parsing across every source.
 async fn parser_permit() -> Result<tokio::sync::OwnedSemaphorePermit> {
     static PARSERS: OnceLock<Arc<Semaphore>> = OnceLock::new();
@@ -368,6 +372,15 @@ impl Source {
             get_login: crate::builtin::get_login(i)?,
             probed: std::sync::atomic::AtomicBool::new(false),
         })
+    }
+    /// No login or API session, saved cookie, solver or GET probe: one search leaves
+    /// nothing behind for the next, so distinct queries may run side by side.
+    pub fn stateless(&self) -> bool {
+        self.api_session.is_none()
+            && self.cookie_session.is_none()
+            && self.saved.is_empty()
+            && self.solver.is_none()
+            && self.get_login.is_none()
     }
     fn clearance(&self) -> Option<flaresolverr::Clearance> {
         let mut clearance = self.clearance.lock().unwrap_or_else(|e| e.into_inner());
@@ -599,7 +612,7 @@ impl Transport<'_> {
             .expect("Solving requires a solver");
         let cookies = plan_cookies(request)?;
         // The solver's browser loads the source too: it takes the same gate turn.
-        tokio::time::sleep_until((*self.gate).into()).await;
+        crate::engine::wait_until(*self.gate).await;
         *self.gate = Instant::now() + Duration::from_millis(self.delay_ms);
         let solved = solver
             .solve(&target, self.base, &cookies, self.deadline)
@@ -674,7 +687,7 @@ pub async fn resolve_download_selectors(
         chrono::Utc::now(),
     );
     download::add_download_uri(&mut before_ctx, page_url);
-    // Search headers of a public definition go with every download request (`:2094`).
+    // Search headers go with every download request (`:2094`); a session sends its own.
     let headers = selectors
         .headers(&before_ctx)
         .map_err(|_| anyhow!("Download headers could not be rendered"))?;
@@ -712,20 +725,25 @@ pub async fn resolve_download_selectors(
         // Upstream then downloads the release link itself.
         return Ok(None);
     }
-    let fetched = match before_page.filter(|_| selectors.selects_before_response()) {
-        Some(page) => page,
-        None => transport.fetch(&get(page_url), false).await?,
-    };
-    if fetched.refresh || !(200..300).contains(&fetched.status) {
-        bail!("Source detail page could not be fetched");
-    }
-    let page = if fetched.decoded || fetched.rendered {
-        String::from_utf8(fetched.body).map_err(|_| anyhow!("Invalid detail page text"))?
+    let page = if let Some(session) = &transport.source.cookie_session {
+        // `HandleRedirectableRequestAsync` with the session's headers; no login check.
+        session.fetch_page(page_url.as_str(), &headers).await?
     } else {
-        rt.plan
-            .charset()
-            .decode(fetched.body)
-            .map_err(|_| anyhow!("Only UTF-8 response encoding supported"))?
+        let fetched = match before_page.filter(|_| selectors.selects_before_response()) {
+            Some(page) => page,
+            None => transport.fetch(&get(page_url), false).await?,
+        };
+        if fetched.refresh || !(200..300).contains(&fetched.status) {
+            bail!("Source detail page could not be fetched");
+        }
+        if fetched.decoded || fetched.rendered {
+            String::from_utf8(fetched.body).map_err(|_| anyhow!("Invalid detail page text"))?
+        } else {
+            rt.plan
+                .charset()
+                .decode(fetched.body)
+                .map_err(|_| anyhow!("Only UTF-8 response encoding supported"))?
+        }
     };
     let permit = parser_permit().await?;
     let candidates = tokio::task::spawn_blocking({
@@ -931,7 +949,8 @@ pub async fn search_source(
         let skip_invalid_rows =
             crate::builtin::id(i).is_ok_and(|id| ["1337x", "eztv", "dmhy"].contains(&id));
         // A cancelled blocking job retains its parser permit until its bounded extraction ends.
-        let rows = tokio::task::spawn_blocking(move || {
+        let inline = body.len() <= INLINE_PARSE_BYTES;
+        let extract = move || {
             let _permit = permit;
             let rows = if skip_invalid_rows {
                 plan.extract_response_skipping_invalid_html_rows(&request, &meta, &body, &context)?
@@ -975,9 +994,16 @@ pub async fn search_source(
                 }
             }
             Ok(rows)
-        })
-        .await
-        .map_err(|_| anyhow!("Bundled parser failed"))?
+        };
+        let rows = if inline {
+            // No await point inside, so cancellation cannot interrupt it either.
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(extract))
+                .map_err(|_| anyhow!("Bundled parser failed"))?
+        } else {
+            tokio::task::spawn_blocking(extract)
+                .await
+                .map_err(|_| anyhow!("Bundled parser failed"))?
+        }
         .map_err(|_| anyhow!("Bundled response format or extraction failed"))?;
         results.extend(rows);
         if results.len() >= 1000 {
@@ -987,10 +1013,11 @@ pub async fn search_source(
     }
     *transport.gate = Instant::now() + Duration::from_millis(rt.delay_ms);
     for r in &mut results {
-        // Tokyo Toshokan supplies third-party torrent URLs alongside magnets. Prefer
-        // its validated magnet; never produce an unusable cross-origin download ticket.
-        // Keep this policy local to the fixture-validated preset.
-        if crate::builtin::id(i).is_ok_and(|id| id == "tokyotosho") {
+        // Tokyo Toshokan supplies third-party torrent URLs alongside magnets, and
+        // ilcorsaroblu rewrites its downloads to https://itorrents.net/torrent/<HASH>.torrent
+        // next to the row's magnet. Prefer the validated magnet; never produce an unusable
+        // cross-origin download ticket. Keep this policy local to the fixture-validated presets.
+        if crate::builtin::id(i).is_ok_and(|id| ["tokyotosho", "ilcorsaroblu"].contains(&id)) {
             if let Some(magnet) = r.attributes.get("magnet") {
                 r.link =
                     detail_magnet_uri(magnet).ok_or_else(|| anyhow!("Invalid release magnet"))?;

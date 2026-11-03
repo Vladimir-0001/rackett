@@ -1,7 +1,7 @@
 # How Rackett was built
 
 Rackett was written almost entirely by AI coding agents, directed by its human owner,
-[@Vladimir-0001](https://github.com/Vladimir-0001), over 27 October – 1 November 2026.
+[@Vladimir-0001](https://github.com/Vladimir-0001), over 27 October – 3 November 2026.
 
 ## Who did the work
 
@@ -18,12 +18,12 @@ Agent sessions, from the orchestration records:
 
 | Model | Agent threads |
 | --- | --- |
-| Claude Opus 5.5 | 65 |
+| Claude Opus 5.5 | 74 |
 | Claude Sonnet 5.5 | 24 |
 | GPT-6.1-Sol | 33 |
 | GPT-6-Luna | 44 |
 | GPT-6-Astra | 1 |
-| **Total** | **167** (162 agent-started, 5 started by the owner) |
+| **Total** | **176** (171 agent-started, 5 started by the owner) |
 
 ## How the agents worked together
 
@@ -45,6 +45,11 @@ Agent sessions, from the orchestration records:
   behaviour, then admitted the sites it unblocked. The gaps included search headers
   in logged-in sessions, templated download pages, non-UTF-8 search forms and
   searches on a separate API host.
+- A **review jury** of four agents (security, Jackett fidelity, usability and
+  cost) audited the result. It led to permanent encrypted download links and a
+  speed pass that measured Rackett against Jackett, profiled the hot paths and
+  rewrote them ([Speed against Jackett](docs/speed.md), including where it still
+  falls short).
 - Changes reached the main branch only after automated checks (format, lint and
   the full test suite) passed on a CI server.
 

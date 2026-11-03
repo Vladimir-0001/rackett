@@ -11,7 +11,9 @@ backreferences. At commit `0deda9d` that rejected 37 pinned definitions at
 `(?i)\b(MULTI(?!.*(?:FRENCH|ENGLISH|...)))\b`.
 
 This change runs those constructs with .NET semantics. After it, 36 of the 37
-definitions no longer fail on a regex. Only `hawke-uno` stays rejected (see below).
+definitions no longer fail on a regex. The last one, `hawke-uno`, uses a balancing group;
+since 2026-11-01 its one pattern runs on a dedicated matcher (see
+[hawke-uno's balancing group](#hawke-unos-balancing-group)).
 
 ## Design
 
@@ -40,7 +42,7 @@ fancy-regex parses the whole pattern itself. It runs look-around, atomic groups
 and backreferences in a backtracking VM and hands the plain sub-expressions to
 the `regex` crate. So `\b`, `\w`, `\d`, `\s`, `\p{..}` and `(?i)` keep exactly the
 Unicode semantics `regex` already gives. Those are the compatibility level
-documented in cardigann.md: the same Unicode-version, case-folding
+documented in [cardigann.md](cardigann.md): the same Unicode-version, case-folding
 and final-newline limits as before. Tests check this inside the VM with non-ASCII
 letters (`é`, `ż`, Arabic-Indic digits, the Kelvin sign under `(?i)`) and `\b`
 next to non-ASCII word characters. A differential test wraps every pinned
@@ -72,7 +74,7 @@ Rejected with an explicit `unsupported/invalid .NET regex: ...` message:
 
 | Construct | Why |
 | --- | --- |
-| Balancing groups `(?<-o>)`, `(?<a-b>)` | No Rust engine models .NET capture stacks. |
+| Balancing groups `(?<-o>)`, `(?<a-b>)` | No Rust engine models .NET capture stacks. hawke-uno's verbatim pattern is the one exception, below. |
 | Conditionals `(?(o)...)` | fancy-regex has conditionals, but with Oniguruma/PCRE name-vs-expression rules, not .NET's. |
 | `(?'name')` groups, digit-named groups `(?<1>)` | Different or no Rust reading. |
 | Variable-width look-behind (`(?<=a+)`, `(?<=a?)`) | Valid .NET, but fancy-regex's variable-look-behind feature stops collecting candidates when the backtrack budget runs out, instead of failing. That would give a wrong answer, not an error. The feature is disabled in `Cargo.toml` (`default-features = false`). |
@@ -82,12 +84,58 @@ Rejected with an explicit `unsupported/invalid .NET regex: ...` message:
 | `\G`, `\Z`, `\k<..>`, `\0`, `\e`, `\K`, `\h`, ... next to a backtracking construct | fancy-regex would accept these with its own meanings. Only `\b`, `\B`, `\A`, `\z` and validated `\N` are allowed. Without a backtracking construct, `regex` keeps rejecting them as before. |
 | .NET block properties (`\p{IsCyrillic}`) next to a backtracking construct | Same gate as other rewrites next to block properties. |
 
-`hawke-uno` stays rejected. Its title filter
+## hawke-uno's balancing group
+
+hawke-uno's title filter (`re_replace` with `$1`)
 `\(((?>[^()]+|(?<o>)\(|(?<-o>)\))*(?(o)(?!)))(?<!\bHONE)(?<=\s*- [\w]+)\)$`
-matches arbitrarily nested parentheses with a balancing group and a
-conditional, and also uses a variable-width look-behind. No Rust regex engine
-can express arbitrary-depth balancing. An exact rewrite would need a hand-written
-matcher, so the definition keeps a clear `balancing group (?<-name>)` diagnostic.
+matches arbitrarily nested parentheses with a balancing group and a conditional, and
+also uses a variable-width look-behind. No Rust regex engine can express
+arbitrary-depth balancing, so `filters::definition_regex` recognises this exact pattern
+string and compiles it to `DefinitionRegex::TrailingParentheses`, a hand-written matcher
+(`dotnet_regex::trailing_parentheses`). Every other balancing group or conditional is
+still rejected by `scan`.
+
+The matcher follows the .NET reading of the pattern (RegexParser/RegexInterpreter):
+
+- `\)$` with no options: the last `)` is the final character or sits before a final
+  `\n`. Every match therefore ends at that `)`, and there is at most one match.
+- Both look-behinds are tested only at that `)`. `(?<=\s*- [\w]+)` holds when the text
+  before it ends in `- ` and one or more word characters (`\s*` may be empty).
+  `(?<!\bHONE)` fails when it ends in `HONE` at a word boundary.
+- The loop eats `[^()]+` atomically, pushes `o` on `(` and pops it on `)`. Popping an
+  empty stack fails. So from an opening `(` the loop can stop at the final `)` with an
+  empty stack only if the text between them is balanced: equal counts, and no prefix with
+  more `)` than `(`. Backtracking only drops whole iterations, which never ends the group
+  at the final `)` with an empty stack.
+- Starts are tried left to right, so the leftmost such `(` wins. Scanning right to left,
+  that is the first `(` that brings the depth back to zero.
+- Group 1 is the inside of the parentheses. Group `o` (number 2: .NET numbers named groups
+  last) never takes part, so `$2` and `${o}` expand to nothing.
+
+`\w` and `\b` keep the `regex` crate's Unicode semantics, the same compatibility level
+as every other definition regex. The matcher is linear, so the backtracking input cap
+does not apply.
+
+Examples, with the definition's second filter `\s*-\s+(\w+)$` → `-$1`:
+
+| Title | Result |
+| --- | --- |
+| `Movie (2020) (1080p BluRay REMUX - GRP)` | `Movie (2020) 1080p BluRay REMUX-GRP` |
+| `Show S01 (2160p WEB-DL DDP 5.1 (Atmos) - Group)` | `Show S01 2160p WEB-DL DDP 5.1 (Atmos)-Group` |
+| `Movie (2020) (1080p BluRay - HONE)` | unchanged |
+| `Movie (2020) (1080p) - GRP` | `Movie (2020) (1080p)-GRP` (first filter does not match) |
+
+Tests:
+- `hawke_uno_balancing_group_filter_follows_dotnet` (`src/cardigann_exec/dotnet_regex.rs`)
+  covers hand-derived cases. It also compares the matcher with a literal backtracking
+  simulation of the pattern (every start, every loop length, then the conditional, both
+  look-behinds and `\)$`) on every string of up to 6 characters over
+  `( ) a space - \n É` (137,257 inputs).
+- `hawke_uno_titles_follow_dotnet_balancing_groups` (`tests/cardigann_regex_lookaround.rs`)
+  runs both title filters on the unchanged definition's JSON rows.
+- hawke-uno is admitted through the UNIT3D API harness (`tests/fixtures/unit3d-api/cases.json`).
+  Its login is identical to aither-api's. Its API sends `freeleech` and `double_upload`
+  as 0/1, which the harness models with `numeric_promotions`.
 
 ## Bounds
 
@@ -123,7 +171,7 @@ Run with `CARGO_BUILD_JOBS=3`:
   - The backtrack and input limits.
 - `cargo test --locked --test cardigann_regex_lookaround`:
   - Prints the status of each of the 37 definitions.
-  - Asserts that only `hawke-uno` still fails on a regex, and that the 9 others not yet compiling stop at `response.type: unsupported xml`, a separate workstream.
+  - Asserts that none still fails on a regex (hawke-uno since 2026-11-01), and that the others not yet compiling stop at `response.type: unsupported xml`, a separate workstream.
   - Extracts synthetic torrent9 rows with `multilang` on and off.
 - `cargo fmt --all -- --check` and `cargo clippy --locked --all-targets -- -D warnings`.
 
@@ -139,7 +187,7 @@ Status of the 37 after this change:
   theoldschool-api, torrent9, v3x, wihd, world-torrent, xtorrenty.
 - **Regexes compile, XML responses next (9):** animetosho-xyz, astratorrent, c411,
   crazyspirits-api, draupnirr, memphis, nostradamus, tr4ker, yggreborn-api.
-- **Still regex-rejected (1):** hawke-uno.
+- **Still regex-rejected (1):** hawke-uno, until its dedicated matcher (2026-11-01).
 
 ## Remaining work
 

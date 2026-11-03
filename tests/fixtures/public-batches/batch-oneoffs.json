@@ -1,0 +1,27 @@
+[
+ {
+  "id": "torrentsome",
+  "sha256": "c578a6be761bd1ec341e3f9fc739106707497420176d883636704562bb3c22c0",
+  "request_count": 3,
+  "seeders": 1,
+  "peers": 2,
+  "delay_ms": 2000,
+  "json": false,
+  "query_pair": [
+   "keywords",
+   "Fixture"
+  ],
+  "download_path": "/v/42",
+  "details_path": "/v/42",
+  "category": 2000,
+  "search_path": "/search/index",
+  "published": "2026-10-28T00:00:00Z",
+  "title": "Fixture Release",
+  "container": "div.topic-list",
+  "detail": {
+   "html": "<h1 class=\"text-base\"> FixtureMagnet </h1><a href=\"magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567\">Magnet</a>",
+   "resolved": "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=FixtureMagnet&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.demonii.com%3A1337%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.space%3A6969%2Fannounce&tr=udp%3A%2F%2Fvito-tracker.duckdns.org%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.theoks.net%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.srv00.com%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.qu.ax%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.corpscorp.online%3A80%2Fannounce"
+  },
+  "malformed_size_dropped": true
+ }
+]

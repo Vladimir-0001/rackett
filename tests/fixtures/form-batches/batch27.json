@@ -1,0 +1,34 @@
+[
+ {
+  "id": "lastfiles",
+  "search_fixture": "form:lastfiles",
+  "landing_redirect": "/login",
+  "form_path": "/auth/login",
+  "submit_path": "/login",
+  "form_attributes": "method=\"POST\" action=\"./login\"",
+  "landing_html": "<input type=\"hidden\" name=\"_token\" value=\"fixture-token\">",
+  "expected_inputs": {
+   "name": "{{ .Config.username }}",
+   "password": "{{ .Config.password }}",
+   "remember": "on",
+   "_token": "fixture-token"
+  },
+  "error_html": "<div class=\"alert alert-danger\">Invalid credentials fixture-private-error</div>",
+  "category": 100001,
+  "login_path": "/",
+  "search_path": "/torrents",
+  "keyword": "keyword",
+  "download_path": "/download/42",
+  "details_path": "/torrents/42",
+  "published": "2026-10-28T00:00:00Z",
+  "free_markup": "<div class=\"free-btn\">Free</div>",
+  "free_download": 0,
+  "form_id": "",
+  "request_count": 1,
+  "keyword_value": "Fixture",
+  "normal_markup": "",
+  "free_upload": 1,
+  "timeout_seconds": 60,
+  "sha256": "53c96c226853e7e4dd63b8ac23e410dd043abf56f9141510dee8f4c7023bd4c5"
+ }
+]

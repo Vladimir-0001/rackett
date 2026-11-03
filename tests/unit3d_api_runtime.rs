@@ -38,14 +38,23 @@ fn root(case: &Case) -> Node {
     );
     cardigann::parse(raw, cardigann::Limits::default()).unwrap()
 }
+/// hawke-uno's API sends `freeleech` and `double_upload` as 0/1 (its `case` blocks).
+fn numeric_promotions(case: &Case) -> bool {
+    case.id == "hawke-uno"
+}
 fn payload(case: &Case, base: &str, featured: bool) -> Value {
-    json!({"data":[{"id":"42","type":"torrent","attributes":{
+    let mut body = json!({"data":[{"id":"42","type":"torrent","attributes":{
  "category_id":case.tracker_category,"category":case.category_name,"name":"Fixture Release","num_file":1,"files":[{"name":"Fixture Filename"}],
  "details_link":format!("{base}torrents/42"),"download_link":format!("{base}torrent/download/42?passkey=fixture-download-secret"),
  "meta":{"poster":"https://via.placeholder.com/90x135","genres":"Science Fiction & Fantasy"},"poster":"https://via.placeholder.com/90x135",
  "imdb_id":"1234567","tmdb_id":42,"tvdb_id":43,"internal":false,"featured":featured,"audio_pt":false,"resolution":"1080p","type":"WEB-DL",
  "seeders":11,"leechers":3,"times_completed":17,"created_at":"2026-10-28T10:00:00.123456Z","size":1073741824,"freeleech":"0%","double_upload":if case.id=="jme-reunit3d-api"{json!(0)}else{json!(false)},
- "info_hash":"0123456789abcdef0123456789abcdef01234567"}}]})
+ "info_hash":"0123456789abcdef0123456789abcdef01234567"}}]});
+    if numeric_promotions(case) {
+        body["data"][0]["attributes"]["freeleech"] = json!(0);
+        body["data"][0]["attributes"]["double_upload"] = json!(0);
+    }
+    body
 }
 #[test]
 fn all_pinned_unit3d_rows_use_real_iso_dates_and_boolean_scalars() {
@@ -262,11 +271,14 @@ async fn lifecycle(case: Case) {
     assert!(fixture.take().is_empty());
     let release = &first.results[0];
     let mut presented = first.clone();
-    rackett::protocol::present_results(
-        &mut presented,
-        "management-placeholder",
-        "http://127.0.0.1:9117",
-    );
+    let links = engine
+        .links(
+            &presented.results,
+            "management-placeholder",
+            "http://127.0.0.1:9117",
+        )
+        .await;
+    rackett::protocol::present_results(&mut presented, &links);
     let public = serde_json::to_string(&presented).unwrap();
     for secret in [KEY, "fixture-session", "fixture-download-secret"] {
         assert!(!public.contains(secret), "{}", case.id);
@@ -381,25 +393,35 @@ fn family_promotion_cases_do_not_treat_false_as_truthy_and_filename_is_optional(
             .unwrap()
             .get("_featured")
             .is_some();
-        for (free, double, featured, download, upload) in [
-            ("0%", false, false, "1", "1"),
-            ("50%", false, false, "0.5", "1"),
-            ("100%", true, false, "0", "2"),
-            (
-                "0%",
-                false,
-                true,
-                if has_featured { "0" } else { "1" },
-                if has_featured { "2" } else { "1" },
-            ),
-        ] {
+        let promotions = if numeric_promotions(&case) {
+            vec![
+                (json!(0), json!(0), false, "1", "1"),
+                (json!(1), json!(1), false, "0", "2"),
+                (json!(0), json!(0), true, "1", "1"),
+            ]
+        } else {
+            vec![
+                (json!("0%"), json!(false), false, "1", "1"),
+                (json!("50%"), json!(false), false, "0.5", "1"),
+                (json!("100%"), json!(true), false, "0", "2"),
+                (
+                    json!("0%"),
+                    json!(false),
+                    true,
+                    if has_featured { "0" } else { "1" },
+                    if has_featured { "2" } else { "1" },
+                ),
+            ]
+        };
+        for (free, double, featured, download, upload) in promotions {
             let mut body = payload(&case, "https://fixture.invalid/", featured);
-            body["data"][0]["attributes"]["freeleech"] = json!(free);
-            body["data"][0]["attributes"]["double_upload"] = if case.id == "jme-reunit3d-api" {
-                json!(u8::from(double))
-            } else {
-                json!(double)
-            };
+            body["data"][0]["attributes"]["freeleech"] = free;
+            body["data"][0]["attributes"]["double_upload"] =
+                if case.id == "jme-reunit3d-api" && double.is_boolean() {
+                    json!(u8::from(double == json!(true)))
+                } else {
+                    double
+                };
             let rows = p
                 .extract(&req, &body.to_string(), &ctx)
                 .unwrap_or_else(|e| panic!("{}: {e}", case.id));
@@ -545,7 +567,7 @@ fn family_requests_preserve_ids_categories_freeleech_sort_and_dotted_keywords() 
 #[test]
 fn api_admission_matches_the_source_pinned_fixture_manifest() {
     let cases = cases();
-    assert_eq!(cases.len(), 71);
+    assert_eq!(cases.len(), 72);
     let ids: Vec<_> = cases.iter().map(|c| c.id.as_str()).collect();
     assert_eq!(builtin::API_IDS, ids);
     for case in cases {

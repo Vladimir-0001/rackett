@@ -518,7 +518,13 @@ async fn loopback_latest_and_releases_tables_andmatch_and_presentation() {
         results: rows,
         ..Default::default()
     };
-    rackett::protocol::present_results(&mut response, "localkey", "http://127.0.0.1:9117");
+    let links = rackett::protocol::Links::new(
+        std::sync::Arc::new(rackett::ticket::TicketKey::from_bytes(&[1; 32])),
+        Default::default(),
+        "localkey",
+        "http://127.0.0.1:9117",
+    );
+    rackett::protocol::present_results(&mut response, &links);
     let results = &response.results;
     assert_eq!(results[0].link, MAGNET_A);
     assert!(results[1].link.starts_with("http://127.0.0.1:9117/dl/"));

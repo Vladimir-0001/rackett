@@ -95,7 +95,15 @@ fn remote_download_links_use_explicit_origin() {
         results: vec![release.clone()],
         ..Default::default()
     };
-    rackett::protocol::present_results(&mut response, "integration-key", ORIGIN);
+    rackett::protocol::present_results(
+        &mut response,
+        &rackett::protocol::Links::new(
+            std::sync::Arc::new(rackett::ticket::TicketKey::from_bytes(&[1; 32])),
+            Default::default(),
+            "integration-key",
+            ORIGIN,
+        ),
+    );
     assert!(response.results[0]
         .link
         .starts_with(&format!("{ORIGIN}/dl/")));

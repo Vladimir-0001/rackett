@@ -58,6 +58,10 @@ pub struct Blocker {
 }
 struct Field {
     name: String,
+    /// `$.search.fields.NAME`, the path of this field's extraction errors.
+    path: String,
+    /// `.Result.BASE`, the context key that later fields read this field's value from.
+    result_key: String,
     selector: selector::Selector,
     filters: Vec<filters::Filter>,
     optional: bool,
@@ -88,6 +92,9 @@ pub struct Plan {
     rows: Template,
     /// `.Config` keys substituted into `rows`; their settings are never coerced.
     row_values: Vec<String>,
+    /// Some literal `rows` branch is not a valid selector (tasmanit's `freeleech`), so
+    /// settings that select it are refused (docs/nested-has-selectors.md).
+    invalid_row_branch: bool,
     /// Upstream `Rows.After` (`IndexerDefinition.cs:156`); zero when absent or non-positive.
     after: usize,
     date_headers: Option<DateHeaders>,
@@ -100,6 +107,19 @@ pub struct Plan {
     settings: BTreeMap<String, Value>,
     categories: Vec<Category>,
     blockers: Vec<Blocker>,
+    /// Whether any scalar in the definition mentions `.Result`. Only templates read a
+    /// row's `.Result.*` values, so without one rows skip recording them.
+    reads_results: bool,
+}
+/// Whether any key or scalar under `node` contains `needle`.
+fn mentions(node: &Node, needle: &str) -> bool {
+    match &node.value {
+        cardigann::Value::Scalar(s) => s.text.contains(needle),
+        cardigann::Value::Sequence(items) => items.iter().any(|n| mentions(n, needle)),
+        cardigann::Value::Mapping(pairs) => pairs
+            .iter()
+            .any(|(k, v)| mentions(k, needle) || mentions(v, needle)),
+    }
 }
 impl Plan {
     pub fn compile(root: &Node) -> Result<Self, ExecutionError> {
@@ -209,6 +229,7 @@ impl Plan {
             .map(selector::Selector::compile)
             .transpose()
             .map_err(|e| error("$.search.rows.count", e))?;
+        let mut invalid_row_branch = None;
         let rowselector = rows
             .string("selector")
             .ok_or_else(|| error("$.search.rows.selector", "Missing selector"))?
@@ -311,6 +332,8 @@ impl Plan {
             }
             fields.push(Field {
                 name: name.into(),
+                path: format!("$.search.fields.{name}"),
+                result_key: format!(".Result.{}", name.split('|').next().unwrap_or_default()),
                 selector: s,
                 filters: fs,
                 optional: node.string("optional") == Some("true")
@@ -501,22 +524,17 @@ impl Plan {
                 if variant.trim().is_empty() {
                     return Err(error("$.search.rows.selector", "Empty row selector branch"));
                 }
-                let probe = cardigann::parse(
-                    &format!("selector: {}", serde_json::to_string(variant).unwrap()),
-                    cardigann::Limits::default(),
-                )
-                .map_err(|d| error(d.path, d.message))?;
-                let probe = selector::Selector::compile(&probe)
-                    .map_err(|e| error("$.search.rows.selector", e))?;
-                if format == "json" {
-                    probe.validate_json()
-                } else {
-                    probe.validate_html()
+                match probe_row_selector(variant, format) {
+                    // A literal HTML branch may be invalid: AngleSharp rejects it only when a
+                    // search renders it. The default branch is checked below.
+                    Err(e) if row_values.is_empty() && format != "json" => {
+                        invalid_row_branch.get_or_insert(e);
+                    }
+                    checked => checked?,
                 }
-                .map_err(|e| error("$.search.rows.selector", e))?;
             }
         }
-        Ok(Self {
+        let plan = Self {
             id: root.string("id").unwrap_or_default().into(),
             name: root.string("name").unwrap_or_default().into(),
             requests,
@@ -535,7 +553,15 @@ impl Plan {
             settings,
             categories: cats,
             blockers,
-        })
+            invalid_row_branch: invalid_row_branch.is_some(),
+            reads_results: mentions(root, ".Result"),
+        };
+        if let Some(e) = invalid_row_branch {
+            // The definition's default settings must give a valid selector.
+            let ctx = plan.context(&BTreeMap::new(), &SearchQuery::default(), Utc::now());
+            plan.check_row_selector(&ctx).map_err(|_| e)?;
+        }
+        Ok(plan)
     }
     /// Standard categories represented by this compiled definition.
     pub fn supported_categories(&self) -> Vec<u32> {
@@ -808,9 +834,20 @@ impl Plan {
         Ok(())
     }
     fn row_selector(&self, ctx: &Context) -> Result<String, ExecutionError> {
-        self.rows
+        let rows = self
+            .rows
             .render_selector(ctx)
-            .map_err(|e| error("$.search.rows.selector", e))
+            .map_err(|e| error("$.search.rows.selector", e))?;
+        // Upstream's QuerySelectorAll throws on the invalid branch (AngleSharp v1.8.6
+        // QueryExtensions.cs:454) and the search fails (CardigannIndexer.cs:1958-1961). The
+        // message names no setting value.
+        if self.invalid_row_branch && probe_row_selector(&rows, "html").is_err() {
+            return Err(error(
+                "$.search.rows.selector",
+                "The configured settings select an invalid row selector",
+            ));
+        }
+        Ok(rows)
     }
     /// Extraction without transport metadata. Requests carrying the empty no-results policy
     /// fail closed because HTTP 200 and the absence of redirects cannot be established.
@@ -912,8 +949,7 @@ impl Plan {
             let json: Value = serde_json::from_str(body)
                 .map_err(|_| error("$.response", "Invalid or over-deep JSON"))?;
             if let Some(count) = &self.count {
-                if let Ok(Some(n)) =
-                    count.extract_json(&json, &|v| Template::compile(v)?.render(ctx))
+                if let Ok(Some(n)) = count.extract_json(&json, &|v| template::render_source(v, ctx))
                 {
                     if n.parse::<i64>().is_ok_and(|n| n < 1) {
                         return Ok(Vec::new());
@@ -924,6 +960,7 @@ impl Plan {
                 .rows
                 .render_json_selector(ctx)
                 .map_err(|e| error("$.search.rows.selector", e))?;
+            let mut scratch = ctx.clone();
             for (parent, row) in selector::json_row_pairs(
                 &json,
                 &rows,
@@ -933,10 +970,15 @@ impl Plan {
             )
             .map_err(|e| error("$.search.rows", e))?
             {
-                releases.push(self.release(ctx, &request.url, &mut budget, |s, c| {
-                    let target = if s.json_parent() { parent } else { row };
-                    s.extract_json(target, &|v| Template::compile(v)?.render(c))
-                })?);
+                releases.push(self.release_in(
+                    &mut scratch,
+                    &request.url,
+                    &mut budget,
+                    |s, c| {
+                        let target = if s.json_parent() { parent } else { row };
+                        s.extract_json(target, &|v| template::render_source(v, c))
+                    },
+                )?);
             }
         } else if matches!(request.response_type.as_str(), "html" | "xml") {
             let parse = |source: &str| {
@@ -987,12 +1029,19 @@ impl Plan {
                         }
                     })?;
             }
+            let ids = selector::node_ids(&html);
+            let mut scratch = ctx.clone();
             for row in slots {
                 let release = self
-                    .release(ctx, &request.url, &mut budget, |s, c| {
-                        s.extract_html_mut(&mut html, row, &mut visits, &|v| {
-                            Template::compile(v)?.render(c)
-                        })
+                    .release_in(&mut scratch, &request.url, &mut budget, |s, c| {
+                        match ids.get(row) {
+                            Some(&id) => s.extract_html_at(&mut html, id, row, &mut visits, &|v| {
+                                template::render_source(v, c)
+                            }),
+                            None => s.extract_html_mut(&mut html, row, &mut visits, &|v| {
+                                template::render_source(v, c)
+                            }),
+                        }
                     })
                     .and_then(|mut release| {
                         self.date_header(
@@ -1065,7 +1114,7 @@ impl Plan {
             budget.operation()?;
             let selected = match headers
                 .selector
-                .extract_html_mut(html, slot, visits, &|v| Template::compile(v)?.render(ctx))
+                .extract_html_mut(html, slot, visits, &|v| template::render_source(v, ctx))
             {
                 Ok(selected) => selected,
                 Err(e) => match response_failure(e) {
@@ -1122,15 +1171,19 @@ impl Plan {
         }
         Ok(())
     }
-    fn release(
+    /// One row's release. `ctx` is the search context, reused from row to row: each row
+    /// starts by dropping the previous row's `.Result.*` values, which is all a row adds,
+    /// instead of cloning the whole context again.
+    fn release_in(
         &self,
-        ctx: &Context,
+        ctx: &mut Context,
         url: &str,
         budget: &mut Budget,
         mut extract: impl FnMut(&selector::Selector, &Context) -> Result<Option<String>, String>,
     ) -> Result<Release, ExecutionError> {
-        let mut ctx = ctx.clone();
-        ctx.values.retain(|k, _| !k.starts_with(".Result."));
+        if self.reads_results {
+            ctx.values.retain(|k, _| !k.starts_with(".Result."));
+        }
         let mut r = Release {
             indexer_id: self.id.clone(),
             indexer: self.name.clone(),
@@ -1138,15 +1191,15 @@ impl Plan {
         };
         for f in &self.fields {
             budget.operation()?;
-            let path = format!("$.search.fields.{}", f.name);
+            let path = &f.path;
             let base = f.name.split('|').next().unwrap_or_default();
             let evaluated = (|| -> Result<String, ExecutionError> {
-                let selected = extract(&f.selector, &ctx).map_err(|e| {
+                let selected = extract(&f.selector, ctx).map_err(|e| {
                     // Response-wide failures must not become optional-field misses.
                     if e.contains("aggregate visit budget") || css::is_execution_failure(&e) {
                         error("$.response", e)
                     } else {
-                        error(&path, e)
+                        error(path, e)
                     }
                 })?;
                 let mut value = selected;
@@ -1155,19 +1208,19 @@ impl Plan {
                     for filter in &f.filters {
                         budget.operation()?;
                         budget.consume(v.len())?;
-                        *v = filter.apply(v, &ctx).map_err(|e| error(&path, e))?;
+                        *v = filter.apply(v, ctx).map_err(|e| error(path, e))?;
                     }
                 }
                 let value = if f.optional && value.as_deref().is_none_or(|v| v.trim().is_empty()) {
                     f.default
                         .as_ref()
-                        .map(|t| t.render(&ctx))
+                        .map(|t| t.render(ctx))
                         .transpose()
-                        .map_err(|e| error(&path, e))?
+                        .map_err(|e| error(path, e))?
                         .filter(|v| !v.trim().is_empty())
-                        .ok_or_else(|| error(&path, "Optional field absent"))?
+                        .ok_or_else(|| error(path, "Optional field absent"))?
                 } else {
-                    value.ok_or_else(|| error(&path, "Required field did not match"))?
+                    value.ok_or_else(|| error(path, "Required field did not match"))?
                 };
                 if matches!(base, "category" | "categorydesc") {
                     for category in &self.categories {
@@ -1182,22 +1235,26 @@ impl Plan {
                         )?;
                     }
                 }
-                self.normalize(&mut r, base, &f.name, &value, url, &ctx)
-                    .map_err(|e| error(&path, e))
+                self.normalize(&mut r, base, &f.name, &value, url, ctx)
+                    .map_err(|e| error(path, e))
             })();
             let value = match evaluated {
                 Ok(v) => v,
                 Err(e) if f.optional && e.path != "$.response" => {
-                    ctx.values.insert(format!(".Result.{base}"), Value::Null);
+                    if self.reads_results {
+                        ctx.values.insert(f.result_key.clone(), Value::Null);
+                    }
                     continue;
                 }
                 Err(e) => return Err(e),
             };
             if release_bytes(&r) > 1024 * 1024 {
-                return Err(error(&path, "Release output limit exceeded"));
+                return Err(error(path, "Release output limit exceeded"));
             }
-            ctx.values
-                .insert(format!(".Result.{base}"), Value::String(value));
+            if self.reads_results {
+                ctx.values
+                    .insert(f.result_key.clone(), Value::String(value));
+            }
         }
         if r.title.is_empty() {
             return Err(error("$.search.fields.title", "Missing title"));
@@ -1285,7 +1342,10 @@ impl Plan {
                 value = size.to_string();
             }
             "seeders" | "leechers" => {
+                // CoerceLong keeps only digits, `.` and `,` (ParseUtil.cs:21-25), so
+                // surrounding whitespace, e.g. after a `split` filter (animelayer), is dropped.
                 let n = v
+                    .trim()
                     .replace(',', "")
                     .parse::<u64>()
                     .map_err(|_| "Invalid peer number")?;
@@ -1512,6 +1572,22 @@ pub fn query_leaf_text_equals(
     }
     Ok(text.trim() == expected)
 }
+/// Compile a rendered row selector as `format` reads it.
+fn probe_row_selector(selector: &str, format: &str) -> Result<(), ExecutionError> {
+    let probe = cardigann::parse(
+        &format!("selector: {}", serde_json::to_string(selector).unwrap()),
+        cardigann::Limits::default(),
+    )
+    .map_err(|d| error(d.path, d.message))?;
+    let probe =
+        selector::Selector::compile(&probe).map_err(|e| error("$.search.rows.selector", e))?;
+    if format == "json" {
+        probe.validate_json()
+    } else {
+        probe.validate_html()
+    }
+    .map_err(|e| error("$.search.rows.selector", e))
+}
 fn compile_pipeline(
     node: Option<&Node>,
     path: &str,
@@ -1719,9 +1795,23 @@ fn category_id(v: &str) -> Result<u32, ExecutionError> {
     categories::category(v).ok_or_else(|| error("$.caps", format!("Unsupported category name {v}")))
 }
 fn resolve(base: &str, v: &str) -> Result<String, String> {
-    let u = url::Url::parse(base)
-        .and_then(|b| b.join(v))
-        .map_err(|_| "Invalid result URL")?;
+    // Every row resolves its links against the same request URL; parse it once.
+    thread_local! {
+        static BASE: std::cell::RefCell<Option<(String, Option<url::Url>)>> =
+            const { std::cell::RefCell::new(None) };
+    }
+    let u = BASE
+        .with(|cell| {
+            let mut cached = cell.borrow_mut();
+            if cached.as_ref().is_none_or(|(text, _)| text != base) {
+                *cached = Some((base.to_owned(), url::Url::parse(base).ok()));
+            }
+            cached
+                .as_ref()
+                .and_then(|(_, parsed)| parsed.as_ref())
+                .and_then(|b| b.join(v).ok())
+        })
+        .ok_or("Invalid result URL")?;
     if !["http", "https", "magnet"].contains(&u.scheme()) {
         return Err("Unsupported result URL scheme".into());
     }

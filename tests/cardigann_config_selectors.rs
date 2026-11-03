@@ -671,3 +671,80 @@ fn source_compile_accepts_valid_settings_and_never_echoes_invalid_values() {
         .unwrap();
     assert_hidden(&format!("{err} {err:?}"));
 }
+
+/// tasmanit's `freeleech` branch, `img[src$=\"/freedownload.gif\"]`, is invalid CSS:
+/// AngleSharp reads `\"` as an identifier and then fails on `/` (v1.8.6
+/// `CssSelectorConstructor.cs:326-360`), and `QuerySelectorAll` throws
+/// (`QueryExtensions.cs:454`), so upstream searches fail with the setting on. The plan
+/// compiles because the default branch is valid; settings that select the invalid literal
+/// branch are refused with a fixed message (docs/nested-has-selectors.md).
+#[test]
+fn an_invalid_literal_branch_is_refused_only_when_settings_select_it() {
+    const FIXED: &str = "The configured settings select an invalid row selector";
+    let plan = pinned("tasmanit");
+    let on = settings(&[("freeleech", json!(true))]);
+    plan.check_settings(&BTreeMap::new()).unwrap();
+    plan.check_settings(&settings(&[("freeleech", json!(false))]))
+        .unwrap();
+    let e = plan.check_settings(&on).unwrap_err();
+    assert_eq!(
+        (e.path.as_str(), e.message.as_str()),
+        ("$.search.rows.selector", FIXED)
+    );
+    assert!(!e.message.contains("freedownload"));
+    let ctx = plan.context(&on, &SearchQuery::default(), Utc::now());
+    assert_eq!(plan.build_requests(&ctx).unwrap_err().message, FIXED);
+    let ctx = plan.context(&BTreeMap::new(), &SearchQuery::default(), Utc::now());
+    assert_eq!(plan.build_requests(&ctx).unwrap().len(), 1);
+
+    // The same shape with a valid freeleech branch selects freeleech rows.
+    let fixed = source("tasmanit").replace(
+        r#"img[src$=\"/freedownload.gif\"]"#,
+        r#"img[src$="/freedownload.gif"]"#,
+    );
+    assert_ne!(fixed, source("tasmanit"));
+    compile(&fixed).unwrap().check_settings(&on).unwrap();
+
+    // An invalid default branch still fails compilation, as does an invalid branch next to a
+    // substituted value or on a JSON response.
+    let checkbox = "  - {name: u, type: text}\n  - {name: c, type: checkbox, default: true}";
+    for (selector, settings, response) in [
+        (
+            "tr{{ if .Config.c }}:bogus{{ else }}{{ end }}",
+            checkbox,
+            "",
+        ),
+        (
+            "tr{{ if .Config.c }}{{ else }}:bogus{{ end }}",
+            "  - {name: c, type: checkbox}",
+            "",
+        ),
+        (
+            "tr{{ if .Config.u }}:contains({{ .Config.u }}){{ else }}:bogus{{ end }}",
+            checkbox,
+            "",
+        ),
+        (
+            "tr{{ if .Config.c }}:bogus({{ else }}{{ end }}",
+            checkbox,
+            ", response: {type: json}",
+        ),
+    ] {
+        let e = compile(&definition(selector, settings, response))
+            .err()
+            .unwrap_or_else(|| panic!("accepted {selector}"));
+        assert_eq!(e.path, "$.search.rows.selector", "{selector}");
+    }
+    // A non-default invalid branch compiles and is refused only when selected.
+    let plan = compile(&definition(
+        "tr{{ if .Config.c }}{{ else }}:bogus{{ end }}",
+        checkbox,
+        "",
+    ))
+    .unwrap();
+    plan.check_settings(&BTreeMap::new()).unwrap();
+    let e = plan
+        .check_settings(&settings(&[("c", json!(false))]))
+        .unwrap_err();
+    assert_eq!(e.message, FIXED);
+}

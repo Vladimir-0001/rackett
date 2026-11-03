@@ -14,6 +14,8 @@ pub struct Filter {
     regex: Option<DefinitionRegex>,
     replacement: Option<Template>,
     date_layout: Option<super::dates::Layout>,
+    /// Definition encoding, used by urldecode.
+    charset: Charset,
 }
 const MAX_REGEX_SOURCE: usize = 4096;
 const MAX_TRANSLATED_REGEX: usize = 2 * MAX_REGEX_SOURCE;
@@ -28,11 +30,13 @@ pub(crate) const MAX_BACKTRACKING_INPUT: usize = 64 * 1024;
 /// A compiled definition regex. Patterns Rust's linear-time engine accepts run there; those
 /// needing look-around, atomic groups or backreferences run on fancy-regex with the same
 /// normalized syntax (docs/dotnet-regex-lookaround.md). Matching can fail only on the
-/// backtracking engine, so every match API returns a `Result`.
+/// backtracking engine, so every match API returns a `Result`. hawke-uno's balancing-group
+/// title filter runs on a dedicated matcher ([`dotnet_regex::trailing_parentheses`]).
 #[derive(Clone, Debug)]
 pub(crate) enum DefinitionRegex {
     Linear(Regex),
     Backtracking(fancy_regex::Regex),
+    TrailingParentheses,
 }
 /// Capture spans of one match, as byte ranges into the searched text.
 pub(crate) struct Captures<'h> {
@@ -66,6 +70,13 @@ fn backtracking_captures<'h>(
         spans: spans.collect(),
     })
 }
+fn trailing_parentheses(text: &str) -> Option<Captures<'_>> {
+    let [whole, inner] = dotnet_regex::trailing_parentheses(text)?;
+    Some(Captures {
+        text,
+        spans: vec![Some(whole), Some(inner), None],
+    })
+}
 fn runtime_error(e: fancy_regex::Error) -> String {
     match e {
         fancy_regex::Error::RuntimeError(fancy_regex::RuntimeError::BacktrackLimitExceeded) => {
@@ -80,6 +91,7 @@ impl DefinitionRegex {
         match self {
             Self::Linear(re) => re.as_str(),
             Self::Backtracking(re) => re.as_str(),
+            Self::TrailingParentheses => dotnet_regex::TRAILING_PARENTHESES,
         }
     }
     pub(crate) fn is_backtracking(&self) -> bool {
@@ -89,12 +101,15 @@ impl DefinitionRegex {
         match self {
             Self::Linear(re) => re.captures_len(),
             Self::Backtracking(re) => re.captures_len(),
+            // Group 0, group 1, then the named group `o` (.NET numbers named groups last).
+            Self::TrailingParentheses => 3,
         }
     }
     fn capture_index(&self, name: &str) -> Option<usize> {
         match self {
             Self::Linear(re) => re.capture_names().position(|n| n == Some(name)),
             Self::Backtracking(re) => re.capture_names().position(|n| n == Some(name)),
+            Self::TrailingParentheses => (name == "o").then_some(2),
         }
     }
     fn check_input(&self, text: &str) -> Result<(), String> {
@@ -113,6 +128,7 @@ impl DefinitionRegex {
                 .transpose()
                 .map(|c| backtracking_captures(text, c))
                 .transpose(),
+            Self::TrailingParentheses => Ok(trailing_parentheses(text)),
         }
     }
     /// Successive non-overlapping matches. Each backtracking search has its own budget;
@@ -131,6 +147,8 @@ impl DefinitionRegex {
                 re.captures_iter(text)
                     .map(move |c| backtracking_captures(text, c)),
             ),
+            // Every match ends at the final `)`, so there is at most one.
+            Self::TrailingParentheses => Box::new(trailing_parentheses(text).map(Ok).into_iter()),
         })
     }
     #[cfg(test)]
@@ -147,6 +165,9 @@ impl DefinitionRegex {
 pub(crate) fn definition_regex(pattern: &str) -> Result<DefinitionRegex, String> {
     if pattern.len() > MAX_REGEX_SOURCE {
         return Err("regex source limit exceeded".into());
+    }
+    if pattern == dotnet_regex::TRAILING_PARENTHESES {
+        return Ok(DefinitionRegex::TrailingParentheses);
     }
     let normalized = dotnet_regex::scan(pattern)?;
     if normalized.text.len() > MAX_TRANSLATED_REGEX {
@@ -345,18 +366,19 @@ impl Filter {
             regex,
             replacement,
             date_layout,
+            charset: Charset::Utf8,
         })
     }
-    /// Compile for a definition encoding. WebUtilityHelpers.UrlEncode/UrlDecode use the
-    /// definition encoding; non-UTF-8 URL codec semantics are not modeled.
+    /// Compile for a definition encoding. WebUtilityHelpers.UrlDecode uses the definition
+    /// encoding (`Charset::url_decode`); non-UTF-8 urlencode is not modeled.
     pub fn compile_for(name: &str, args: &[String], charset: Charset) -> Result<Self, String> {
         let filter = Self::compile(name, args)?;
-        if charset != Charset::Utf8 && matches!(name, "urlencode" | "urldecode") {
+        if charset != Charset::Utf8 && name == "urlencode" {
             return Err(format!(
                 "{name} with non-UTF-8 definition encoding is unsupported"
             ));
         }
-        Ok(filter)
+        Ok(Self { charset, ..filter })
     }
     pub fn apply(&self, input: &str, ctx: &Context) -> Result<String, String> {
         if input.len() > MAX_OUTPUT {
@@ -449,12 +471,7 @@ impl Filter {
             )
             .map_err(|e| e.to_string())?,
             "urlencode" => url_encode(input),
-            "urldecode" => {
-                url::form_urlencoded::parse(format!("v={}", input.replace('&', "%26")).as_bytes())
-                    .next()
-                    .map(|(_, v)| v.into_owned())
-                    .unwrap_or_default()
-            }
+            "urldecode" => self.charset.url_decode(input),
             "htmldecode" => html_escape::decode_html_entities(input).into_owned(),
             "htmlencode" => html_encode(input)?,
             "timeago" | "reltime" => relative_date(input, ctx)?
@@ -713,6 +730,14 @@ pub fn parse_fuzzy_date(input: &str, ctx: &Context) -> Result<DateTime<Utc>, Str
         {
             let rest = rest.strip_prefix(',').unwrap_or(rest).trim_start();
             let clock = rest.strip_prefix("at ").unwrap_or(rest);
+            // ParseTimeSpan is `DateTime.Parse(time).TimeOfDay` (DateTimeUtil.cs:323-326). A
+            // trailing ` +HH:MM` offset makes DateTime.Parse convert to host local time, which
+            // is UTC here, and only the converted time of day is kept (miobt's
+            // `Yesterday 22:50 +08:00`). Other offset spellings stay rejected.
+            let (clock, offset) = match clock.rsplit_once(' ') {
+                Some((clock, zone)) => (clock, Some(clock_offset(zone)?)),
+                None => (clock, None),
+            };
             let valid_shape = matches!(clock.len(), 5 | 8)
                 && clock.bytes().enumerate().all(|(i, b)| {
                     if i == 2 || i == 5 {
@@ -741,6 +766,10 @@ pub fn parse_fuzzy_date(input: &str, ctx: &Context) -> Result<DateTime<Utc>, Str
             if clock.ends_with(":60") {
                 return Err("unsupported relative calendar time".into());
             }
+            let time = match offset {
+                Some(offset) => time.overflowing_sub_signed(Duration::seconds(offset)).0,
+                None => time,
+            };
             let day = ctx
                 .now
                 .date_naive()
@@ -758,10 +787,18 @@ pub fn parse_fuzzy_date(input: &str, ctx: &Context) -> Result<DateTime<Utc>, Str
     if let Ok(d) = DateTime::parse_from_rfc2822(&text) {
         return Ok(d.with_timezone(&Utc));
     }
+    // Before the chrono formats: `%d %b %Y %H:%M:%S` would read a `:60` second as a leap
+    // second, where DateTimeRoutines keeps the date at midnight.
+    if let Some(d) = day_month_year_time(&text) {
+        return d;
+    }
     for format in [
         "%a, %d %b %Y %H:%M:%S %z",
         "%a, %d %b %Y %H:%M:%S +0",
         "%Y-%m-%d %H:%M:%S",
+        // ISO 8601 with a basic `+hhmm` offset (XenForo's `<time datetime>`), which
+        // .NET DateTime.Parse reads like the extended `+hh:mm` RFC 3339 form.
+        "%Y-%m-%dT%H:%M:%S%z",
         // Json.NET date tokens become invariant DateTime strings before fields
         // reach FromUnknown, including a date field with no dateparse filter.
         "%m/%d/%Y %H:%M:%S",
@@ -773,6 +810,81 @@ pub fn parse_fuzzy_date(input: &str, ctx: &Context) -> Result<DateTime<Utc>, Str
         }
     }
     Err("unsupported fuzzy date syntax (locale guessing is blocked)".into())
+}
+/// A ` +HH:MM` or ` -HH:MM` offset after a Today/Yesterday clock, in seconds east of UTC.
+fn clock_offset(zone: &str) -> Result<i64, String> {
+    const INVALID: &str = "unsupported relative calendar time";
+    let (sign, digits) = match zone.as_bytes().first() {
+        Some(b'+') => (1, &zone[1..]),
+        Some(b'-') => (-1, &zone[1..]),
+        _ => return Err(INVALID.into()),
+    };
+    let b = digits.as_bytes();
+    if b.len() != 5 || b[2] != b':' || !b[..2].iter().chain(&b[3..]).all(u8::is_ascii_digit) {
+        return Err(INVALID.into());
+    }
+    let (hours, minutes) = (
+        digits[..2].parse::<i64>().unwrap(),
+        digits[3..].parse::<i64>().unwrap(),
+    );
+    // .NET offsets range over +/-14:00.
+    if minutes > 59 || hours * 60 + minutes > 14 * 60 {
+        return Err(INVALID.into());
+    }
+    Ok(sign * (hours * 3600 + minutes * 60))
+}
+/// `28 October 2026 13:30`: the one DateTimeRoutines.TryParseDateOrTime shape (FromFuzzyTime,
+/// DateTimeUtil.cs:92-103) that pinned definitions reach without `dateparse` (animelayer).
+/// The text must be exactly day, month name, four-digit year and `H:mm[:ss]`.
+///
+/// - FromUnknown's earlier checks (DateTimeUtil.cs:113-226) cannot match it: no RFC 1123
+///   text, not all digits, no month name contains `now` or `ago`, no day words, no `-`, and
+///   `_MissingYearRegexp2` needs the time right after a three-letter word.
+/// - TryParseDate (DateTimeRoutines.cs:457-575): the `/ \ .` and `-` regexes need those
+///   separators, and "month dd yyyy" would need four digits right after the day. So
+///   "dd month [yy]yy" (:497) matches the day, month and year. Its month switch is
+///   case-sensitive (`Jan` or `JAN`, but only `Jul`), and the rest of the word must be in
+///   `[uarychilestmbro]`, ignoring case. ConvertToDate (:576) rejects years below 1000 and
+///   invalid days; upstream then reads the time on today's date, which is rejected here.
+/// - TryParseTime after the date (:359, the `[h]h:mm[:ss]` regex; the first one needs an
+///   offset) reads the clock. An hour over 23 or a minute or second over 59 returns false,
+///   so the date is kept at midnight (TryParseDateOrTime, :313-317).
+///
+/// The result has no kind upstream, which means host local time. Rackett reads such times as
+/// UTC, as for `Today`/`Yesterday` and the formats above.
+fn day_month_year_time(text: &str) -> Option<Result<DateTime<Utc>, String>> {
+    static SHAPE: std::sync::LazyLock<Regex> = std::sync::LazyLock::new(|| {
+        Regex::new(concat!(
+            r"\A([0-9]{1,2}) ",
+            r"(Jan|JAN|Feb|FEB|Mar|MAR|Apr|APR|May|MAY|Jun|JUN|Jul|Aug|AUG|Sep|SEP|Oct|OCT",
+            r"|Nov|NOV|Dec|DEC)(?i:[uarychilestmbro]*) ",
+            r"([0-9]{4}) ([0-9]{1,2}):([0-9]{2})(?::([0-9]{2}))?\z"
+        ))
+        .unwrap()
+    });
+    let c = SHAPE.captures(text)?;
+    let number = |i: usize| c.get(i).map_or(0, |m| m.as_str().parse::<u32>().unwrap());
+    let month = match &c[2] {
+        "Jan" | "JAN" => 1,
+        "Feb" | "FEB" => 2,
+        "Mar" | "MAR" => 3,
+        "Apr" | "APR" => 4,
+        "May" | "MAY" => 5,
+        "Jun" | "JUN" => 6,
+        "Jul" => 7,
+        "Aug" | "AUG" => 8,
+        "Sep" | "SEP" => 9,
+        "Oct" | "OCT" => 10,
+        "Nov" | "NOV" => 11,
+        _ => 12,
+    };
+    let year = number(3) as i32;
+    let Some(date) = NaiveDate::from_ymd_opt(year, month, number(1)).filter(|_| year >= 1000)
+    else {
+        return Some(Err("unsupported fuzzy date (invalid calendar date)".into()));
+    };
+    let time = NaiveTime::from_hms_opt(number(4), number(5), number(6)).unwrap_or(NaiveTime::MIN);
+    Some(Ok(date.and_time(time).and_utc()))
 }
 
 #[cfg(test)]
@@ -805,6 +917,79 @@ mod tests {
             "Today,at 10:30 trailing",
             "Yesterday -01:30",
             "Today2 10:30",
+        ] {
+            assert!(parse_fuzzy_date(input, &c).is_err(), "{input}");
+        }
+    }
+    #[test]
+    fn relative_calendar_offsets_keep_the_converted_utc_time_of_day() {
+        // miobt: `DateTime.Parse("22:50 +08:00").TimeOfDay` on a UTC host is 14:50; the
+        // wrapped time of day is added to the calendar day without changing it.
+        let mut c = ctx();
+        c.now = "2024-03-01T12:00:00Z".parse().unwrap();
+        for (input, expected) in [
+            ("Yesterday 22:50 +08:00", "2024-02-29T14:50:00Z"),
+            ("Today 00:35 +08:00", "2024-03-01T16:35:00Z"),
+            ("Today 23:30 -01:00", "2024-03-01T00:30:00Z"),
+            ("Today at 10:30:15 +00:00", "2024-03-01T10:30:15Z"),
+            ("Today 10:00 +14:00", "2024-03-01T20:00:00Z"),
+        ] {
+            assert_eq!(
+                parse_fuzzy_date(input, &c).unwrap(),
+                expected.parse::<DateTime<Utc>>().unwrap(),
+                "{input}"
+            );
+        }
+        for input in [
+            "Today 10:30 +0300",
+            "Today 10:30 +08",
+            "Today 10:30 +14:01",
+            "Today 10:30 +08:60",
+            "Today 10:30 UTC",
+            "Today +08:00",
+            "Today 1:30 +08:00",
+            "Today 10:30 +08:00 x",
+        ] {
+            assert!(parse_fuzzy_date(input, &c).is_err(), "{input}");
+        }
+    }
+    #[test]
+    fn day_month_year_time_follows_date_time_routines() {
+        let c = ctx();
+        for (input, expected) in [
+            // animelayer, after its month replacements and ` 0$1` hour padding.
+            ("28 October 2026 13:30", "2026-10-28T13:30:00Z"),
+            ("3 October 2019 06:02", "2019-10-03T06:02:00Z"),
+            ("18 August 2026 21:39", "2026-08-18T21:39:00Z"),
+            ("1 Jan 2026 0:05:09", "2026-01-01T00:05:09Z"),
+            ("29 FEB 2024 23:59", "2024-02-29T23:59:00Z"),
+            ("1 Septembre 2026 10:00", "2026-09-01T10:00:00Z"),
+            ("1 Jul 2026 10:00", "2026-07-01T10:00:00Z"),
+            ("  28  May   2026  13:30 ", "2026-05-28T13:30:00Z"),
+            // TryParseTime returns false, so the date stays at midnight.
+            ("28 October 2026 24:00", "2026-10-28T00:00:00Z"),
+            ("28 October 2026 13:60", "2026-10-28T00:00:00Z"),
+            ("28 October 2026 13:30:60", "2026-10-28T00:00:00Z"),
+        ] {
+            assert_eq!(
+                parse_fuzzy_date(input, &c).unwrap(),
+                expected.parse::<DateTime<Utc>>().unwrap(),
+                "{input}"
+            );
+        }
+        for input in [
+            // Upstream falls back to the time on today's date; not modelled.
+            "30 February 2026 10:00",
+            "1 October 0999 10:00",
+            "1 oct 2026 10:00",
+            "1 JUL 2026 10:00",
+            // Not this shape: other DateTimeRoutines branches.
+            "1 Octobre 2026 10:00 +03:00",
+            "1 October 26 10:00",
+            "1 October 2026",
+            "October 1 2026 10:00",
+            "1 Oktober 2026 10:00",
+            "1 Octobxr 2026 10:00",
         ] {
             assert!(parse_fuzzy_date(input, &c).is_err(), "{input}");
         }

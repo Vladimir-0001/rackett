@@ -1,4 +1,6 @@
-//! Download tickets are bound to the exact source runtime that produced their release.
+//! Download links are permanent (docs/permanent-download-links.md): they survive restarts
+//! and edits that keep a source's URL and credentials, and retire when those change, when
+//! the source is deleted, or when the producing runtime was replaced before presentation.
 use axum::{
     body::{to_bytes, Body},
     extract::Query,
@@ -175,9 +177,9 @@ async fn fetch(app: &Router, link: &str) -> (StatusCode, Vec<u8>) {
 }
 fn assert_expired((status, body): (StatusCode, Vec<u8>)) {
     assert_eq!(status, StatusCode::NOT_FOUND);
-    assert!(String::from_utf8(body)
-        .unwrap()
-        .contains("Download expired; search again"));
+    assert!(String::from_utf8(body).unwrap().contains(
+        "Download link retired: the source was removed, disabled or changed; search again"
+    ));
 }
 fn assert_torrent((status, body): (StatusCode, Vec<u8>)) {
     assert_eq!(status, StatusCode::OK);
@@ -185,7 +187,8 @@ fn assert_torrent((status, body): (StatusCode, Vec<u8>)) {
 }
 async fn present(engine: &std::sync::Arc<Engine>, mut out: SearchResponse) -> Vec<String> {
     let key = engine.settings().await.api_key;
-    rackett::protocol::present_results(&mut out, &key, BASE);
+    let links = engine.links(&out.results, &key, BASE).await;
+    rackett::protocol::present_results(&mut out, &links);
     out.results.into_iter().map(|r| r.link).collect()
 }
 async fn search_links(engine: &std::sync::Arc<Engine>, id: &str) -> Vec<String> {
@@ -230,7 +233,7 @@ async fn milkie_key_rotation_retires_old_ticket_before_any_upstream_request() {
 }
 
 #[tokio::test]
-async fn name_edit_delete_restart_retire_tickets_and_cache_keeps_identity() {
+async fn links_survive_renames_and_restarts_and_retire_on_delete() {
     let upstream = Upstream::default();
     let (url, server) = upstream.serve().await;
     let dir = tempfile::tempdir().unwrap();
@@ -239,15 +242,15 @@ async fn name_edit_delete_restart_retire_tickets_and_cache_keeps_identity() {
     let app = app(&engine);
     let source = engine.put_indexer(feed(&url), false).await.unwrap();
 
-    // Name-only edits still replace the runtime and retire its tickets.
+    // A name-only edit replaces the runtime but keeps URL and credentials: links stay.
     let first = search_links(&engine, &source.id).await;
     let mut renamed = source.clone();
     renamed.name = "Renamed feed".into();
     engine.put_indexer(renamed, true).await.unwrap();
-    assert_expired(fetch(&app, &first[0]).await);
-    assert!(upstream.downloads().is_empty());
+    assert_torrent(fetch(&app, &first[0]).await);
+    assert_eq!(upstream.downloads(), ["feed-passkey"]);
 
-    // Cached releases keep the epoch of the runtime that cached them.
+    // Cached releases keep the identity of the runtime that cached them.
     let fresh = engine
         .search(vec![source.id.clone()], SearchQuery::default())
         .await;
@@ -261,12 +264,12 @@ async fn name_edit_delete_restart_retire_tickets_and_cache_keeps_identity() {
     let cached = present(&engine, cached).await;
     assert_torrent(fetch(&app, &fresh[0]).await);
     assert_torrent(fetch(&app, &cached[0]).await);
-    assert_eq!(upstream.downloads(), ["feed-passkey", "feed-passkey"]);
+    assert_eq!(upstream.downloads().len(), 3);
 
     engine.delete_indexer(&source.id).await.unwrap();
     assert_expired(fetch(&app, &cached[0]).await);
 
-    // A recreated engine over identical persisted configuration mints new identities.
+    // A restarted engine reads the same link key: links issued before it still work.
     let survivor = engine.put_indexer(feed(&url), false).await.unwrap();
     let before_restart = search_links(&engine, &survivor.id).await;
     drop(app);
@@ -274,11 +277,8 @@ async fn name_edit_delete_restart_retire_tickets_and_cache_keeps_identity() {
     let engine = Arc::new(Engine::new(path).await.unwrap());
     let app = self::app(&engine);
     assert!(engine.indexer(&survivor.id).await.is_some());
-    assert_expired(fetch(&app, &before_restart[0]).await);
-    assert_eq!(upstream.downloads().len(), 2);
-    let after_restart = search_links(&engine, &survivor.id).await;
-    assert_torrent(fetch(&app, &after_restart[0]).await);
-    assert_eq!(upstream.downloads().len(), 3);
+    assert_torrent(fetch(&app, &before_restart[0]).await);
+    assert_eq!(upstream.downloads().len(), 4);
     server.abort();
 }
 
@@ -378,7 +378,7 @@ async fn download_queued_behind_rate_gate_revalidates_before_sending() {
 }
 
 #[tokio::test]
-async fn torznab_and_potato_tickets_bind_to_runtime_and_magnets_pass_through() {
+async fn torznab_and_potato_links_follow_source_configuration_and_magnets_pass_through() {
     let upstream = Upstream::default();
     let (url, server) = upstream.serve().await;
     let dir = tempfile::tempdir().unwrap();
@@ -424,17 +424,26 @@ async fn torznab_and_potato_tickets_bind_to_runtime_and_magnets_pass_through() {
     assert_torrent(fetch(&app, &old_potato).await);
     assert_eq!(upstream.downloads().len(), 2);
 
+    // A delay-only edit keeps both links.
     let mut edited = source.clone();
     edited.request_delay_ms = 1;
-    engine.put_indexer(edited, true).await.unwrap();
+    let edited = engine.put_indexer(edited, true).await.unwrap();
+    assert_torrent(fetch(&app, &old_torznab).await);
+    assert_torrent(fetch(&app, &old_potato).await);
+    assert_eq!(upstream.downloads().len(), 4);
+
+    // Changing the source URL, even on the same origin, retires them before any request.
+    let mut moved = edited.clone();
+    moved.url = format!("{url}feed?edition=2");
+    engine.put_indexer(moved, true).await.unwrap();
     assert_expired(fetch(&app, &old_torznab).await);
     assert_expired(fetch(&app, &old_potato).await);
-    assert_eq!(upstream.downloads().len(), 2);
+    assert_eq!(upstream.downloads().len(), 4);
 
-    // New searches mint working tickets; magnets remain untouched passthrough links.
+    // New searches mint working links; magnets remain untouched passthrough links.
     assert_torrent(fetch(&app, &split(torznab(app.clone()).await)).await);
     assert_torrent(fetch(&app, &split(potato(app.clone()).await)).await);
-    assert_eq!(upstream.downloads().len(), 4);
+    assert_eq!(upstream.downloads().len(), 6);
     server.abort();
 }
 
@@ -484,7 +493,8 @@ async fn epoch_is_never_serialized_and_unstamped_tickets_are_rejected() {
         }],
         ..Default::default()
     };
-    rackett::protocol::present_results(&mut unstamped, &key, BASE);
+    let links = engine.links(&unstamped.results, &key, BASE).await;
+    rackett::protocol::present_results(&mut unstamped, &links);
     assert_expired(fetch(&app, &unstamped.results[0].link).await);
     assert!(engine
         .download(&source.id, 0, &format!("{url}torrent"))

@@ -480,6 +480,36 @@ impl Template {
         Ok(output)
     }
 }
+/// `Template::compile(source)?.render(ctx)` for selector and field sources, which run
+/// once per row. A source without tags renders to itself without reading the context,
+/// so it skips compilation and the context walk; a templated source is compiled once
+/// per thread (bounded) instead of once per row. The output is identical.
+pub fn render_source(source: &str, ctx: &Context) -> Result<String, String> {
+    use std::{cell::RefCell, collections::HashMap, rc::Rc};
+    type Compiled = Rc<Result<Template, String>>;
+    thread_local! {
+        static COMPILED: RefCell<HashMap<String, Compiled>> = RefCell::new(HashMap::new());
+    }
+    if source.len() <= 65536 && !source.contains("{{") {
+        return Ok(source.to_owned());
+    }
+    let compiled = COMPILED.with(|cache| {
+        if let Some(t) = cache.borrow().get(source) {
+            return t.clone();
+        }
+        let t: Compiled = Rc::new(Template::compile(source));
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= 512 {
+            cache.clear();
+        }
+        cache.insert(source.to_owned(), t.clone());
+        t
+    });
+    match &*compiled {
+        Ok(template) => template.render(ctx),
+        Err(e) => Err(e.clone()),
+    }
+}
 fn validate_context(ctx: &Context) -> Result<(), String> {
     if ctx.values.len() > 65536 {
         return Err("template context entry limit exceeded".into());

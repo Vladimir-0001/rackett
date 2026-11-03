@@ -51,11 +51,68 @@ pub struct Activity {
 }
 struct CacheEntry {
     at: Instant,
-    results: Vec<Release>,
+    results: Arc<ResultSet>,
+}
+/// One source's results for one query, immutable once fetched. Cache hits share it
+/// instead of copying every release, and each release keeps its rendered Torznab item
+/// so a warm feed is assembled rather than re-rendered (see [`crate::protocol`]).
+pub struct ResultSet {
+    releases: Vec<Release>,
+    rendered: Vec<crate::protocol::Rendered>,
+    /// Whether a feed has shown these releases before. Items are kept rendered only from
+    /// the second showing, so a query asked once holds no rendered copies.
+    presented: AtomicBool,
+}
+impl ResultSet {
+    fn new(releases: Vec<Release>) -> Arc<Self> {
+        let rendered = releases.iter().map(|_| Default::default()).collect();
+        Arc::new(Self {
+            releases,
+            rendered,
+            presented: AtomicBool::new(false),
+        })
+    }
+}
+/// Retained results per source: queries, and releases across them. Jackett keeps up to
+/// `CacheMaxResultsPerIndexer` (1000 by default) results per indexer.
+const CACHE_QUERIES: usize = 64;
+const CACHE_RELEASES: usize = 5000;
+/// A release inside a shared [`ResultSet`].
+#[derive(Clone)]
+pub struct Shared {
+    set: Arc<ResultSet>,
+    index: usize,
+}
+impl Shared {
+    /// This release's rendered item and the presentation context it was rendered for.
+    pub(crate) fn rendered(&self) -> &crate::protocol::Rendered {
+        &self.set.rendered[self.index]
+    }
+    /// Whether an earlier feed showed this release's result set.
+    pub(crate) fn presented(&self) -> bool {
+        self.set.presented.load(Ordering::Relaxed)
+    }
+    pub(crate) fn mark_presented(&self) {
+        self.set.presented.store(true, Ordering::Relaxed);
+    }
+}
+impl std::ops::Deref for Shared {
+    type Target = Release;
+    fn deref(&self) -> &Release {
+        &self.set.releases[self.index]
+    }
 }
 /// Process-unique runtime identities. Zero is never issued and exhaustion fails closed
 /// instead of wrapping, so no epoch is ever reused within a process.
 static NEXT_EPOCH: AtomicU64 = AtomicU64::new(1);
+/// Wait for a rate gate's turn. A turn already due returns at once: Tokio rounds every
+/// timer, even an elapsed one, up to its next millisecond tick, which once added about
+/// a millisecond to each uncached search of a source with no request delay.
+pub(crate) async fn wait_until(at: Instant) {
+    if at > Instant::now() {
+        tokio::time::sleep_until(at.into()).await;
+    }
+}
 fn next_epoch(counter: &AtomicU64) -> Result<u64> {
     let mut current = counter.load(Ordering::Relaxed);
     loop {
@@ -76,7 +133,9 @@ fn next_epoch(counter: &AtomicU64) -> Result<u64> {
 pub struct DownloadExpired;
 impl std::fmt::Display for DownloadExpired {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Download expired; search again")
+        f.write_str(
+            "Download link retired: the source was removed, disabled or changed; search again",
+        )
     }
 }
 impl std::error::Error for DownloadExpired {}
@@ -117,13 +176,71 @@ struct Runtime {
     source: Option<crate::builtin_runtime::Source>,
     generation: AtomicU64,
     client: reqwest::Client,
-    gate: Mutex<Instant>,
-    flight: Mutex<()>,
+    /// The next permitted request time. Downloads and serialized searches hold it
+    /// exclusively; searches of a [`Runtime::parallel`] source share it, so they run
+    /// side by side but a download still queues behind them, as before.
+    gate: RwLock<Instant>,
+    /// Fetches in flight, by flight key ([`Runtime::flight_key`]): a miss waits for a
+    /// fetch of the same key and then reads its cached result instead of repeating it.
+    flights: std::sync::Mutex<HashMap<String, Arc<Mutex<()>>>>,
+    /// Distinct queries may fetch side by side: no rate delay and no session state.
+    parallel: bool,
+    /// [`crate::ticket::fingerprint`] of `indexer`, fixed for this runtime's life.
+    fingerprint: [u8; 32],
     cache: Mutex<HashMap<String, CacheEntry>>,
+}
+impl Runtime {
+    /// A source with a rate delay or session state fetches one query at a time, as
+    /// before; a parallel source serializes only identical queries.
+    fn flight_key<'a>(&self, key: &'a str) -> &'a str {
+        if self.parallel {
+            key
+        } else {
+            ""
+        }
+    }
+    fn in_flight(&self, key: &str) -> bool {
+        let flights = self.flights.lock().unwrap_or_else(|e| e.into_inner());
+        flights.contains_key(self.flight_key(key))
+    }
+    fn flight(&self, key: &str) -> Flight<'_> {
+        let key = self.flight_key(key).to_owned();
+        let lock = self
+            .flights
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .entry(key.clone())
+            .or_default()
+            .clone();
+        Flight {
+            runtime: self,
+            key,
+            lock,
+        }
+    }
+}
+/// A claim on one flight key; the entry is dropped with its last claim.
+struct Flight<'a> {
+    runtime: &'a Runtime,
+    key: String,
+    lock: Arc<Mutex<()>>,
+}
+impl Drop for Flight<'_> {
+    fn drop(&mut self) {
+        let mut flights = self
+            .runtime
+            .flights
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        // The map holds one reference and this claim another; more means a waiter.
+        if Arc::strong_count(&self.lock) <= 2 {
+            flights.remove(&self.key);
+        }
+    }
 }
 /// One source's answer to a search.
 struct Hit {
-    results: Vec<Release>,
+    results: Arc<ResultSet>,
     cached: bool,
     stale: bool,
 }
@@ -140,6 +257,8 @@ fn serves(i: &Indexer, cats: &[u32]) -> bool {
 }
 pub struct Engine {
     path: PathBuf,
+    /// Seals permanent `/dl/` links (docs/permanent-download-links.md).
+    tickets: Arc<crate::ticket::TicketKey>,
     sessions: crate::builtin_runtime::auth::SessionRepository,
     config: RwLock<Config>,
     /// Held by exactly one configuration change from merge through save and every
@@ -194,6 +313,7 @@ impl Engine {
         }
         crate::builtin_runtime::flaresolverr::Solver::configured()?;
         let sessions = crate::builtin_runtime::auth::SessionRepository::new(&path);
+        let tickets = Arc::new(crate::ticket::TicketKey::load_or_create(&path)?);
         let mut runtime = HashMap::new();
         for i in &config.indexers {
             crate::adapters::validate(i)?;
@@ -208,6 +328,7 @@ impl Engine {
         }
         Ok(Self {
             path,
+            tickets,
             sessions,
             config: RwLock::new(config),
             write: Mutex::new(()),
@@ -312,19 +433,26 @@ impl Engine {
             client
         }
         .build()?;
+        let source = if builtin.is_some() {
+            Some(crate::builtin_runtime::Source::new(i, solver)?)
+        } else {
+            None
+        };
+        let parallel = match (&builtin, &source) {
+            (Some(b), Some(source)) => b.delay_ms == 0 && source.stateless(),
+            _ => i.request_delay_ms == 0,
+        };
         Ok(Runtime {
             indexer: i.clone(),
             epoch: next_epoch(&NEXT_EPOCH)?,
-            source: if builtin.is_some() {
-                Some(crate::builtin_runtime::Source::new(i, solver)?)
-            } else {
-                None
-            },
+            source,
             builtin,
             generation: AtomicU64::new(0),
             client,
-            gate: Mutex::new(Instant::now()),
-            flight: Mutex::new(()),
+            gate: RwLock::new(Instant::now()),
+            flights: std::sync::Mutex::new(HashMap::new()),
+            parallel,
+            fingerprint: crate::ticket::fingerprint(i),
             cache: Mutex::new(HashMap::new()),
         })
     }
@@ -634,20 +762,36 @@ impl Engine {
         query: SearchQuery,
         aggregate: bool,
     ) -> SearchResponse {
+        let (mut out, results) = self.search_shared(ids, query, aggregate).await;
+        out.results = results.iter().map(|r| Release::clone(r)).collect();
+        out
+    }
+    /// [`Engine::search_selected`] without copying releases: the response's `results`
+    /// stay empty and the releases are returned as views into their shared result sets.
+    pub(crate) async fn search_shared(
+        self: &Arc<Self>,
+        ids: Vec<String>,
+        query: SearchQuery,
+        aggregate: bool,
+    ) -> (SearchResponse, Vec<Shared>) {
         let started = Instant::now();
         self.searches.fetch_add(1, Ordering::Relaxed);
-        let indexers = self.indexers().await;
         let cats: Vec<u32> = query
             .get("cat")
             .split(',')
             .filter_map(|s| s.parse().ok())
             .collect();
         let mut out = SearchResponse::default();
-        let selected: Vec<_> = indexers
-            .into_iter()
+        let selected: Vec<_> = self
+            .config
+            .read()
+            .await
+            .indexers
+            .iter()
             .filter(|i| {
                 i.enabled && (ids.is_empty() || ids.iter().any(|id| id == "all" || id == &i.id))
             })
+            .cloned()
             .collect();
         for id in &ids {
             if id != "all" && !selected.iter().any(|i| &i.id == id) {
@@ -691,6 +835,7 @@ impl Engine {
             .insert("limit".into(), fetch.to_string());
         // Each source runs as its own task so that giving up on it (maxwait) or losing the
         // client does not abandon the fetch: it completes and fills the cache.
+        let adapter_query = Arc::new(adapter_query);
         let jobs: Vec<_> = selected
             .iter()
             .map(|i| {
@@ -698,6 +843,7 @@ impl Engine {
                 tokio::spawn(async move { engine.one(&i, &q, false).await })
             })
             .collect();
+        let mut results: Vec<Shared> = Vec::new();
         for (i, job) in selected.iter().zip(jobs) {
             let joined = match maxwait {
                 Some(wait) => {
@@ -718,8 +864,10 @@ impl Engine {
                 Ok(Ok(hit)) => {
                     out.cached += usize::from(hit.cached);
                     out.stale += usize::from(hit.stale);
-                    let mut results = hit.results;
-                    out.results.append(&mut results)
+                    results.extend((0..hit.results.releases.len()).map(|index| Shared {
+                        set: hit.results.clone(),
+                        index,
+                    }));
                 }
                 Ok(Err(e)) => out.errors.push(SearchError {
                     indexer_id: i.id.clone(),
@@ -733,23 +881,33 @@ impl Engine {
                 }),
             }
         }
-        let mut seen = HashSet::new();
-        out.results
-            .retain(|r| seen.insert((r.indexer_id.clone(), r.guid.clone())));
-        out.results.sort_by(|a, b| b.published.cmp(&a.published));
+        // Each source's set is already unique and ranked; only an aggregate merges.
+        if selected.len() > 1 {
+            let keep: Vec<bool> = {
+                let mut seen = HashSet::new();
+                results
+                    .iter()
+                    .map(|r| seen.insert((r.indexer_id.as_str(), r.guid.as_str())))
+                    .collect()
+            };
+            let mut keep = keep.into_iter();
+            results.retain(|_| keep.next().unwrap_or(false));
+            results.sort_by(|a, b| b.published.cmp(&a.published));
+        }
         let offset = query.get("offset").parse::<usize>().unwrap_or(0);
         let limit = query
             .get("limit")
             .parse::<usize>()
             .unwrap_or(1000)
             .min(1000);
-        out.results = out.results.into_iter().skip(offset).take(limit).collect();
+        results.truncate(offset.saturating_add(limit));
+        results.drain(..offset.min(results.len()));
         out.elapsed_ms = started.elapsed().as_millis() as u64;
         self.log(
             "search",
             format!(
                 "{} results · {} errors · {} pending · {} stale · {} ms",
-                out.results.len(),
+                results.len(),
                 out.errors.len(),
                 out.pending.len(),
                 out.stale,
@@ -758,7 +916,7 @@ impl Engine {
             None,
         )
         .await;
-        out
+        (out, results)
     }
     pub async fn test(self: &Arc<Self>, id: &str) -> Result<u64> {
         let i = self
@@ -792,7 +950,7 @@ impl Engine {
             Some((results, true)) => {
                 // Best answer right now: the expired set, while one refresh runs behind the
                 // flight lock. A refresh already in flight is simply joined by the next miss.
-                if r.flight.try_lock().is_ok() {
+                if !r.in_flight(&key) {
                     let (engine, r, q) = (self.clone(), r.clone(), q.clone());
                     tokio::spawn(async move {
                         let _ = engine.fetch(&r, &q, false).await;
@@ -822,17 +980,18 @@ impl Engine {
         key: &str,
         bypass: bool,
         settings: &Settings,
-    ) -> Option<(Vec<Release>, bool)> {
+    ) -> Option<(Arc<ResultSet>, bool)> {
         if bypass {
             return None;
         }
         let ttl = Duration::from_secs(settings.cache_ttl_seconds);
         let keep = ttl.max(Duration::from_secs(settings.cache_stale_seconds));
+        let now = Instant::now();
         let mut cache = r.cache.lock().await;
-        cache.retain(|_, e| e.at.elapsed() < keep);
+        cache.retain(|_, e| now.duration_since(e.at) < keep);
         let entry = cache.get(key)?;
         self.hits.fetch_add(1, Ordering::Relaxed);
-        Some((entry.results.clone(), entry.at.elapsed() >= ttl))
+        Some((entry.results.clone(), now.duration_since(entry.at) >= ttl))
     }
     /// Fetch from the source behind the flight lock and record its status. With `bypass`
     /// nothing is read from or written to the cache. Returns the results and whether
@@ -842,7 +1001,7 @@ impl Engine {
         r: &Arc<Runtime>,
         q: &SearchQuery,
         bypass: bool,
-    ) -> Result<(Vec<Release>, bool)> {
+    ) -> Result<(Arc<ResultSet>, bool)> {
         let r = r.clone();
         let i = &r.indexer;
         let settings = self.settings().await;
@@ -856,16 +1015,28 @@ impl Engine {
             if let Some((results, false)) = self.lookup(&r, &key, bypass, &settings).await {
                 return Ok((results, true));
             }
-            let _flight = r.flight.lock().await;
+            let flight = r.flight(&key);
+            let _flight = flight.lock.lock().await;
             if let Some((results, false)) = self.lookup(&r, &key, bypass, &settings).await {
                 return Ok((results, true));
             }
             let _permit = self.permits.acquire().await?;
-            let mut gate = r.gate.lock().await;
+            // A parallel source has no delay to keep: its searches share the gate and
+            // each times its own requests.
+            let mut own = Instant::now();
+            let (mut exclusive, shared) = if r.parallel {
+                (None, Some(r.gate.read().await))
+            } else {
+                (Some(r.gate.write().await), None)
+            };
+            let gate: &mut Instant = match &mut exclusive {
+                Some(gate) => gate,
+                None => &mut own,
+            };
             let mut attempts = 0;
             let releases = loop {
                 if r.builtin.is_none() {
-                    tokio::time::sleep_until((*gate).into()).await;
+                    crate::engine::wait_until(*gate).await;
                     *gate = Instant::now()
                         + Duration::from_millis(
                             r.builtin
@@ -876,7 +1047,7 @@ impl Engine {
                 }
                 let result = if let (Some(builtin), Some(source)) = (&r.builtin, &r.source) {
                     crate::builtin_runtime::search_source(
-                        builtin, &r.client, i, q, &mut gate, source, deadline,
+                        builtin, &r.client, i, q, gate, source, deadline,
                     )
                     .await
                 } else {
@@ -916,7 +1087,7 @@ impl Engine {
                         .map(|b| b.delay_ms)
                         .unwrap_or(i.request_delay_ms),
                 );
-            drop(gate);
+            drop((exclusive, shared));
             let cats: Vec<u32> = q
                 .get("cat")
                 .split(',')
@@ -943,8 +1114,15 @@ impl Engine {
             // before ranking, just as the aggregate does, then retain only that
             // prefix. No later candidate from this source can enter the global
             // prefix; caching entire multi-page responses only adds clone/sort work.
-            let mut seen = HashSet::new();
-            releases.retain(|r| seen.insert(r.guid.clone()));
+            let keep: Vec<bool> = {
+                let mut seen = HashSet::new();
+                releases
+                    .iter()
+                    .map(|r| seen.insert(r.guid.as_str()))
+                    .collect()
+            };
+            let mut keep = keep.into_iter();
+            releases.retain(|_| keep.next().unwrap_or(false));
             releases.sort_by(|a, b| b.published.cmp(&a.published));
             releases.truncate(
                 q.get("limit")
@@ -952,15 +1130,11 @@ impl Engine {
                     .unwrap_or(1000)
                     .clamp(1, 1000),
             );
+            let releases = ResultSet::new(releases);
             if !bypass && settings.cache_ttl_seconds > 0 {
                 let mut c = r.cache.lock().await;
                 if r.generation.load(Ordering::Relaxed) != generation {
                     return Ok((releases, false));
-                }
-                if c.len() >= 64 {
-                    if let Some(old) = c.iter().min_by_key(|(_, e)| e.at).map(|(k, _)| k.clone()) {
-                        c.remove(&old);
-                    }
                 }
                 c.insert(
                     key.clone(),
@@ -969,6 +1143,22 @@ impl Engine {
                         results: releases.clone(),
                     },
                 );
+                // At most CACHE_QUERIES queries and CACHE_RELEASES releases per source,
+                // oldest out first; the newest entry always stays.
+                let mut held: usize = c.values().map(|e| e.results.releases.len()).sum();
+                while c.len() > CACHE_QUERIES || (held > CACHE_RELEASES && c.len() > 1) {
+                    let Some(old) = c
+                        .iter()
+                        .filter(|(k, _)| **k != key)
+                        .min_by_key(|(_, e)| e.at)
+                        .map(|(k, _)| k.clone())
+                    else {
+                        break;
+                    };
+                    if let Some(gone) = c.remove(&old) {
+                        held -= gone.results.releases.len();
+                    }
+                }
             }
             Ok((releases, false))
         };
@@ -1016,6 +1206,51 @@ impl Engine {
     /// Fetch a ticketed download only through the exact runtime that produced its release.
     /// Any edit, delete, or engine recreation retires the runtime and its tickets. A
     /// runtime with a detail-page download policy resolves the target page to a magnet.
+    /// Client-facing link issuance for these results: the link key plus the credential
+    /// fingerprint of each runtime that produced them. A release whose runtime has
+    /// already been replaced gets no fingerprint, so its link never downloads.
+    pub async fn links<'a>(
+        &self,
+        results: impl IntoIterator<Item = &'a Release>,
+        api_key: &str,
+        base_url: &str,
+    ) -> crate::protocol::Links {
+        let runtime = self.runtime.read().await;
+        let mut fingerprints = HashMap::new();
+        for r in results {
+            if fingerprints.contains_key(&(r.indexer_id.as_str(), r.source_epoch)) {
+                continue;
+            }
+            if let Some(rt) = runtime
+                .get(&r.indexer_id)
+                .filter(|rt| rt.epoch == r.source_epoch)
+            {
+                fingerprints.insert((r.indexer_id.as_str(), r.source_epoch), rt.fingerprint);
+            }
+        }
+        let fingerprints = fingerprints
+            .into_iter()
+            .map(|((id, epoch), fingerprint)| ((id.to_owned(), epoch), fingerprint))
+            .collect();
+        crate::protocol::Links::new(self.tickets.clone(), fingerprints, api_key, base_url)
+    }
+    /// The link key, for opening `/dl/` tokens.
+    pub fn ticket_key(&self) -> &crate::ticket::TicketKey {
+        &self.tickets
+    }
+    /// Download through a permanent link: the source's current runtime, provided its
+    /// credential configuration still matches the one the link was issued under.
+    pub async fn download_link(&self, ticket: &crate::ticket::Ticket) -> Result<Download> {
+        let epoch = self
+            .runtime
+            .read()
+            .await
+            .get(&ticket.indexer)
+            .filter(|r| r.fingerprint == ticket.fingerprint)
+            .map(|r| r.epoch)
+            .ok_or(DownloadExpired)?;
+        self.download(&ticket.indexer, epoch, &ticket.url).await
+    }
     pub async fn download(&self, id: &str, epoch: u64, target: &str) -> Result<Download> {
         let r = self
             .runtime
@@ -1048,8 +1283,8 @@ impl Engine {
         let deadline = Instant::now() + Duration::from_secs(seconds);
         tokio::time::timeout(Duration::from_secs(seconds), async {
             let _permit = self.permits.acquire().await?;
-            let mut gate = r.gate.lock().await;
-            tokio::time::sleep_until((*gate).into()).await;
+            let mut gate = r.gate.write().await;
+            crate::engine::wait_until(*gate).await;
             // Revalidate after queueing: a source edited while this waited sends nothing.
             // A request that passed this check is in flight and completes even if an edit
             // lands meanwhile; it uses the credentials current at this admission check.
@@ -1676,34 +1911,43 @@ mod detail_magnet_tests {
     }
 
     #[tokio::test]
-    async fn edits_deletes_and_restarts_expire_detail_tickets_without_requests() {
+    async fn links_survive_restarts_and_harmless_edits_but_not_credential_changes() {
         let (mirror, url, server) = Mirror::serve().await;
         let (dir, engine) = engine().await;
-        let i = source(&url);
+        let mut i = source(&url);
         install(&engine, &i, Some(0)).await;
-        let expired = |response: axum::response::Response| async move {
+        let retired = |response: axum::response::Response| async move {
             let (status, description) = failure(response).await;
             assert_eq!(status, StatusCode::NOT_FOUND);
-            assert_eq!(description, "Download expired; search again");
+            assert_eq!(
+                description,
+                "Download link retired: the source was removed, disabled or changed; search again"
+            );
         };
-        // Edit: the same source under a new runtime retires the old ticket.
+        // An edit that keeps URL and credentials (a new runtime) keeps the link.
         let old = ticket(&engine, &i.id).await;
+        i.name = "Renamed".into();
         install(&engine, &i, Some(0)).await;
-        expired(get(&engine, &old).await).await;
-        assert_eq!(
-            get(&engine, &ticket(&engine, &i.id).await).await.status(),
-            StatusCode::FOUND
-        );
-        // Restart: a new engine compiles new runtimes for the same source ID.
-        let old = ticket(&engine, &i.id).await;
+        assert_eq!(get(&engine, &old).await.status(), StatusCode::FOUND);
+        // A restart reads the same link key, so the link still works.
         let restarted = Arc::new(Engine::new(dir.path().join("config.json")).await.unwrap());
         install(&restarted, &i, Some(0)).await;
-        expired(get(&restarted, &old).await).await;
-        // Delete.
-        let old = ticket(&engine, &i.id).await;
-        engine.runtime.write().await.remove(&i.id);
-        expired(get(&engine, &old).await).await;
-        assert_eq!(mirror.details(), 1);
+        assert_eq!(get(&restarted, &old).await.status(), StatusCode::FOUND);
+        assert_eq!(mirror.details(), 2);
+        // A credential change retires it without any request.
+        i.cookie = "uid=1; pass=changed".into();
+        install(&restarted, &i, Some(0)).await;
+        retired(get(&restarted, &old).await).await;
+        // Deletion retires links issued under the current configuration too.
+        let current = ticket(&restarted, &i.id).await;
+        restarted.runtime.write().await.remove(&i.id);
+        retired(get(&restarted, &current).await).await;
+        // A token this server never sealed is unknown.
+        let forged = current.replacen("/dl/", "/dl/A", 1);
+        let (status, description) = failure(get(&restarted, &forged).await).await;
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(description, "Unknown download link");
+        assert_eq!(mirror.details(), 2);
         server.abort();
     }
 
@@ -1725,22 +1969,22 @@ mod detail_magnet_tests {
         assert_eq!(queued.await.unwrap(), Download::Magnet(MAGNET.into()));
         assert_eq!(mirror.details(), 1);
         // The source gate now spaces the next request by the pinned delay.
-        let next = *r.gate.lock().await;
+        let next = *r.gate.write().await;
         assert!(next >= Instant::now() + Duration::from_millis(2500));
 
         // A second download waits on that gate; cancelling it releases gate and permit.
         let mut queued = Box::pin(engine.download(&i.id, r.epoch, &target));
         assert!(futures_util::poll!(queued.as_mut()).is_pending());
-        assert!(r.gate.try_lock().is_err());
+        assert!(r.gate.try_write().is_err());
         assert_eq!(engine.permits.available_permits(), 7);
         drop(queued);
-        assert!(r.gate.try_lock().is_ok());
+        assert!(r.gate.try_write().is_ok());
         assert_eq!(engine.permits.available_permits(), 8);
         assert_eq!(mirror.details(), 1);
 
         // Queued behind the gate, then the source is edited: nothing is sent.
         let r = install(&engine, &i, Some(0)).await;
-        let gate = r.gate.lock().await;
+        let gate = r.gate.write().await;
         let mut queued = Box::pin(engine.download(&i.id, r.epoch, &target));
         assert!(futures_util::poll!(queued.as_mut()).is_pending());
         install(&engine, &i, Some(0)).await;
@@ -1968,11 +2212,17 @@ mod persistence_tests {
         assert_eq!(value(&store::load(&f.path).await.unwrap()), value(&memory));
         let restarted = Engine::new(f.path.clone()).await.unwrap();
         assert_eq!(value(&*restarted.config.read().await), value(&memory));
-        let entries: Vec<_> = std::fs::read_dir(f.path.parent().unwrap())
+        let mut entries: Vec<_> = std::fs::read_dir(f.path.parent().unwrap())
             .unwrap()
             .map(|e| e.unwrap().file_name())
             .collect();
-        assert_eq!(entries, ["config.json"], "no temporary files remain");
+        entries.sort();
+        // The download link key sits beside the configuration (src/ticket.rs).
+        assert_eq!(
+            entries,
+            ["config.json", "ticket.key"],
+            "no temporary files remain"
+        );
         memory
     }
 

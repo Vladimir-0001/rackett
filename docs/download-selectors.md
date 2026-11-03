@@ -8,7 +8,10 @@ search.
 ## Behaviour (pinned `CardigannIndexer.cs:2083-2185`)
 
 - The ticketed release link is fetched: plainly for public sources, through the
-  authenticated session for cookie, form and credential-POST sources.
+  authenticated session for cookie, form and credential-POST sources. A session
+  fetches it like `HandleRedirectableRequestAsync` (`:2014-2028`): declared headers on
+  the request and on each of at most five same-origin hops, no Referer and no
+  login-marker check (`CookieSession::fetch_page`).
 - Each selector is tried in declaration order. It takes the **first** element the
   CSS selector matches in document order, then its `attribute` (or text), then its
   `filters`. A selector that doesn't match, or whose element lacks the attribute,
@@ -34,8 +37,14 @@ most one of `selectors` or `infohash`:
 - at most 8 selectors, each with `selector`, an optional `attribute` and optional
   `filters`;
 - selector text may contain templates and may be `:root` (see below);
-- `search.headers` only for public definitions (no `login:` block); a `download.headers`
-  key, `download.method` and per-selector `usebeforeresponse` stay blocked.
+- `search.headers` for public definitions and for cookie, form and credential-POST
+  logins, whose session sends its own rendered set; `login: get` and API logins with
+  search headers, a `download.headers` key and per-selector `usebeforeresponse` stay
+  blocked;
+- `method` alone: `get`, or `post` on a `login.method: cookie` definition (hdsky). The
+  supplied-cookie session POSTs the release link without content
+  ([cookie-session gaps](cookie-session-gaps.md#download-method-post-hdsky)). `method`
+  with `before`, `selectors` or `infohash` stays blocked.
 
 ### Templated selectors (`MatchSelector`, pinned `CardigannIndexer.cs:2048-2081`)
 
@@ -58,9 +67,11 @@ variables and using only the first value of each header, on the detail page fetc
 the `before` request, the test-link fetch and the final download. Rackett renders
 `search.headers` the same way and attaches them to the detail page and torrent
 requests of a public source (catorrent, damagnet, skidrowrepack send
-`Referer: {{ .Config.sitelink }}`). Login sessions have no way to send custom headers,
-so a definition with a `login:` block and search headers stays blocked. Header names
-follow the search plan's token rule; values are bounded and control characters fail.
+`Referer: {{ .Config.sitelink }}`). Cookie, form and credential-POST sessions send
+their own rendered `search.headers` with `before`, the detail page and the download;
+the download plan's rendered set must equal the session's own (hdturk's
+`x-csrf-token`, pier720's User-Agent). Header names follow the search plan's token
+rule; values are bounded and control characters fail.
 
 ### `before` on public sources and `usebeforeresponse` (`:2096-2107`, `:2118`)
 
@@ -94,12 +105,11 @@ redirects are followed. Selectors or infohash then run as above. Without them, t
 release link itself is downloaded, as upstream does. `pathselector` and
 `usebeforeresponse` stay unsupported. Form harness: `before_path` and `before_fields`.
 
-`download.method` stays blocked: hdsky (`download: {method: post}`) needs the release
-link POSTed through its cookie session (`:2109`, `base.Download(link, method, ...)`
-`:2189`), and
-the cookie session (`src/builtin_runtime/auth.rs`) only downloads with GET. Header-bearing
-login definitions (pier720) stay blocked. The 1337x `DetailMagnet` policy is unchanged
-for the exact pinned 1337x block.
+`download: {method: post}` (hdsky) is admitted alone on cookie logins: the session
+POSTs the release link (`:2109-2110`, `base.Download(link, method, ...)` `:2189`).
+Header-bearing login definitions (hdturk, pier720) are admitted too
+([cookie-session gaps](cookie-session-gaps.md)). The 1337x `DetailMagnet` policy is
+unchanged for the exact pinned 1337x block.
 
 The resolver is compiled from the pinned definition on demand
 (`builtin::download_selectors`) when a ticket is downloaded. Form and credential-POST

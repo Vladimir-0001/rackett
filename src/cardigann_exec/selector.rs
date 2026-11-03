@@ -104,15 +104,26 @@ impl Selector {
             return self.extract_html_mut(&mut document, row, &mut 20_000_000, render);
         }
         let selected = match &self.selector {
-            Some(s) => html_select(element, &render(s)?, true)?.into_iter().next(),
+            Some(s) => html_select_first(element, &render(s)?)?,
             None => Some(element),
         };
         let Some(selected) = selected else {
             return Ok(None);
         };
+        self.read_selected(selected, render)
+    }
+    /// The cases, attribute or text of an element already selected.
+    fn read_selected<F>(
+        &self,
+        selected: ElementRef<'_>,
+        render: &F,
+    ) -> Result<Option<String>, String>
+    where
+        F: Fn(&str) -> Result<String, String>,
+    {
         if !self.cases.is_empty() {
             for (k, v) in &self.cases {
-                if !html_select(selected, k, true)?.is_empty() {
+                if html_select_first(selected, k)?.is_some() {
                     return Ok(Some(bounded(normalize(&render(v)?))?));
                 }
             }
@@ -161,13 +172,31 @@ impl Selector {
         if let Some(text) = &self.text {
             return Ok(Some(bounded(render(text)?)?));
         }
-        charge(visits, row.saturating_add(1))?;
         let row_id = document
             .tree
             .nodes()
             .nth(row)
             .ok_or("HTML row missing")?
             .id();
+        self.extract_html_at(document, row_id, row, visits, render)
+    }
+    /// [`Selector::extract_html_mut`] for row `row` whose node is already known, as
+    /// [`node_ids`] gives it. The visit budget is charged exactly the same.
+    pub fn extract_html_at<F>(
+        &self,
+        document: &mut Html,
+        row_id: ego_tree::NodeId,
+        row: usize,
+        visits: &mut usize,
+        render: &F,
+    ) -> Result<Option<String>, String>
+    where
+        F: Fn(&str) -> Result<String, String>,
+    {
+        if let Some(text) = &self.text {
+            return Ok(Some(bounded(render(text)?)?));
+        }
+        charge(visits, row.saturating_add(1))?;
         let element = ElementRef::wrap(document.tree.get(row_id).ok_or("HTML row missing")?)
             .ok_or("HTML row is not an element")?;
         let rendered_selector = self.selector.as_ref().map(|s| render(s)).transpose()?;
@@ -185,7 +214,7 @@ impl Selector {
         };
         charge(visits, selection_scope.descendants().count())?;
         let selected = match &rendered_selector {
-            Some(selector) => html_select(element, selector, true)?.into_iter().next(),
+            Some(selector) => html_select_first(element, selector)?,
             None => Some(element),
         };
         let Some(selected) = selected else {
@@ -218,9 +247,6 @@ impl Selector {
         )
         .ok_or("HTML selection missing")?;
         // Selection already happened: do not re-run it after detachment changes siblings.
-        let mut reader = self.clone();
-        reader.selector = None;
-        reader.remove = None;
         let mut scope = selected;
         if self.cases.iter().any(|(s, _)| s.starts_with(":root")) {
             while let Some(parent) = scope.parent().and_then(ElementRef::wrap) {
@@ -234,7 +260,7 @@ impl Selector {
                 .count()
                 .saturating_mul(self.cases.len().saturating_add(1)),
         )?;
-        reader.extract_html(selected, render)
+        self.read_selected(selected, render)
     }
     /// Whether a JSON field reads its parent row (`..name`, CardigannIndexer.cs:1734-1736).
     pub fn json_parent(&self) -> bool {
@@ -268,6 +294,11 @@ impl Selector {
         }
         selected.map(|s| bounded(normalize(&s))).transpose()
     }
+}
+/// Every node's id by slot: `node_ids(d)[slot]` is `d.tree.nodes().nth(slot)`, without
+/// walking the tree once per field. Slots stay valid while nodes are only detached.
+pub fn node_ids(document: &Html) -> Vec<ego_tree::NodeId> {
+    document.tree.nodes().map(|node| node.id()).collect()
 }
 fn charge(visits: &mut usize, count: usize) -> Result<(), String> {
     *visits = visits
@@ -403,9 +434,25 @@ fn bounded(s: String) -> Result<String, String> {
         Ok(s)
     }
 }
+/// Bounds-checked [`Css::parse`]. Row and field selectors are parsed for every row, so
+/// results (errors included) are cached per thread, bounded; parsing is deterministic.
 pub(super) fn parse_css(s: &str) -> Result<Css, String> {
-    check_css_bounds(s)?;
-    Css::parse(s)
+    use std::{cell::RefCell, collections::HashMap};
+    thread_local! {
+        static PARSED: RefCell<HashMap<String, Result<Css, String>>> = RefCell::new(HashMap::new());
+    }
+    PARSED.with(|cache| {
+        if let Some(parsed) = cache.borrow().get(s) {
+            return parsed.clone();
+        }
+        let parsed = check_css_bounds(s).and_then(|()| Css::parse(s));
+        let mut cache = cache.borrow_mut();
+        if cache.len() >= 512 {
+            cache.clear();
+        }
+        cache.insert(s.to_owned(), parsed.clone());
+        parsed
+    })
 }
 /// Length and `(` nesting bounds, also applied to [`Css::parse`]'s rewritten source.
 pub(super) fn check_css_bounds(s: &str) -> Result<(), String> {
@@ -427,19 +474,43 @@ pub(super) fn check_css_bounds(s: &str) -> Result<(), String> {
     Ok(())
 }
 fn html_select<'a>(
+    element: ElementRef<'a>,
+    s: &str,
+    include_self: bool,
+) -> Result<Vec<ElementRef<'a>>, String> {
+    html_select_up_to(element, s, include_self, usize::MAX)
+}
+/// The first element [`html_select`] would return (`include_self`), as AngleSharp's
+/// `QuerySelector` does: the pass stops at that match instead of matching the rest.
+fn html_select_first<'a>(
+    element: ElementRef<'a>,
+    s: &str,
+) -> Result<Option<ElementRef<'a>>, String> {
+    Ok(html_select_up_to(element, s, true, 1)?.into_iter().next())
+}
+fn html_select_up_to<'a>(
     mut element: ElementRef<'a>,
     s: &str,
     include_self: bool,
+    limit: usize,
 ) -> Result<Vec<ElementRef<'a>>, String> {
     // One :contains scan budget covers this whole selection pass.
     let scan = Scan::default();
     // `:scope` is the element the selection starts from (AngleSharp QuerySelector).
     let scope = Some(selectors::Element::opaque(&element));
-    // handleSelector checks Matches before the special ancestor-root helper.
-    if include_self && parse_css(s)?.matches_in(&element, scope, &scan)? {
-        return Ok(vec![element]);
-    }
+    // handleSelector checks Matches before the special ancestor-root helper. An
+    // unrooted selector parsed for that check is reused for the descendant pass.
     let rooted = s.starts_with(":root");
+    let whole = if include_self {
+        Some(parse_css(s)?)
+    } else {
+        None
+    };
+    if let (true, Some(whole)) = (include_self, &whole) {
+        if whole.matches_in(&element, scope, &scan)? {
+            return Ok(vec![element]);
+        }
+    }
     let s = if rooted {
         while let Some(p) = element.parent().and_then(ElementRef::wrap) {
             element = p;
@@ -451,7 +522,10 @@ fn html_select<'a>(
     if s.is_empty() {
         return Err("empty CSS selector after :root expansion".into());
     }
-    let selector = parse_css(s)?;
+    let selector = match whole {
+        Some(whole) if !rooted => whole,
+        _ => parse_css(s)?,
+    };
     let mut out = vec![];
     // A `:root`-rooted selection starts from the document root, which is then the scope.
     let scope = if rooted {
@@ -472,6 +546,9 @@ fn html_select<'a>(
         }
         if e.id() != element.id() && selector.matches_in(&e, scope, &scan)? {
             out.push(e);
+            if out.len() >= limit {
+                break;
+            }
         }
     }
     Ok(std::mem::take(&mut out))

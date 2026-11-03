@@ -19,6 +19,8 @@ fn bound(
             headers: Vec::new(),
             charset: crate::cardigann_exec::request::Charset::Utf8,
             certificates: None,
+            search_redirects: false,
+            download_post: false,
             test: Some(LoginTest {
                 path: "index.php".into(),
                 selector: Some("a[href='logout.php']".into()),
@@ -751,7 +753,9 @@ fn form_4thd(repository: &SessionRepository, base: &str) -> CookieSession {
         base,
         &settings,
         0,
-        5,
+        // As in `bound`: these tests assert cookies and login counts, not deadlines,
+        // and a loaded CI host can delay the blocking session fsync past five seconds.
+        120,
     )
     .unwrap();
     session.bind(repository, "one", "4thd").unwrap();
@@ -883,6 +887,8 @@ async fn supplied_cookie_session_validates_once_and_fails_visibly_on_expiry() {
             headers: Vec::new(),
             charset: crate::cardigann_exec::request::Charset::Utf8,
             certificates: None,
+            search_redirects: false,
+            download_post: false,
             test: Some(LoginTest {
                 path: "index.php".into(),
                 selector: Some("a[href^='logout.php']".into()),
@@ -1275,5 +1281,287 @@ async fn form_sessions_send_declared_headers_with_login_and_search_requests() {
     );
     let node = crate::cardigann::parse(&agent_yaml, crate::cardigann::Limits::default()).unwrap();
     assert!(super::super::form_auth::FormPlan::compile(&node).is_err());
+    server.abort();
+}
+
+/// Every request a transport test sees: method, path and the inspected headers.
+#[derive(Debug, PartialEq)]
+struct Sent {
+    request: String,
+    referer: Option<String>,
+    cookie: Option<String>,
+    csrf: Option<String>,
+    length: Option<String>,
+}
+fn sent(request: &str, referer: Option<String>, cookie: Option<&str>, csrf: bool) -> Sent {
+    Sent {
+        request: request.into(),
+        referer,
+        cookie: cookie.map(Into::into),
+        csrf: csrf.then(|| "token-1".into()),
+        length: request.starts_with("POST").then(|| "0".into()),
+    }
+}
+/// Redirect chains for search, detail-page and POST-download transport tests.
+async fn transport_source(
+    State(seen): State<Arc<std::sync::Mutex<Vec<Sent>>>>,
+    method: axum::http::Method,
+    uri: axum::http::Uri,
+    headers: HeaderMap,
+) -> axum::response::Response {
+    let get = |name: &str| headers.get(name).map(|v| v.to_str().unwrap().to_owned());
+    seen.lock().unwrap().push(Sent {
+        request: format!("{method} {}", uri.path()),
+        referer: get("referer"),
+        cookie: get("cookie"),
+        csrf: get("x-csrf-token"),
+        length: get("content-length"),
+    });
+    let redirect = |to: &str, cookie: &str| {
+        let mut r = axum::http::StatusCode::FOUND.into_response();
+        r.headers_mut().insert(LOCATION, to.parse().unwrap());
+        r.headers_mut()
+            .insert(SET_COOKIE, format!("{cookie}=1; Path=/").parse().unwrap());
+        r
+    };
+    let path = uri.path();
+    if let Some(n) = path
+        .strip_prefix("/loop")
+        .and_then(|n| n.parse::<u8>().ok())
+    {
+        return redirect(&format!("/loop{}", n + 1), "hop");
+    }
+    match path {
+        "/moved.php" => redirect("/again.php", "first"),
+        "/again.php" => redirect("/landing.php", "second"),
+        "/away.php" => redirect("http://other.invalid/landing.php", "hop"),
+        "/detail.php" => redirect("/topic.php", "hop"),
+        "/topic.php" => {
+            axum::response::Html("<p>No login marker on detail pages</p>").into_response()
+        }
+        "/dl.php" => redirect("/file.torrent", "hop"),
+        "/file.torrent" => b"d4:infod4:name7:fixtureee".to_vec().into_response(),
+        _ => axum::response::Html("<a href='logout.php?auth=fixture'>Logout</a>").into_response(),
+    }
+}
+async fn serve_transport() -> (
+    Arc<std::sync::Mutex<Vec<Sent>>>,
+    String,
+    tokio::task::JoinHandle<()>,
+) {
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let base = format!("http://{}/", listener.local_addr().unwrap());
+    let app = Router::new()
+        .fallback(axum::routing::any(transport_source))
+        .with_state(seen.clone());
+    let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (seen, base, server)
+}
+/// HEADER_SOURCE without its Referer and literal Cookie, edited by `edit`.
+fn transport_session(base: &str, edit: impl Fn(String) -> String) -> Result<CookieSession> {
+    let yaml = edit(
+        HEADER_SOURCE
+            .replace("    Referer: [\"{{ .Config.sitelink }}browse.php\"]\n", "")
+            .replace("    Cookie: [\"layout=classic; lang=en\"]\n", ""),
+    );
+    let mut settings = serde_json::Map::new();
+    settings.insert("csrf_token".into(), "token-1".into());
+    CookieSession::new(
+        header_plan(&yaml)?
+            .with_user_agent(Some("Fixture Browser/1.0"))?
+            .with_settings(&settings)?,
+        base,
+        "session=seed",
+        0,
+        5,
+    )
+}
+
+#[test]
+fn search_redirect_flags_admit_only_uniform_path_policies() {
+    let path = "  paths: [{path: torrents.php}]";
+    for (edit, follows) in [
+        (path.to_owned(), Some(false)),
+        (
+            "  paths: [{path: a.php, followredirect: true}, {path: b.php, followredirect: true}]"
+                .into(),
+            Some(true),
+        ),
+        (
+            "  paths: [{path: a.php, followredirect: false}]".into(),
+            Some(false),
+        ),
+        // Mixed paths, the search-block flag and non-boolean values stay unmodeled.
+        (
+            "  paths: [{path: a.php, followredirect: true}, {path: b.php}]".into(),
+            None,
+        ),
+        (format!("  followredirect: true\n{path}"), None),
+        ("  paths: [{path: a.php, followredirect: yes}]".into(), None),
+    ] {
+        let yaml = HEADER_SOURCE.replace(path, &edit);
+        assert_eq!(
+            header_plan(&yaml).ok().map(|p| p.search_redirects),
+            follows,
+            "{edit}"
+        );
+    }
+    // The root flag changes nothing a same-origin session does (`:917-930`, `:955-969`).
+    let root = HEADER_SOURCE.replace(
+        "encoding: UTF-8\n",
+        "encoding: UTF-8\nfollowredirect: true\n",
+    );
+    assert!(!header_plan(&root).unwrap().search_redirects);
+    let root = HEADER_SOURCE.replace("encoding: UTF-8\n", "encoding: UTF-8\nfollowredirect: 1\n");
+    assert!(header_plan(&root).is_err());
+}
+
+#[test]
+fn login_test_selectors_use_the_engine_css_dialect() {
+    let test = r#"  test: {path: index.php, selector: "a[href^='logout.php']"}"#;
+    let with = |selector: &str| {
+        HEADER_SOURCE.replace(
+            test,
+            &format!("  test:\n    path: index.php\n    selector: {selector}"),
+        )
+    };
+    // AngleSharp `:contains` (amigosshare, myspleen, noname-clubl) parses; invalid CSS does not.
+    for selector in [
+        r#"script[data-page="app"]:contains('"user":{"id":')"#,
+        r#"span.key:contains("Ratio") + span.value"#,
+        r#"table.menutable a.mainmenu:contains("Выход")"#,
+    ] {
+        assert!(header_plan(&with(selector)).is_ok(), "{selector}");
+    }
+    assert!(header_plan(&with("a[href^=")).is_err());
+}
+
+#[tokio::test]
+async fn followed_search_redirects_are_bare_same_origin_hops() {
+    let (recorded, base, server) = serve_transport().await;
+    let follow = |y: String| {
+        y.replace(
+            "  paths: [{path: torrents.php}]",
+            "  paths: [{path: torrents.php, followredirect: true}]",
+        )
+    };
+    let session = transport_session(&base, follow).unwrap();
+    let page = session
+        .fetch_search("moved.php", None, false)
+        .await
+        .unwrap();
+    assert!(page.contains("logout.php"));
+    assert_eq!(
+        std::mem::take(&mut *recorded.lock().unwrap()),
+        [
+            sent("GET /index.php", None, Some("session=seed"), true),
+            sent("GET /moved.php", None, Some("session=seed"), true),
+            // FollowIfRedirect: no cookie, header or Referer (`BaseIndexer.cs:745-770`).
+            sent("GET /again.php", None, None, false),
+            sent("GET /landing.php", None, None, false),
+        ]
+    );
+    // The first response's cookie is kept; a hop's own response is never stored.
+    session
+        .fetch_search("torrents.php", None, false)
+        .await
+        .unwrap();
+    assert_eq!(
+        recorded.lock().unwrap().pop().unwrap().cookie.as_deref(),
+        Some("session=seed; first=1")
+    );
+    recorded.lock().unwrap().clear();
+    // Five hops at most; a redirect left after them, or one leaving the origin, fails.
+    for path in ["loop0", "away.php"] {
+        assert!(
+            session.fetch_search(path, None, false).await.is_err(),
+            "{path}"
+        );
+        assert!(recorded
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|s| !s.request.contains("loop6") && !s.request.contains("other")));
+        recorded.lock().unwrap().clear();
+    }
+    // Without the flag a search redirect is expiry and nothing is followed.
+    let session = transport_session(&base, |y| y).unwrap();
+    assert!(session
+        .fetch_search("moved.php", None, false)
+        .await
+        .is_err());
+    assert!(recorded
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|s| s.request != "GET /landing.php"));
+    server.abort();
+}
+
+#[tokio::test]
+async fn detail_pages_repeat_session_headers_on_hops_and_need_no_login_marker() {
+    let (recorded, base, server) = serve_transport().await;
+    let session = transport_session(&base, |y| y).unwrap();
+    let headers = [
+        ("User-Agent".to_owned(), "Fixture Browser/1.0".to_owned()),
+        ("x-csrf-token".to_owned(), "token-1".to_owned()),
+    ];
+    let page = session.fetch_page("detail.php", &headers).await.unwrap();
+    assert!(page.contains("No login marker"));
+    assert_eq!(
+        std::mem::take(&mut *recorded.lock().unwrap()),
+        [
+            sent("GET /index.php", None, Some("session=seed"), true),
+            // HandleRedirectableRequestAsync: cookies and headers on every hop, no Referer.
+            sent("GET /detail.php", None, Some("session=seed"), true),
+            sent("GET /topic.php", None, Some("session=seed; hop=1"), true),
+        ]
+    );
+    // The download plan's headers must be exactly the session's own.
+    let other = [
+        headers[0].clone(),
+        ("x-csrf-token".into(), "token-2".into()),
+    ];
+    assert!(session.fetch_page("detail.php", &other).await.is_err());
+    assert!(session
+        .fetch_page("detail.php", &headers[..1])
+        .await
+        .is_err());
+    assert!(recorded.lock().unwrap().is_empty());
+    server.abort();
+}
+
+#[tokio::test]
+async fn download_post_sends_the_link_without_content_then_follows_with_get() {
+    let (recorded, base, server) = serve_transport().await;
+    let post = |y: String| y.replace("search:\n", "download:\n  method: post\n\nsearch:\n");
+    let session = transport_session(&base, post).unwrap();
+    let bytes = session.fetch_download("dl.php").await.unwrap();
+    assert!(bytes.starts_with(b"d4:info"));
+    assert_eq!(
+        std::mem::take(&mut *recorded.lock().unwrap()),
+        [
+            sent("GET /index.php", None, Some("session=seed"), true),
+            // BaseIndexer.Download(link, POST, link, headers) with no PostData.
+            sent(
+                "POST /dl.php",
+                Some(format!("{base}dl.php")),
+                Some("session=seed"),
+                true
+            ),
+            // DoFollowIfRedirect always builds a GET (`BaseIndexer.cs:759-765`).
+            sent(
+                "GET /file.torrent",
+                None,
+                Some("session=seed; hop=1"),
+                false
+            ),
+        ]
+    );
+    // Without the block the link is fetched with GET, as before.
+    let session = transport_session(&base, |y| y).unwrap();
+    session.fetch_download("dl.php").await.unwrap();
+    assert_eq!(recorded.lock().unwrap()[1].request, "GET /dl.php");
     server.abort();
 }

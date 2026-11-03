@@ -634,6 +634,94 @@ fn rewrite_repeated_type(source: &str) -> Cow<'_, str> {
     Cow::Owned(out)
 }
 
+/// Quotes an unquoted digit-only attribute value, as in siambit's and unlimitz's
+/// `table[border=1][cellspacing=0]`. AngleSharp v1.8.6 accepts a number token as an
+/// attribute value and keeps its text (`CssSelectorConstructor.cs:309-317`); the
+/// selectors crate rejects it. Only `[name op digits]` with an optional flag is
+/// rewritten, to `[name op "digits"]`. Signs, decimals, exponents and dimensions are
+/// left unchanged and stay rejected.
+fn rewrite_numeric_values(source: &str) -> Cow<'_, str> {
+    fn walk(
+        input: &mut cssparser::Parser<'_, '_>,
+        quote: &mut Vec<std::ops::Range<usize>>,
+        depth: usize,
+    ) {
+        while let Ok(token) = input.next_including_whitespace_and_comments().cloned() {
+            let attribute = match token {
+                Token::SquareBracketBlock => true,
+                Token::Function(_) | Token::ParenthesisBlock | Token::CurlyBracketBlock => false,
+                _ => continue,
+            };
+            if depth >= MAX_REWRITE_DEPTH {
+                return;
+            }
+            let _ = input.parse_nested_block(|block| {
+                if attribute {
+                    numeric_value(block, quote);
+                } else {
+                    walk(block, quote, depth + 1);
+                }
+                Ok::<_, cssparser::ParseError<'_, ()>>(())
+            });
+        }
+    }
+    fn numeric_value(
+        input: &mut cssparser::Parser<'_, '_>,
+        quote: &mut Vec<std::ops::Range<usize>>,
+    ) {
+        let mut tokens = Vec::new();
+        loop {
+            let start = input.position();
+            match input.next_including_whitespace_and_comments() {
+                Ok(Token::WhiteSpace(_) | Token::Comment(_)) => {}
+                Ok(token) => tokens.push((token.clone(), input.slice_from(start), start)),
+                Err(_) => break,
+            }
+        }
+        let operator = |t: &Token<'_>| {
+            matches!(
+                t,
+                Token::Delim('=')
+                    | Token::IncludeMatch
+                    | Token::DashMatch
+                    | Token::PrefixMatch
+                    | Token::SuffixMatch
+                    | Token::SubstringMatch
+            )
+        };
+        let flag = tokens
+            .get(3)
+            .is_none_or(|(t, _, _)| matches!(t, Token::Ident(_)));
+        if let [(Token::Ident(_), _, _), (op, _, _), (Token::Number { .. }, raw, start), ..] =
+            &tokens[..]
+        {
+            if operator(op) && flag && tokens.len() <= 4 && raw.bytes().all(|b| b.is_ascii_digit())
+            {
+                let start = start.byte_index();
+                quote.push(start..start + raw.len());
+            }
+        }
+    }
+    let mut input = ParserInput::new(source);
+    let mut input = cssparser::Parser::new(&mut input);
+    let mut quote = Vec::new();
+    walk(&mut input, &mut quote, 0);
+    if quote.is_empty() {
+        return Cow::Borrowed(source);
+    }
+    let mut out = String::with_capacity(source.len() + 2 * quote.len());
+    let mut copied = 0;
+    for range in quote {
+        out.push_str(&source[copied..range.start]);
+        out.push('"');
+        out.push_str(&source[range.clone()]);
+        out.push('"');
+        copied = range.end;
+    }
+    out.push_str(&source[copied..]);
+    Cow::Owned(out)
+}
+
 /// Flattens `:has(B:has(C))` to `:has(B C)` when B and C are single compound
 /// selectors, the only nested shape in the pinned corpus (rutor, selezen,
 /// torrentdownloads). The selectors crate rejects nested `:has`, as the CSS spec does.
@@ -921,6 +1009,11 @@ impl Css {
         // Flattening only shortens the source, so it stays within the parse bounds.
         let flattened = rewrite_nested_has(source);
         let flattened = rewrite_repeated_type(&flattened);
+        let flattened = rewrite_numeric_values(&flattened);
+        if let Cow::Owned(quoted) = &flattened {
+            super::selector::check_css_bounds(quoted)
+                .map_err(|e| format!("{e} after numeric attribute value quoting"))?;
+        }
         let rewritten = rewrite_inequality(&flattened).map_err(|reason| {
             format!("unsupported CSS selector {source:?}: invalid [attribute!=value]: {reason}")
         })?;
@@ -1388,6 +1481,40 @@ impl TreeSink for ShadowRootSink<'_> {
 #[cfg(test)]
 mod nested_has_tests {
     use super::*;
+    #[test]
+    fn digit_attribute_values_are_quoted_like_angle_sharp_numbers() {
+        let quote = |s| rewrite_numeric_values(s).into_owned();
+        assert_eq!(
+            quote(r#"table[width="100%"][border=1][cellspacing=0] > tbody > tr:has(a[x^=12 s])"#),
+            r#"table[width="100%"][border="1"][cellspacing="0"] > tbody > tr:has(a[x^="12" s])"#
+        );
+        for unchanged in [
+            "td[a=-1]",
+            "td[a=1.5]",
+            "td[a=1e3]",
+            "td[a=1px]",
+            "td[a!=1]",
+            "td[ns|a=1]",
+            "td[a=1 2]",
+            r#"td:contains("[a=1]")"#,
+            "td[a=b]",
+        ] {
+            assert_eq!(quote(unchanged), unchanged);
+        }
+        let html = Html::parse_fragment(
+            r#"<table border="1" id="hit"></table><table border="10" id="miss"></table>"#,
+        );
+        let css = Css::parse("table[border=1]").unwrap();
+        let ids: Vec<_> = html
+            .root_element()
+            .descendants()
+            .filter_map(ElementRef::wrap)
+            .filter(|e| css.matches(e, &Scan::default()).unwrap())
+            .filter_map(|e| e.value().attr("id"))
+            .collect();
+        assert_eq!(ids, ["hit"]);
+        assert!(Css::parse("table[border=-1]").is_err());
+    }
     #[test]
     fn compound_nested_has_flattens_and_other_shapes_stay() {
         let flat = |s| rewrite_nested_has(s).into_owned();

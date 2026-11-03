@@ -341,6 +341,10 @@ fn compiler_bounds_and_credential_types_fail_before_network() {
         }
     }
     assert!(plan(&YAML.replace("path: login", "path: 'login{literal}'")).is_err());
+    // `login.selectors`: input keys are CSS selectors resolved on the landing page.
+    assert!(plan(&YAML.replace("method: form", "method: form\n  selectors: true")).is_ok());
+    // Definition `followredirect`: the form landing follows redirects (lastfiles).
+    assert!(plan(&format!("followredirect: true\n{YAML}")).is_ok());
     // Complete pinned provider plans also pass the form compiler; this does not admit them.
     for id in [
         "4thd",
@@ -360,7 +364,10 @@ fn compiler_bounds_and_credential_types_fail_before_network() {
         YAML.replace("UTF-8", "[UTF-8]"),
         YAML.replace("method: form", "method: cookie"),
         YAML.replace("method: form", "method: [form]"),
-        YAML.replace("method: form", "method: form\n  selectors: true"),
+        YAML.replace("method: form", "method: form\n  selectors: yes"),
+        YAML.replace("method: form", "method: form\n  selectors: true")
+            .replace("keep: 'yes'", "'[': 'yes'"),
+        format!("followredirect: yes\n{YAML}"),
         YAML.replace("method: form", "method: form\n  selectorinputs: {}"),
         YAML.replace("method: form", "method: form\n  headers: {}"),
         YAML.replace("form: form#login", "form: '['"),

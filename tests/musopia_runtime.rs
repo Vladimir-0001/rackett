@@ -261,7 +261,7 @@ async fn create_restart_search_test_ticket_and_credentials_use_one_runtime() {
     server.abort();
 }
 #[tokio::test]
-async fn cookie_edit_origin_change_disable_delete_and_restart_retire_tickets() {
+async fn cookie_edit_origin_change_disable_and_delete_retire_links_and_restarts_keep_them() {
     let upstream = Upstream::new();
     let (url, server) = upstream.serve().await;
     let dir = tempfile::tempdir().unwrap();
@@ -285,7 +285,10 @@ async fn cookie_edit_origin_change_disable_delete_and_restart_retire_tickets() {
         engine.indexer(&i.id).await.unwrap().definition.unwrap()["settings"]["cookie"],
         COOKIE
     );
-    assert_eq!(download(&router, old).await.0, StatusCode::NOT_FOUND);
+    // The same cookie on the same origin keeps the permanent link
+    // (docs/permanent-download-links.md); a changed cookie retires it.
+    assert_eq!(download(&router, old).await.0, StatusCode::OK);
+    upstream.take();
     api(
         &router,
         "PATCH",
@@ -334,11 +337,9 @@ async fn cookie_edit_origin_change_disable_delete_and_restart_retire_tickets() {
     let engine = Arc::new(Engine::new(path).await.unwrap());
     let router = app(&engine);
     upstream.take();
-    assert_eq!(
-        download(&router, &before_restart).await.0,
-        StatusCode::NOT_FOUND
-    );
-    assert!(upstream.take().is_empty());
+    // Permanent links survive a restart (docs/permanent-download-links.md).
+    assert_eq!(download(&router, &before_restart).await.0, StatusCode::OK);
+    upstream.take();
     let out = search(&router, &i.id).await;
     let before_delete = link(&out);
     api(
@@ -489,11 +490,15 @@ async fn session_refresh_survives_cache_download_edits_and_restart_without_expos
     let engine = Arc::new(Engine::new(path.clone()).await.unwrap());
     let router = app(&engine);
     assert!(upstream.take().is_empty()); // Loading config still does no network work.
-    assert_eq!(download(&router, &ticket).await.0, StatusCode::NOT_FOUND);
+                                         // A restart reads the same link key, so the link issued before it still works.
+    assert_eq!(download(&router, &ticket).await.0, StatusCode::OK);
+    assert!(upstream.take().iter().all(|(_, c)| c == "session=new"));
     let out = search(&router, &i.id).await;
     assert_eq!(out["errors"], json!([]));
+    // The download already validated the restored session, so the search sends no
+    // preflight (docs/session-validation.md).
     let seen = upstream.take();
-    assert_eq!(seen.len(), 2);
+    assert_eq!(seen.len(), 1);
     assert!(seen.iter().all(|(_, c)| c == "session=new"));
     // Explicitly changing the seed starts a distinct session.
     api(

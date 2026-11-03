@@ -6,6 +6,9 @@ use scraper::ElementRef;
 pub(crate) struct Controls {
     pub action: String,
     pub fields: Vec<(String, String)>,
+    /// The `name` of the first landing-document element each `name_selectors` entry
+    /// matches, in order.
+    pub names: Vec<String>,
 }
 fn html(element: ElementRef<'_>, name: &str) -> bool {
     &*element.value().name.ns == "http://www.w3.org/1999/xhtml" && element.value().name() == name
@@ -42,10 +45,15 @@ pub(crate) fn check_errors(document: &str, errors: &[String]) -> Result<(), Stri
     }
     Ok(())
 }
+/// `name_selectors` are `login.selectors: true` input keys. Pinned DoLogin queries the
+/// whole landing document with each one and submits under the first match's `name`
+/// attribute; a missing element fails the login, and a missing name fails it too, as
+/// the pinned `pairs[null]` assignment throws (`CardigannIndexer.cs:654-673`).
 pub(crate) fn extract(
     document: &str,
     form_selector: &str,
     captcha: Option<&str>,
+    name_selectors: &[&str],
 ) -> Result<Controls, String> {
     if document.len() > 8 * 1024 * 1024 {
         return Err("Login form exceeds byte budget".into());
@@ -139,7 +147,24 @@ pub(crate) fn extract(
         }
         set(&mut fields, name, value)?;
     }
-    Ok(Controls { action, fields })
+    let mut names = Vec::new();
+    for source in name_selectors {
+        // The same document guards as the form selector itself.
+        let css = css::Css::parse(source)?;
+        let local = css::check_presence_document(&doc, &css)?;
+        let name = selector::document_first_filtered(&doc, &css, local)?
+            .and_then(|e| e.value().attr("name"))
+            .ok_or("Login input selector missing")?;
+        if name.len() > 256 {
+            return Err("Login form controls exceed budget".into());
+        }
+        names.push(name.to_owned());
+    }
+    Ok(Controls {
+        action,
+        fields,
+        names,
+    })
 }
 pub(crate) fn set(
     fields: &mut Vec<(String, String)>,

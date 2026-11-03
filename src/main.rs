@@ -1,4 +1,6 @@
 use axum::{http::header, response::Html, routing::get, Router};
+#[global_allocator]
+static ALLOCATOR: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use rackett::{engine::Engine, AppState};
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -98,7 +100,11 @@ async fn main() -> anyhow::Result<()> {
         .with_state(AppState { engine })
         .layer(axum::middleware::from_fn(security_headers));
     let address = format!("127.0.0.1:{}", settings.port);
-    let listener = tokio::net::TcpListener::bind(&address).await?;
+    // Small API responses must not wait on Nagle's algorithm (Kestrel disables it too).
+    let listener =
+        axum::serve::ListenerExt::tap_io(tokio::net::TcpListener::bind(&address).await?, |tcp| {
+            let _ = tcp.set_nodelay(true);
+        });
     println!("Rackett listening at http://{address}");
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown())
@@ -116,7 +122,7 @@ async fn security_headers(
         ("referrer-policy","no-referrer"),
         ("cache-control","no-store"),
         ("x-frame-options","DENY"),
-    ] { response.headers_mut().insert(name,value.parse().expect("static header")); }
+    ] { response.headers_mut().insert(name,header::HeaderValue::from_static(value)); }
     response
 }
 async fn shutdown() {

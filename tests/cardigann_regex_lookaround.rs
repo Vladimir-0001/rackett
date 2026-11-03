@@ -77,21 +77,51 @@ fn regex_blocked_definitions_now_pass_regex_compilation() {
         "{}/37 definitions no longer fail on a regex",
         37 - still_regex.len()
     );
-    // hawke-uno matches balanced parentheses with .NET balancing groups and a conditional.
-    assert_eq!(
-        still_regex,
-        BTreeMap::from([(
-            "hawke-uno",
-            "$.search.fields.title.filters[0]: unsupported/invalid .NET regex: \
-             balancing group (?<-name>)"
-                .to_string()
-        )])
-    );
+    // hawke-uno's balancing-group filter runs on its dedicated matcher.
+    assert!(still_regex.is_empty(), "{still_regex:?}");
     // Only response-format blockers (another workstream) follow; none is regex-related.
     assert!(
         other.values().all(|e| e.contains("unsupported xml")),
         "{other:?}"
     );
+}
+
+/// hawke-uno's two title filters on its UNIT3D JSON rows: the balancing-group filter drops
+/// the parentheses around a trailing `(... - GROUP)` unless the group is HONE, then the second
+/// filter joins the group with `-`.
+#[test]
+fn hawke_uno_titles_follow_dotnet_balancing_groups() {
+    let plan = compile("hawke-uno").unwrap();
+    let settings = BTreeMap::from([("apikey".to_string(), json!("fixture-api-key"))]);
+    let now = Utc.with_ymd_and_hms(2026, 10, 28, 12, 0, 0).unwrap();
+    let ctx = plan.context(&settings, &SearchQuery::default(), now);
+    let request = plan.build_requests(&ctx).unwrap().remove(0);
+    for (name, title) in [
+        (
+            "Movie (2020) (1080p BluRay REMUX - GRP)",
+            "Movie (2020) 1080p BluRay REMUX-GRP",
+        ),
+        (
+            "Show S01 (2160p WEB-DL DDP 5.1 (Atmos) - Group)",
+            "Show S01 2160p WEB-DL DDP 5.1 (Atmos)-Group",
+        ),
+        (
+            "Movie (2020) (1080p BluRay - HONE)",
+            "Movie (2020) (1080p BluRay - HONE)",
+        ),
+        ("Movie (2020) (1080p) - GRP", "Movie (2020) (1080p)-GRP"),
+        ("Plain Title", "Plain Title"),
+    ] {
+        let body = json!({"data": [{"attributes": {
+            "name": name, "category": "Movie", "details_link": "https://hawke.uno/torrents/1",
+            "download_link": "https://hawke.uno/torrent/download/1", "seeders": 1,
+            "leechers": 0, "times_completed": 0, "created_at": "10/28/2026 10:00:00",
+            "size": 1024, "internal": 0, "freeleech": 0, "double_upload": 0, "num_file": 1,
+            "poster": "", "imdb_id": "1234567", "tmdb_id": 42, "tvdb_id": 43
+        }}]});
+        let rows = plan.extract(&request, &body.to_string(), &ctx).unwrap();
+        assert_eq!(rows[0].title, title, "{name}");
+    }
 }
 
 /// torrent9's MULTI filter end to end: row extraction, templates and filters chained.

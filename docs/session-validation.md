@@ -94,9 +94,10 @@ on tmpfs separates that noise: the cookie and form lifecycles then pass in full.
 
 ## Current state
 
-Two `tests/cookie_auth.rs` expectations changed with it: in
+`tests/cookie_auth.rs` was reserved by the integrator during this change, so its two
+expectation updates were handed over as a patch rather than committed here: in
 `aidoru_ajax_table_requires_login_preflight_and_its_own_response_marker` modes 1 and 5
 send one request, and in
 `declared_user_agent_reaches_positive_login_search_redirect_and_download_only_same_origin`
-the `/redirect` search has no `/index.php`, `/validated` preflight. `cookie_auth`: 19
-passed.
+the `/redirect` search has no `/index.php`, `/validated` preflight. Verified with
+the patch applied: 19 passed.

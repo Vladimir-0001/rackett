@@ -16,7 +16,7 @@ struct Case {
 }
 
 /// Public layout cases: the original manifest plus independently merged batches.
-const PUBLIC_MANIFESTS: [&str; 19] = [
+const PUBLIC_MANIFESTS: [&str; 21] = [
     include_str!("fixtures/public-layouts/cases.json"),
     include_str!("fixtures/public-batches/batch1.json"),
     include_str!("fixtures/public-batches/batch2.json"),
@@ -36,9 +36,11 @@ const PUBLIC_MANIFESTS: [&str; 19] = [
     include_str!("fixtures/public-batches/batch16.json"),
     include_str!("fixtures/public-batches/batch16-thepiratebay.json"),
     include_str!("fixtures/public-batches/batch17.json"),
+    include_str!("fixtures/public-batches/batch18.json"),
+    include_str!("fixtures/public-batches/batch-oneoffs.json"),
 ];
 /// Cookie layout cases: the original manifest plus independently merged batches.
-const COOKIE_MANIFESTS: [&str; 7] = [
+const COOKIE_MANIFESTS: [&str; 9] = [
     include_str!("fixtures/cookie-layouts/cases.json"),
     include_str!("fixtures/cookie-batches/batch1.json"),
     include_str!("fixtures/cookie-batches/batch2.json"),
@@ -46,6 +48,8 @@ const COOKIE_MANIFESTS: [&str; 7] = [
     include_str!("fixtures/cookie-batches/batch4.json"),
     include_str!("fixtures/cookie-batches/batch5.json"),
     include_str!("fixtures/cookie-batches/batch6.json"),
+    include_str!("fixtures/cookie-batches/batch7.json"),
+    include_str!("fixtures/cookie-batches/batch8.json"),
 ];
 #[tokio::test]
 async fn every_admitted_nexusphp_case_passes_engine_session_search_download_and_restart() {
@@ -231,11 +235,14 @@ async fn lifecycle(case: Case) {
     );
     assert!(fixture.take().is_empty(), "{}", case.id);
     let mut displayed = first.clone();
-    rackett::protocol::present_results(
-        &mut displayed,
-        "fixture-management-key",
-        "http://127.0.0.1:9117",
-    );
+    let links = engine
+        .links(
+            &displayed.results,
+            "fixture-management-key",
+            "http://127.0.0.1:9117",
+        )
+        .await;
+    rackett::protocol::present_results(&mut displayed, &links);
     let json = serde_json::to_string(&displayed).unwrap();
     for secret in [SEED, REFRESHED, "fixture-download-secret"] {
         assert!(!json.contains(secret), "{}", case.id);
@@ -383,6 +390,10 @@ fn catalog_admission_is_exactly_the_baseline_and_the_source_pinned_family() {
         include_str!("fixtures/form-batches/batch22.json"),
         include_str!("fixtures/form-batches/batch23.json"),
         include_str!("fixtures/form-batches/batch24.json"),
+        include_str!("fixtures/form-batches/batch25.json"),
+        include_str!("fixtures/form-batches/batch26.json"),
+        include_str!("fixtures/form-batches/batch27.json"),
+        include_str!("fixtures/form-batches/batch-oneoffs.json"),
     ] {
         let batch: Vec<serde_json::Value> = serde_json::from_str(batch).unwrap();
         ready.extend(batch.iter().map(|v| v["id"].as_str().unwrap().to_owned()));

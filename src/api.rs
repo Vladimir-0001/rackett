@@ -194,7 +194,11 @@ async fn search(
     crate::protocol::validate_source_ids(&params, &selected).map_err(err)?;
     let mut response = s.engine.search(ids, SearchQuery { params }).await;
     let settings = s.engine.settings().await;
-    crate::protocol::present_results(&mut response, &settings.api_key, &settings.base_url());
+    let links = s
+        .engine
+        .links(&response.results, &settings.api_key, &settings.base_url())
+        .await;
+    crate::protocol::present_results(&mut response, &links);
     Ok(Json(json!(response)))
 }
 async fn settings(State(s): State<AppState>) -> Json<Value> {

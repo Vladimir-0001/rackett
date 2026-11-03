@@ -510,13 +510,21 @@ fn scan_budget_exhaustion_is_an_error_not_a_non_match() {
     );
     for source in [
         "case:\n  'section:contains(zzz)': yes\n  '*': no",
-        "case:\n  'section:not(:contains(zzz))': yes\n  '*': no",
         "selector: 'section:contains(zzz)'",
         "remove: 'section:contains(zzz)'",
     ] {
         let err = field(source, &body).unwrap_err();
         assert!(err.contains("scan budget"), "{source}: {err}");
     }
+    // A field selection stops at its first match, as AngleSharp's QuerySelector does:
+    // the outermost section matches after one 512 KiB scan, inside the budget.
+    assert_eq!(
+        field(
+            "case:\n  'section:not(:contains(zzz))': yes\n  '*': no",
+            &body
+        ),
+        Ok(Some("yes".into()))
+    );
     let mut document = Html::parse_document(&body);
     let row = selector::html_row_slots(&document, "article", 1).unwrap()[0];
     let remove =
