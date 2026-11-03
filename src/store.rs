@@ -66,6 +66,20 @@ pub struct Config {
     pub settings: Settings,
     pub indexers: Vec<Indexer>,
 }
+/// Flush a directory so a rename inside it survives a crash. Only Unix exposes this:
+/// Windows cannot open a directory as a file, and its rename is the last step it
+/// offers, so there the file's own flush before the rename is the durability point.
+pub(crate) fn sync_dir(dir: &Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    {
+        std::fs::File::open(dir)?.sync_all()
+    }
+    #[cfg(not(unix))]
+    {
+        let _ = dir;
+        Ok(())
+    }
+}
 /// Load the configuration, creating a default one on first start.
 ///
 /// A first-start save whose directory flush fails returns [`DurabilityUnconfirmed`]:
@@ -202,7 +216,7 @@ pub(crate) async fn commit(path: &Path, config: &Config, hooks: SaveHooks) -> Re
         if hooks.panic_after_rename {
             panic!("injected panic after rename");
         }
-        let synced = std::fs::File::open(parent).and_then(|d| d.sync_all());
+        let synced = sync_dir(parent);
         #[cfg(test)]
         let synced = synced.and_then(|_| match hooks.fail_directory_sync {
             true => Err(std::io::Error::other("injected directory sync failure")),

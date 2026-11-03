@@ -130,7 +130,7 @@ impl CookieFile {
             {
                 return Err(std::io::Error::other("injected directory flush failure"));
             }
-            std::fs::File::open(parent)?.sync_all()
+            crate::store::sync_dir(parent)
         })();
         if result.is_err() {
             let _ = std::fs::remove_file(temp);

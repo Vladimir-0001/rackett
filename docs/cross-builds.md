@@ -83,6 +83,11 @@ Verified on 2026-11-03:
   and of `ticket.key` to the owner on Unix only. On Windows those files keep the
   data directory's inherited permissions, so keep the data directory inside your user
   profile.
+- **Windows durability:** saving settings or a session flushes the file and then renames
+  it into place. On Unix the directory is flushed afterwards as well. Windows cannot
+  open a directory to flush it, so there the file's own flush is the last guarantee
+  (`store::sync_dir`). The first Windows beta run caught this: every save reported
+  "durability could not be confirmed" and the first start refused to continue.
 - **Speed:** a Raspberry Pi is slower per request than the desktop measured in
   [speed.md](speed.md). Rackett's CPU use per search is small, so this mostly shows up
   on large uncached result pages.

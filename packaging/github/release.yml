@@ -103,14 +103,19 @@ jobs:
           $exe = Get-ChildItem win -Recurse -Filter rackett.exe | Select-Object -First 1
           & $exe.FullName --version
           $data = Join-Path $env:RUNNER_TEMP 'rackett-data'
-          $p = Start-Process $exe.FullName -ArgumentList '--data-dir', $data, '--port', '29117' -PassThru
+          $log = Join-Path $env:RUNNER_TEMP 'rackett'
+          $p = Start-Process $exe.FullName -ArgumentList '--data-dir', $data, '--port', '29117' -PassThru `
+            -RedirectStandardOutput "$log.out" -RedirectStandardError "$log.err"
           $ok = $false
           foreach ($i in 1..60) {
             try { if ((Invoke-WebRequest http://127.0.0.1:29117/health -UseBasicParsing).StatusCode -eq 200) { $ok = $true; break } } catch {}
             Start-Sleep -Milliseconds 500
           }
-          Stop-Process $p.Id
-          if (-not $ok) { throw 'Windows build did not answer /health' }
+          if (-not $p.HasExited) { Stop-Process $p.Id }
+          if (-not $ok) {
+            Get-Content "$log.out", "$log.err" -ErrorAction SilentlyContinue
+            throw 'Windows build did not answer /health'
+          }
 
   release:
     needs: [cross, macos, windows-smoke]
