@@ -157,6 +157,8 @@ pub(crate) async fn commit(path: &Path, config: &Config, hooks: SaveHooks) -> Re
     let worker = tokio::task::spawn_blocking(move || -> Result<Commit> {
         use std::io::Write;
         let parent = path.parent().unwrap_or(Path::new("."));
+        // Only Unix narrows a new directory's permissions.
+        #[cfg_attr(not(unix), allow(unused_variables))]
         let new_directory = !parent.exists();
         std::fs::create_dir_all(parent)?;
         #[cfg(unix)]

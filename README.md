@@ -41,15 +41,45 @@ Rackett is not affiliated with the Jackett project.
 
 ## Quick start
 
-You need [Rust](https://www.rust-lang.org/tools/install) (stable) to build Rackett.
-Prebuilt binaries are not published yet.
+### Download a beta build
+
+[Releases](https://github.com/Vladimir-0001/rackett/releases) has beta builds made
+automatically from every tested update of `main`. Each is a single file, about 5–7 MB
+packed:
+
+| Archive | For |
+| --- | --- |
+| `linux-x86_64` | 64-bit PCs, servers and most NAS boxes (Intel/AMD) |
+| `linux-arm64` | Raspberry Pi 3/4/5 on a 64-bit OS, ARM NAS boxes and servers |
+| `linux-armv7` | Raspberry Pi 2/3/4 on a 32-bit OS, older ARM NAS boxes |
+| `linux-armv6` | Raspberry Pi Zero and Pi 1 |
+| `linux-riscv64` | 64-bit RISC-V boards |
+| `windows-x86_64` | Windows 10/11, 64-bit |
+| `macos-arm64`, `macos-x86_64` | Apple silicon and Intel Macs |
+
+The Linux builds are static, so they run on any distribution, including NAS systems.
 
 ```sh
-git clone <this repository>
+tar -xzf rackett-0.1.0-linux-arm64.tar.gz
+./rackett-0.1.0-linux-arm64/rackett --data-dir ./data
+```
+
+These are betas. Every build is started and health-checked before it is published,
+but only x86-64 Linux has been used day to day so far. See
+[builds for other architectures](docs/cross-builds.md).
+
+### Or build it yourself
+
+You need [Rust](https://www.rust-lang.org/tools/install) (stable):
+
+```sh
+git clone https://github.com/Vladimir-0001/rackett
 cd rackett
 cargo build --release
 ./target/release/rackett --data-dir ./data
 ```
+
+`tools/build_targets.sh` builds all the Linux and Windows archives in Docker.
 
 Then open **http://127.0.0.1:9117** in your browser.
 
@@ -196,7 +226,10 @@ raw data and caveats: [Speed against Jackett](docs/speed.md).
   downloads and session expiry. It does not guarantee the real site is online or
   that your account works.
 - **No Jackett settings import.** Sources must be added again in Rackett.
-- **Linux is the only tested platform.** Windows and macOS builds are untested.
+- **Linux on x86-64 is the only platform in daily use.** The ARM, RISC-V, Windows and
+  macOS builds pass a start-up health check on every release, but have had no
+  long-running use yet. On Windows the data folder keeps its normal permissions,
+  so keep it inside your user profile.
 - **Torznab API only.** Rackett's own management API is different from Jackett's.
 
 ## For developers
@@ -226,8 +259,9 @@ features: [legacy character sets](docs/legacy-encodings.md),
 [date header rows](docs/date-headers.md),
 [JSON row shapes](docs/json-row-shapes.md),
 [CSS selector compatibility](docs/nested-has-selectors.md),
-[permanent download links](docs/permanent-download-links.md) and
-[speed measurements](docs/speed.md).
+[permanent download links](docs/permanent-download-links.md),
+[speed measurements](docs/speed.md) and
+[builds for other architectures](docs/cross-builds.md).
 
 ## Acknowledgements
 

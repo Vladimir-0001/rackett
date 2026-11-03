@@ -1,0 +1,157 @@
+# Beta release builds for the public GitHub repository (docs/cross-builds.md).
+# .github/workflows/release.yml is the copy GitHub runs; packaging/github keeps the source.
+#
+# After "Rust checks" passes on main, or when started by hand, this builds every
+# target, smoke-tests each binary, and publishes a prerelease v<version>-beta.<run>
+# with the archives and SHA256SUMS.
+name: Release builds
+on:
+  workflow_run:
+    workflows: ["Rust checks"]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+concurrency:
+  group: release-builds
+  cancel-in-progress: false
+env:
+  # The commit that passed the checks (workflow_run), or the dispatched one.
+  RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+jobs:
+  # Linux (static musl: x86-64, ARM64, ARMv7, ARMv6, RISC-V) and Windows x86-64, built
+  # by the same script and image as local builds. Linux binaries answer /health under
+  # qemu-user before they are packaged.
+  cross:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - run: JOBS=4 tools/build_targets.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cross
+          path: dist/rackett-*
+          if-no-files-found: error
+
+  # macOS needs Apple's SDK headers (mimalloc), so it builds natively.
+  macos:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        include:
+          - target: aarch64-apple-darwin
+            label: macos-arm64
+          - target: x86_64-apple-darwin
+            label: macos-x86_64
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - run: cargo build --release --locked --bin rackett --target ${{ matrix.target }}
+      - name: Smoke test (Apple silicon runner; Intel runs under Rosetta when present)
+        shell: bash
+        run: |
+          bin=target/${{ matrix.target }}/release/rackett
+          file "$bin"
+          if [[ ${{ matrix.target }} == x86_64-* ]] && ! arch -x86_64 /usr/bin/true 2>/dev/null; then
+            echo "Rosetta unavailable; Intel binary built but not run"; exit 0
+          fi
+          run=""; [[ ${{ matrix.target }} == x86_64-* ]] && run="arch -x86_64"
+          $run "$bin" --version
+          data=$(mktemp -d)
+          $run "$bin" --data-dir "$data" --port 29117 &
+          pid=$!
+          for _ in $(seq 1 60); do
+            if curl -fsS http://127.0.0.1:29117/health; then kill $pid; exit 0; fi
+            sleep 0.5
+          done
+          kill $pid; exit 1
+      - name: Package
+        shell: bash
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          name=rackett-$version-${{ matrix.label }}
+          mkdir -p "pkg/$name" dist
+          cp target/${{ matrix.target }}/release/rackett LICENSE NOTICE README.md "pkg/$name/"
+          tar -C pkg -czf "dist/$name.tar.gz" "$name"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.label }}
+          path: dist/rackett-*
+          if-no-files-found: error
+
+  # The Windows build is cross-compiled; run it on Windows before publishing.
+  windows-smoke:
+    needs: cross
+    runs-on: windows-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: cross
+      - shell: pwsh
+        run: |
+          $zip = Get-ChildItem rackett-*-windows-x86_64.zip | Select-Object -First 1
+          Expand-Archive $zip.FullName -DestinationPath win
+          $exe = Get-ChildItem win -Recurse -Filter rackett.exe | Select-Object -First 1
+          & $exe.FullName --version
+          $data = Join-Path $env:RUNNER_TEMP 'rackett-data'
+          $p = Start-Process $exe.FullName -ArgumentList '--data-dir', $data, '--port', '29117' -PassThru
+          $ok = $false
+          foreach ($i in 1..60) {
+            try { if ((Invoke-WebRequest http://127.0.0.1:29117/health -UseBasicParsing).StatusCode -eq 200) { $ok = $true; break } } catch {}
+            Start-Sleep -Milliseconds 500
+          }
+          Stop-Process $p.Id
+          if (-not $ok) { throw 'Windows build did not answer /health' }
+
+  release:
+    needs: [cross, macos, windows-smoke]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: Publish prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          tag="v$version-beta.${{ github.run_number }}"
+          cd artifacts
+          rm -f SHA256SUMS
+          sha256sum rackett-* > SHA256SUMS
+          cat SHA256SUMS
+          cat > ../notes.md <<EOF
+          Automated beta build of \`$RELEASE_SHA\`, made after the checks passed on main.
+
+          | Archive | For |
+          | --- | --- |
+          | \`linux-x86_64\` | 64-bit PCs, servers and most NAS boxes (Intel/AMD) |
+          | \`linux-arm64\` | Raspberry Pi 3/4/5 on a 64-bit OS, ARM NAS boxes, ARM servers |
+          | \`linux-armv7\` | Raspberry Pi 2/3/4 on a 32-bit OS, older ARM NAS boxes |
+          | \`linux-armv6\` | Raspberry Pi Zero and Pi 1 |
+          | \`linux-riscv64\` | 64-bit RISC-V boards |
+          | \`windows-x86_64\` | Windows 10/11, 64-bit |
+          | \`macos-arm64\` / \`macos-x86_64\` | Apple silicon / Intel Macs |
+
+          Linux builds are static and run on any distribution. Each Linux build answered
+          a health check under emulation, and the Windows and Apple-silicon builds on real
+          runners, before this release was published. Beyond that, only x86-64 Linux is
+          tested in daily use; see docs/cross-builds.md. Verify downloads with SHA256SUMS.
+          EOF
+          gh release create "$tag" rackett-* SHA256SUMS \
+            --prerelease --target "$RELEASE_SHA" \
+            --title "Rackett $version beta ${{ github.run_number }}" \
+            --notes-file ../notes.md
